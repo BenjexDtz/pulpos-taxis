@@ -1,0 +1,77 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Radio Taxis Pulpos — Docker Compose
+# Levanta: PostgreSQL + Backend Node.js + Panel Web Admin
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Base de datos PostgreSQL ─────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: pulpos_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-pulpos}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pulpos2026}
+      POSTGRES_DB: ${DB_NAME:-pulpos_db}
+    volumes:
+      # Persistencia de datos entre reinicios
+      - pulpos_db_data:/var/lib/postgresql/data
+      # Script de inicialización (crea tablas automáticamente al primer arranque)
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pulpos} -d ${DB_NAME:-pulpos_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend Node.js ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./pulpos_backend
+      dockerfile: Dockerfile
+    container_name: pulpos_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_USER: ${DB_USER:-pulpos}
+      DB_PASSWORD: ${DB_PASSWORD:-pulpos2026}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-pulpos_db}
+      JWT_SECRET: ${JWT_SECRET:-cambia_esto_por_una_clave_segura}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulpos2026}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── Panel Web Admin (React) ──────────────────────────────────────────────────
+  web_admin:
+    build:
+      context: ./pulpos_web_admin
+      dockerfile: Dockerfile
+      args:
+        # URL del backend que verá el navegador del revisor
+        VITE_API_URL: http://localhost:3000
+    container_name: pulpos_web_admin
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+# ── Volúmenes persistentes ────────────────────────────────────────────────────
+volumes:
+  pulpos_db_data:
+    driver: local

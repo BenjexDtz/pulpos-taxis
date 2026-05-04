@@ -1,0 +1,382 @@
+# 🚖 Radio Taxis Pulpos — Sistema de Tarifas Topográficas
+
+> **Taller de Grado I** · Universidad Salesiana de Bolivia  
+> Autor: Boris Benjamín Barboza Lima  
+> Contexto: El Alto, Bolivia · 4,100 msnm
+
+---
+
+## 📋 Índice
+
+1. [Resumen del Sistema](#resumen)
+2. [Arquitectura](#arquitectura)
+3. [Requisitos](#requisitos)
+4. [Inicio Rápido con Docker](#docker)
+5. [Inicio Manual (sin Docker)](#manual)
+6. [App Móvil Flutter](#flutter)
+7. [Credenciales de Prueba](#credenciales)
+8. [Endpoints de la API](#api)
+9. [Modelo Matemático](#modelo)
+10. [Estructura de Carpetas](#estructura)
+
+---
+
+## Resumen del Sistema <a name="resumen"></a>
+
+Sistema informático compuesto por **tres módulos** que resuelven el problema de tarifas injustas en El Alto:
+
+| Módulo | Tecnología | Descripción |
+|---|---|---|
+| `pulpos_backend` | Node.js + Express + PostgreSQL | API REST central |
+| `pulpos_web_admin` | React + Vite + Tailwind | Panel de gerencia |
+| App Móvil | Flutter (Android) | Taxímetro digital |
+
+**Flujo de datos:**
+```
+[Android Flutter] --GPS/viajes--> [Backend Node.js] <--dashboard-- [Web Admin React]
+                                         |
+                                   [PostgreSQL DB]
+```
+
+---
+
+## Arquitectura <a name="arquitectura"></a>
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Docker Compose                     │
+│                                                      │
+│  ┌──────────────┐   ┌──────────────┐   ┌─────────┐  │
+│  │  web_admin   │   │   backend    │   │   db    │  │
+│  │  React/Nginx │──▶│  Node.js     │──▶│Postgres │  │
+│  │  :8080       │   │  :3000       │   │  :5432  │  │
+│  └──────────────┘   └──────────────┘   └─────────┘  │
+│                            ▲                         │
+│                     [App Flutter]                    │
+│                  (corre fuera de Docker)             │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## Requisitos <a name="requisitos"></a>
+
+### Para Docker (recomendado para revisores)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ 24.x
+- Docker Compose (incluido en Docker Desktop)
+- 2 GB de RAM libre
+
+### Para desarrollo manual
+- Node.js ≥ 20
+- PostgreSQL ≥ 15
+- Flutter SDK ≥ 3.11 (solo para la app móvil)
+
+---
+
+## 🐳 Inicio Rápido con Docker <a name="docker"></a>
+
+**Este es el método recomendado para revisores de código.**  
+Levanta toda la infraestructura con un solo comando.
+
+### 1. Clonar el repositorio
+
+```bash
+git clone https://github.com/tu-usuario/pulpos-taxis.git
+cd pulpos-taxis
+```
+
+### 2. Configurar variables de entorno
+
+```bash
+cp .env.example .env
+# El archivo .env.example ya tiene valores listos para pruebas.
+# No es necesario editarlo para una revisión básica.
+```
+
+### 3. Levantar todos los servicios
+
+```bash
+docker compose up --build
+```
+
+Esperar hasta ver:
+```
+pulpos_backend  | 🚀 Servidor corriendo en http://localhost:3000
+pulpos_web_admin | /docker-entrypoint.sh: Configuration complete
+```
+
+### 4. Abrir el panel de gerencia
+
+```
+http://localhost:8080
+```
+
+Usuario: `admin` · Contraseña: `password o pulpos2026`
+
+### 5. Verificar el backend
+
+```
+http://localhost:3000
+```
+
+Debe responder: `{"mensaje":"📡 Central de Radio Taxis Pulpos en línea"}`
+
+### Detener los servicios
+
+```bash
+docker compose down
+# Para borrar también la base de datos:
+docker compose down -v
+```
+
+---
+
+## ⚙️ Inicio Manual (sin Docker) <a name="manual"></a>
+
+### Base de datos
+
+```bash
+# Crear base de datos en PostgreSQL local
+psql -U postgres -c "CREATE DATABASE pulpos_db;"
+psql -U postgres -d pulpos_db -f database/init.sql
+```
+
+### Backend
+
+```bash
+cd pulpos_backend
+cp .env.example .env
+# Editar .env con tus credenciales de PostgreSQL local
+npm install
+node index.js
+```
+
+### Panel Web Admin
+
+```bash
+cd pulpos_web_admin
+# Asegurarse de que VITE_API_URL en .env apunta al backend
+echo "VITE_API_URL=http://localhost:3000" > .env
+npm install
+npm run dev
+# Abrir: http://localhost:5173
+```
+
+---
+
+## 📱 App Móvil Flutter <a name="flutter"></a>
+
+La app móvil no se incluye en Docker porque requiere un dispositivo Android físico o emulador.
+
+### Requisitos
+
+- Flutter SDK ≥ 3.11 ([instalar](https://docs.flutter.dev/get-started/install))
+- Android Studio o VS Code con extensión Flutter
+- Dispositivo Android o emulador con API ≥ 23
+
+### Configurar IP del servidor
+
+Antes de compilar, editar **dos archivos** con la IP de tu máquina:
+
+**`lib/calculadora.dart`** — línea con `_urlBase`:
+```dart
+static const String _urlBase = 'http://TU_IP_AQUI:3000';
+```
+
+**`lib/main.dart`** — constante `urlBase`:
+```dart
+const String urlBase = 'http://TU_IP_AQUI:3000';
+```
+
+> **¿Cuál es mi IP?**  
+> Windows: `ipconfig` → buscar "Dirección IPv4"  
+> Linux/Mac: `ip addr` o `ifconfig`  
+> Ejemplo típico: `192.168.1.15`
+
+### Ejecutar la app
+
+```bash
+cd pulpos_tarifa_core
+flutter pub get
+flutter run
+```
+
+### Credenciales para la app móvil
+
+```
+Placa: 1234-PUL
+Contraseña: demo1234
+```
+
+---
+
+## 🔑 Credenciales de Prueba <a name="credenciales"></a>
+
+| Módulo | Usuario/Placa | Contraseña |
+|---|---|---|
+| Panel Admin (web) | `admin` | `pulpos2026` |
+| App Móvil (Flutter) | `1234-PUL` | `demo1234` |
+| PostgreSQL (Docker) | `pulpos` | `pulpos2026` |
+
+---
+
+## 🌐 Endpoints de la API <a name="api"></a>
+
+Base URL: `http://localhost:3000`
+
+### Públicos (sin token)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/` | Estado del servidor |
+| `GET` | `/api/parametros` | Parámetros topográficos activos |
+| `POST` | `/api/login` | Login de conductor (app móvil) |
+| `POST` | `/api/viajes/sincronizar` | Subir viaje desde la app |
+
+### Panel Admin (requieren token Bearer)
+
+Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"pulpos2026"}`
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/admin/viajes` | Historial de viajes |
+| `GET` | `/api/admin/viajes?desde=YYYY-MM-DD&hasta=YYYY-MM-DD` | Filtrado por fecha |
+| `GET` | `/api/admin/viajes/exportar` | Descargar CSV |
+| `GET` | `/api/admin/choferes` | Lista de conductores con GPS |
+| `POST` | `/api/admin/choferes` | Registrar conductor |
+| `PATCH` | `/api/admin/choferes/:id/password` | Resetear contraseña |
+| `PATCH` | `/api/admin/choferes/:id/estado` | Activar/desactivar |
+| `PUT` | `/api/admin/parametros/:id` | Editar parámetros topográficos |
+
+### App Móvil (requieren token del conductor)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/api/posicion` | Enviar GPS en tiempo real |
+
+---
+
+## 📐 Modelo Matemático <a name="modelo"></a>
+
+La tarifa se calcula con la fórmula diseñada para El Alto:
+
+```
+T = D × Cb × FH × FR + Ct × Td
+```
+
+| Variable | Descripción | Valor por defecto |
+|---|---|---|
+| `D` | Distancia recorrida (km) | GPS en tiempo real |
+| `Cb` | Costo base por km (Bs) | **2.00** |
+| `FH` | Factor de altitud (4,100 msnm) | **1.40** |
+| `FR` | Factor de superficie | Asfalto: **1.0** / Tierra: **2.5** |
+| `Ct` | Costo por minuto de detención (Bs) | **0.50** |
+| `Td` | Tiempo de detención (min) | GPS en tiempo real |
+
+> Los parámetros `Cb`, `FH`, `FR` y `Ct` son editables desde el panel de gerencia en **Parámetros Topográficos**, y los conductores los descargan automáticamente al iniciar la app.
+
+**Ejemplo — 5 km en asfalto, 10 min de espera:**
+```
+T = 5 × 2.00 × 1.40 × 1.0 + 0.50 × 10
+T = 14.00 + 5.00
+T = Bs 19.00
+```
+
+---
+
+## 📁 Estructura de Carpetas <a name="estructura"></a>
+
+```
+pulpos-taxis/
+│
+├── 📁 pulpos_backend/          # API REST Node.js
+│   ├── index.js                # Servidor principal + todas las rutas
+│   ├── db.js                   # Conexión PostgreSQL (pool)
+│   ├── package.json
+│   ├── Dockerfile
+│   └── .env.example
+│
+├── 📁 pulpos_web_admin/        # Panel de gerencia React
+│   ├── src/
+│   │   ├── App.jsx             # Componente principal (toda la UI)
+│   │   ├── main.jsx
+│   │   └── index.css
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── .env
+│
+├── 📁 pulpos_tarifa_core/      # App móvil Flutter (Android)
+│   ├── lib/
+│   │   ├── main.dart           # Taxímetro principal
+│   │   ├── calculadora.dart    # Fórmula tarifaria + descarga params
+│   │   ├── motor_gps.dart      # GPS + envío posición al servidor
+│   │   ├── base_datos.dart     # SQLite local (modo offline)
+│   │   ├── pantalla_login.dart # Autenticación del conductor
+│   │   └── pantalla_historial.dart
+│   ├── android/
+│   ├── pubspec.yaml
+│   └── test/
+│       └── calculadora_test.dart  # Pruebas unitarias del modelo
+│
+├── 📁 database/
+│   └── init.sql                # Schema + datos de prueba (auto-ejecuta en Docker)
+│
+├── docker-compose.yml          # Orquestación de todos los servicios
+├── .env.example                # Variables de entorno de ejemplo
+└── README.md                   # Este archivo
+```
+
+---
+
+## 🧪 Pruebas Unitarias
+
+El modelo matemático tiene pruebas unitarias en Dart:
+
+```bash
+cd pulpos_tarifa_core
+dart test/calculadora_test.dart
+```
+
+Prueba 1: Escenario crítico (tierra + detención) → debe dar **Bs 40.00**  
+Prueba 2: Escenario ideal (asfalto, sin espera) → debe dar **Bs 14.00**
+
+---
+
+## 🐛 Solución de Problemas
+
+**Docker: "port 5432 already in use"**
+```bash
+# Detener PostgreSQL local si está corriendo
+sudo systemctl stop postgresql   # Linux
+brew services stop postgresql    # Mac
+```
+
+**Flutter: "Connection refused"**
+- Verificar que el backend esté corriendo (`http://localhost:3000`)
+- Verificar que la IP en `calculadora.dart` y `main.dart` sea la correcta
+- Dispositivo y computadora deben estar en la **misma red WiFi**
+- En Android, la IP `127.0.0.1` no funciona — usar la IP real de la laptop
+
+**Panel Admin: pantalla en blanco**
+```bash
+# Ver logs del contenedor
+docker compose logs web_admin
+docker compose logs backend
+```
+
+**Base de datos: no se crean las tablas**
+```bash
+# Borrar volumen y reiniciar
+docker compose down -v
+docker compose up --build
+```
+
+---
+
+## 👤 Autor
+
+**Boris Benjamín Barboza Lima**  
+Taller de Grado I · Ingeniería Informática  
+Universidad Salesiana de Bolivia · El Alto - La Paz, Bolivia · 2026
