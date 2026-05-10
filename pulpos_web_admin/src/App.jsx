@@ -5,7 +5,7 @@ import {
   UserPlus, LayoutDashboard, Search, KeyRound, ToggleLeft,
   ToggleRight, ShieldCheck, ShieldOff, Map, Radio, Wifi, WifiOff,
   TrendingUp, Clock, AlertCircle, X, MapPin, Download, Settings,
-  Save, ChevronDown
+  Save, Fuel
 } from 'lucide-react';
 
 // ─── LEAFLET ──────────────────────────────────────────────────────────────────
@@ -244,10 +244,6 @@ export default function App() {
   const exportarCSV = () => {
     const params_q = fechaDesde && fechaHasta ? `?desde=${fechaDesde}&hasta=${fechaHasta}` : '';
     const url = `${urlServidor}/api/admin/viajes/exportar${params_q}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.setAttribute('Authorization', `Bearer ${token}`);
-    // Usamos fetch para incluir el header
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.blob())
       .then(blob => {
@@ -303,6 +299,33 @@ export default function App() {
     } catch (err) {
       setMensajeParams({ tipo: 'error', texto: err.response?.data?.error || 'Error al guardar.' });
     } finally { setGuardandoParams(false); }
+  };
+
+  // ── Helpers para preview de fórmula ───────────────────────────────────────
+  // T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+  const previewTarifa = (fr) => {
+    if (!formParams) return '0.00';
+    const Cb = parseFloat(formParams.costo_base_km || 0);
+    const Cl = parseFloat(formParams.consumo_litros_km || 0);
+    const Pc = parseFloat(formParams.precio_combustible_bs || 0);
+    const FH = parseFloat(formParams.factor_altitud || 0);
+    const Ct = parseFloat(formParams.costo_minuto_detencion || 0);
+    return (5 * (Cb + Cl * Pc) * FH * fr + 10 * Ct).toFixed(2);
+  };
+
+  const previewCostoCombustibleKm = () => {
+    if (!formParams) return '0.000';
+    const Cl = parseFloat(formParams.consumo_litros_km || 0);
+    const Pc = parseFloat(formParams.precio_combustible_bs || 0);
+    return (Cl * Pc).toFixed(3);
+  };
+
+  const previewCostoVariableKm = () => {
+    if (!formParams) return '0.000';
+    const Cb = parseFloat(formParams.costo_base_km || 0);
+    const Cl = parseFloat(formParams.consumo_litros_km || 0);
+    const Pc = parseFloat(formParams.precio_combustible_bs || 0);
+    return (Cb + Cl * Pc).toFixed(3);
   };
 
   // Computed
@@ -435,20 +458,17 @@ export default function App() {
                   <Clock className="w-4 h-4 text-gray-500" />
                   <h2 className="font-bold text-gray-200 tracking-wider">HISTORIAL DE VIAJES</h2>
                 </div>
-                {/* Filtro fecha */}
                 <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
                   className="bg-gray-800 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg font-radar text-xs focus:outline-none focus:border-blue-500" />
                 <span className="text-gray-600 font-radar text-xs">→</span>
                 <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
                   className="bg-gray-800 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg font-radar text-xs focus:outline-none focus:border-blue-500" />
-                {/* Buscar */}
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-600" />
                   <input type="text" placeholder="Conductor o placa..."
                     className="bg-gray-800 border border-gray-700 text-white pl-9 pr-4 py-2 rounded-lg font-radar text-xs focus:outline-none focus:border-blue-500 transition w-44 placeholder-gray-700"
                     value={filtroChofer} onChange={e => setFiltroChofer(e.target.value)} />
                 </div>
-                {/* Exportar CSV */}
                 <button onClick={exportarCSV}
                   className="flex items-center gap-2 bg-green-950 hover:bg-green-900 border border-green-800 text-green-400 px-3 py-2 rounded-lg transition font-radar text-xs">
                   <Download className="w-3.5 h-3.5" />CSV
@@ -535,8 +555,19 @@ export default function App() {
                   <div className="bg-gray-900 border border-green-900 rounded-xl p-4">
                     <p className="font-radar text-xs text-green-700 tracking-widest mb-2">PARÁMETROS ACTIVOS</p>
                     <div className="space-y-1">
-                      {[['FH Altitud', `${params.factor_altitud}×`], ['FR Tierra', `${params.factor_superficie}×`], ['Cb/km', `Bs ${params.costo_base_km}`], ['Ct/min', `Bs ${params.costo_minuto_detencion}`]].map(([k, v]) => (
-                        <div key={k} className="flex justify-between"><span className="font-radar text-xs text-gray-600">{k}</span><span className="font-radar text-xs text-green-400">{v}</span></div>
+                      {[
+                        ['FH Altitud', `${params.factor_altitud}×`],
+                        ['FR Tierra', `${params.factor_superficie}×`],
+                        ['Cb/km', `Bs ${params.costo_base_km}`],
+                        ['Cl', `${params.consumo_litros_km} L/km`],
+                        ['Pc', `Bs ${params.precio_combustible_bs}/L`],
+                        ['Cl×Pc/km', `Bs ${params.costo_combustible_km}`],
+                        ['Ct/min', `Bs ${params.costo_minuto_detencion}`],
+                      ].map(([k, v]) => (
+                        <div key={k} className="flex justify-between">
+                          <span className="font-radar text-xs text-gray-600">{k}</span>
+                          <span className="font-radar text-xs text-green-400">{v}</span>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -627,8 +658,18 @@ export default function App() {
         {vistaActiva === 'parametros' && (
           <div className="max-w-2xl space-y-6">
             <div>
-              <h2 className="font-bold text-white text-2xl tracking-wider flex items-center space-x-2"><Settings className="w-6 h-6 text-yellow-400" /><span>PARÁMETROS TOPOGRÁFICOS</span></h2>
-              <p className="font-radar text-xs text-gray-600 mt-1">Los conductores descargan estos valores automáticamente al abrir la app. El cálculo es: T = D × Cb × FH × FR + Ct × Td</p>
+              <h2 className="font-bold text-white text-2xl tracking-wider flex items-center space-x-2">
+                <Settings className="w-6 h-6 text-yellow-400" />
+                <span>PARÁMETROS TOPOGRÁFICOS</span>
+              </h2>
+              <p className="font-radar text-xs text-gray-600 mt-1">
+                Los conductores descargan estos valores automáticamente al abrir la app.
+              </p>
+              {/* Fórmula completa como referencia */}
+              <div className="mt-3 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 font-radar text-xs">
+                <span className="text-gray-600">FÓRMULA ACTIVA: </span>
+                <span className="text-yellow-400">T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td</span>
+              </div>
             </div>
 
             {!formParams ? (
@@ -636,55 +677,179 @@ export default function App() {
             ) : (
               <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-800">
-                  <p className="font-radar text-xs text-gray-600 tracking-widest">ZONA: <span className="text-yellow-400">{params?.zona_ciudad}</span></p>
+                  <p className="font-radar text-xs text-gray-600 tracking-widest">
+                    ZONA: <span className="text-yellow-400">{params?.zona_ciudad}</span>
+                  </p>
                 </div>
                 <div className="p-6">
                   {mensajeParams.texto && (
-                    <div className={`mb-6 p-4 rounded-xl font-radar text-sm border ${mensajeParams.tipo === 'exito' ? 'bg-green-950 text-green-400 border-green-800' : 'bg-red-950 text-red-400 border-red-800'}`}>{mensajeParams.texto}</div>
+                    <div className={`mb-6 p-4 rounded-xl font-radar text-sm border ${mensajeParams.tipo === 'exito' ? 'bg-green-950 text-green-400 border-green-800' : 'bg-red-950 text-red-400 border-red-800'}`}>
+                      {mensajeParams.texto}
+                    </div>
                   )}
                   <form onSubmit={guardarParametros} className="space-y-5">
+
+                    {/* Zona */}
                     <div>
                       <label className="font-radar text-xs text-gray-600 tracking-widest block mb-2">ZONA / DESCRIPCIÓN</label>
-                      <input type="text" required className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition" value={formParams.zona_ciudad} onChange={e => setFormParams({ ...formParams, zona_ciudad: e.target.value })} />
+                      <input type="text" required
+                        className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition"
+                        value={formParams.zona_ciudad}
+                        onChange={e => setFormParams({ ...formParams, zona_ciudad: e.target.value })} />
                     </div>
-                    <div className="grid grid-cols-2 gap-5">
-                      <div>
-                        <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">Cb — COSTO BASE / KM (Bs)</label>
-                        <p className="font-radar text-xs text-gray-700 mb-2">Tarifa base por kilómetro recorrido</p>
-                        <input type="number" step="0.01" min="0.5" max="10" required className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition" value={formParams.costo_base_km} onChange={e => setFormParams({ ...formParams, costo_base_km: e.target.value })} />
+
+                    {/* ── SECCIÓN COMBUSTIBLE (Cl y Pc) — NUEVA ── */}
+                    <div>
+                      <div className="flex items-center space-x-2 mb-3">
+                        <Fuel className="w-4 h-4 text-orange-400" />
+                        <span className="font-radar text-xs text-orange-400 tracking-widest">COMPONENTE COMBUSTIBLE</span>
                       </div>
-                      <div>
-                        <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">FH — FACTOR ALTITUD</label>
-                        <p className="font-radar text-xs text-gray-700 mb-2">Penalización por operar a 4,100 msnm</p>
-                        <input type="number" step="0.01" min="1" max="3" required className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition" value={formParams.factor_altitud} onChange={e => setFormParams({ ...formParams, factor_altitud: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">FR — FACTOR TIERRA / BARRO</label>
-                        <p className="font-radar text-xs text-gray-700 mb-2">Multiplicador para rutas en tierra</p>
-                        <input type="number" step="0.1" min="1" max="5" required className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition" value={formParams.factor_superficie} onChange={e => setFormParams({ ...formParams, factor_superficie: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">Ct — COSTO / MIN DETENCIÓN (Bs)</label>
-                        <p className="font-radar text-xs text-gray-700 mb-2">Cobro por tiempo en espera o tráfico</p>
-                        <input type="number" step="0.01" min="0.1" max="5" required className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition" value={formParams.costo_minuto_detencion} onChange={e => setFormParams({ ...formParams, costo_minuto_detencion: e.target.value })} />
+                      <div className="grid grid-cols-2 gap-5 bg-gray-800 border border-gray-700 rounded-xl p-4">
+                        <div>
+                          <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
+                            Cl — CONSUMO DEL VEHÍCULO (L/km)
+                          </label>
+                          <p className="font-radar text-xs text-gray-700 mb-2">
+                            Litros que gasta el taxi por kilómetro
+                          </p>
+                          <input type="number" step="0.001" min="0.05" max="0.5" required
+                            className="w-full bg-gray-900 border border-gray-600 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-orange-500 transition"
+                            value={formParams.consumo_litros_km}
+                            onChange={e => setFormParams({ ...formParams, consumo_litros_km: e.target.value })} />
+                          <p className="font-radar text-xs text-gray-700 mt-1">
+                            Ej: 0.100 = 10L/100km
+                          </p>
+                        </div>
+                        <div>
+                          <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
+                            Pc — PRECIO GASOLINA (Bs/litro)
+                          </label>
+                          <p className="font-radar text-xs text-gray-700 mb-2">
+                            Precio actual sin subvención gubernamental
+                          </p>
+                          <input type="number" step="0.01" min="1" max="30" required
+                            className="w-full bg-gray-900 border border-gray-600 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-orange-500 transition"
+                            value={formParams.precio_combustible_bs}
+                            onChange={e => setFormParams({ ...formParams, precio_combustible_bs: e.target.value })} />
+                          <p className="font-radar text-xs text-gray-700 mt-1">
+                            Ref: Bs 6.96 (mayo 2026)
+                          </p>
+                        </div>
+                        {/* Resultado calculado en tiempo real */}
+                        <div className="col-span-2 bg-gray-900 border border-orange-900 rounded-lg px-4 py-2 flex items-center justify-between">
+                          <span className="font-radar text-xs text-gray-600">Cl × Pc = costo gasolina/km</span>
+                          <span className="font-radar text-sm text-orange-400 font-bold">
+                            Bs {previewCostoCombustibleKm()}/km
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Preview de la fórmula */}
-                    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 font-radar text-xs">
-                      <p className="text-gray-500 mb-2 tracking-widest">PREVIEW — 5 km asfalto, 10 min espera:</p>
-                      <p className="text-green-400 text-base font-bold">
-                        Bs {(5 * parseFloat(formParams.costo_base_km || 0) * parseFloat(formParams.factor_altitud || 0) * 1.0 + 10 * parseFloat(formParams.costo_minuto_detencion || 0)).toFixed(2)}
-                        <span className="text-gray-600 text-xs ml-2 font-normal">asfalto</span>
+                    {/* ── SECCIÓN TOPOGRÁFICA (Cb, FH, FR, Ct) ── */}
+                    <div>
+                      <div className="flex items-center space-x-2 mb-3">
+                        <MapPin className="w-4 h-4 text-yellow-400" />
+                        <span className="font-radar text-xs text-yellow-400 tracking-widest">FACTORES TOPOGRÁFICOS Y ECONÓMICOS</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-5">
+                        <div>
+                          <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
+                            Cb — COSTO BASE / KM (Bs)
+                          </label>
+                          <p className="font-radar text-xs text-gray-700 mb-2">
+                            Ganancia del conductor + depreciación
+                          </p>
+                          <input type="number" step="0.01" min="0.5" max="10" required
+                            className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition"
+                            value={formParams.costo_base_km}
+                            onChange={e => setFormParams({ ...formParams, costo_base_km: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
+                            FH — FACTOR ALTITUD
+                          </label>
+                          <p className="font-radar text-xs text-gray-700 mb-2">
+                            Penalización por operar a 4,100 msnm
+                          </p>
+                          <input type="number" step="0.01" min="1" max="3" required
+                            className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition"
+                            value={formParams.factor_altitud}
+                            onChange={e => setFormParams({ ...formParams, factor_altitud: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
+                            FR — FACTOR TIERRA / BARRO
+                          </label>
+                          <p className="font-radar text-xs text-gray-700 mb-2">
+                            Multiplicador para rutas en tierra
+                          </p>
+                          <input type="number" step="0.1" min="1" max="5" required
+                            className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition"
+                            value={formParams.factor_superficie}
+                            onChange={e => setFormParams({ ...formParams, factor_superficie: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
+                            Ct — COSTO / MIN DETENCIÓN (Bs)
+                          </label>
+                          <p className="font-radar text-xs text-gray-700 mb-2">
+                            Cobro por tiempo en espera o tráfico
+                          </p>
+                          <input type="number" step="0.01" min="0.1" max="5" required
+                            className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition"
+                            value={formParams.costo_minuto_detencion}
+                            onChange={e => setFormParams({ ...formParams, costo_minuto_detencion: e.target.value })} />
+                        </div>
+
+                        {/* Costo variable total por km */}
+                        <div className="col-span-2 bg-gray-900 border border-yellow-900 rounded-lg px-4 py-2 flex items-center justify-between">
+                          <span className="font-radar text-xs text-gray-600">Cb + Cl×Pc = costo variable total/km</span>
+                          <span className="font-radar text-sm text-yellow-400 font-bold">
+                            Bs {previewCostoVariableKm()}/km
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── PREVIEW DE TARIFA ── */}
+                    {/* T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td */}
+                    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 font-radar text-xs space-y-3">
+                      <p className="text-gray-500 tracking-widest">
+                        PREVIEW — 5 km · 10 min espera · con parámetros actuales:
                       </p>
-                      <p className="text-orange-400 text-base font-bold mt-1">
-                        Bs {(5 * parseFloat(formParams.costo_base_km || 0) * parseFloat(formParams.factor_altitud || 0) * parseFloat(formParams.factor_superficie || 0) + 10 * parseFloat(formParams.costo_minuto_detencion || 0)).toFixed(2)}
-                        <span className="text-gray-600 text-xs ml-2 font-normal">tierra/complejo</span>
-                      </p>
+
+                      {/* Asfalto FR=1.0 */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-gray-600">5 × (Cb+Cl×Pc) × FH × </span>
+                          <span className="text-green-500">1.0</span>
+                          <span className="text-gray-600"> + 10×Ct</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-green-400 text-base font-bold">Bs {previewTarifa(1.0)}</span>
+                          <span className="text-gray-600 text-xs ml-2">asfalto</span>
+                        </div>
+                      </div>
+
+                      {/* Tierra FR variable */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-gray-600">5 × (Cb+Cl×Pc) × FH × </span>
+                          <span className="text-orange-500">{parseFloat(formParams.factor_superficie || 1).toFixed(1)}</span>
+                          <span className="text-gray-600"> + 10×Ct</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-orange-400 text-base font-bold">
+                            Bs {previewTarifa(parseFloat(formParams.factor_superficie || 1))}
+                          </span>
+                          <span className="text-gray-600 text-xs ml-2">tierra/complejo</span>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="flex justify-end pt-2">
-                      <button type="submit" disabled={guardandoParams} className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-60 text-white font-bold px-6 py-2.5 rounded-xl transition tracking-wider text-sm">
+                      <button type="submit" disabled={guardandoParams}
+                        className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-60 text-white font-bold px-6 py-2.5 rounded-xl transition tracking-wider text-sm">
                         {guardandoParams ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                         <span>{guardandoParams ? 'GUARDANDO...' : 'GUARDAR PARÁMETROS'}</span>
                       </button>
