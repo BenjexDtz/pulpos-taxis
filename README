@@ -89,8 +89,7 @@ cd pulpos-taxis
 
 ```bash
 cp .env.example .env
-# El archivo .env.example ya tiene valores listos para pruebas.
-# No es necesario editarlo para una revisión básica.
+# Editar .env con tus propias credenciales antes de continuar.
 ```
 
 ### 3. Levantar todos los servicios
@@ -111,7 +110,7 @@ pulpos_web_admin | /docker-entrypoint.sh: Configuration complete
 http://localhost:8080
 ```
 
-Usuario: `admin` · Contraseña: `password o pulpos2026`
+Usar las credenciales definidas en tu archivo `.env`.
 
 ### 5. Verificar el backend
 
@@ -145,7 +144,7 @@ psql -U postgres -d pulpos_db -f database/init.sql
 
 ```bash
 cd pulpos_backend
-cp .env.example .env
+cp ../.env.example .env
 # Editar .env con tus credenciales de PostgreSQL local
 npm install
 node index.js
@@ -155,7 +154,6 @@ node index.js
 
 ```bash
 cd pulpos_web_admin
-# Asegurarse de que VITE_API_URL en .env apunta al backend
 echo "VITE_API_URL=http://localhost:3000" > .env
 npm install
 npm run dev
@@ -176,9 +174,14 @@ La app móvil no se incluye en Docker porque requiere un dispositivo Android fí
 
 ### Configurar IP del servidor
 
-Antes de compilar, editar **dos archivos** con la IP de tu máquina:
+Antes de compilar, editar **tres archivos** con la IP de tu máquina:
 
-**`lib/calculadora.dart`** — línea con `_urlBase`:
+**`lib/calculadora.dart`** — constante `_urlBase`:
+```dart
+static const String _urlBase = 'http://TU_IP_AQUI:3000';
+```
+
+**`lib/motor_gps.dart`** — constante `_urlBase`:
 ```dart
 static const String _urlBase = 'http://TU_IP_AQUI:3000';
 ```
@@ -191,32 +194,40 @@ const String urlBase = 'http://TU_IP_AQUI:3000';
 > **¿Cuál es mi IP?**  
 > Windows: `ipconfig` → buscar "Dirección IPv4"  
 > Linux/Mac: `ip addr` o `ifconfig`  
-> Ejemplo típico: `192.168.1.15`
+> Ejemplo típico: `192.168.1.15`  
+> ⚠️ La IP `127.0.0.1` **no funciona** en dispositivos Android — siempre usar la IP real de la red local.
 
 ### Ejecutar la app
 
 ```bash
-cd pulpos_tarifa_core
+cd pulpos_apk
 flutter pub get
 flutter run
 ```
 
-### Credenciales para la app móvil
+### Ejecutar pruebas unitarias del modelo matemático
 
-```
-Placa: 1234-PUL
-Contraseña: demo1234
+```bash
+cd pulpos_apk
+flutter test test/calculadora_test.dart
 ```
 
 ---
 
 ## 🔑 Credenciales de Prueba <a name="credenciales"></a>
 
-| Módulo | Usuario/Placa | Contraseña |
+Las credenciales de acceso se definen en el archivo `.env` de la raíz del proyecto.  
+El archivo `.env.example` contiene los valores de referencia.
+
+USUARIO: pulpos@admin.bo y contraseña es password
+
+| Módulo | Usuario / Placa | Contraseña |
 |---|---|---|
-| Panel Admin (web) | `admin` | `pulpos2026` |
+| Panel Admin (web) | `admin` | la definida en `ADMIN_PASSWORD` de tu `.env` |
 | App Móvil (Flutter) | `1234-PUL` | `demo1234` |
-| PostgreSQL (Docker) | `pulpos` | `pulpos2026` |
+| PostgreSQL (Docker) | el valor de `DB_USER` | el valor de `DB_PASSWORD` |
+
+> ⚠️ **Importante:** Cambia todas las contraseñas antes de un despliegue en producción.
 
 ---
 
@@ -235,13 +246,13 @@ Base URL: `http://localhost:3000`
 
 ### Panel Admin (requieren token Bearer)
 
-Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"pulpos2026"}`
+Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"TU_PASSWORD"}`
 
 | Método | Ruta | Descripción |
 |---|---|---|
 | `GET` | `/api/admin/viajes` | Historial de viajes |
 | `GET` | `/api/admin/viajes?desde=YYYY-MM-DD&hasta=YYYY-MM-DD` | Filtrado por fecha |
-| `GET` | `/api/admin/viajes/exportar` | Descargar CSV |
+| `GET` | `/api/admin/viajes/exportar` | Descargar CSV con auditoría completa |
 | `GET` | `/api/admin/choferes` | Lista de conductores con GPS |
 | `POST` | `/api/admin/choferes` | Registrar conductor |
 | `PATCH` | `/api/admin/choferes/:id/password` | Resetear contraseña |
@@ -258,29 +269,45 @@ Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"pulpo
 
 ## 📐 Modelo Matemático <a name="modelo"></a>
 
-La tarifa se calcula con la fórmula diseñada para El Alto:
+La tarifa se calcula con la fórmula **v3** diseñada para las condiciones específicas de El Alto:
 
 ```
-T = D × Cb × FH × FR + Ct × Td
+T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
 ```
 
 | Variable | Descripción | Valor por defecto |
 |---|---|---|
 | `D` | Distancia recorrida (km) | GPS en tiempo real |
-| `Cb` | Costo base por km (Bs) | **2.00** |
-| `FH` | Factor de altitud (4,100 msnm) | **1.40** |
+| `Cb` | Costo base por km (Bs) — ganancia del conductor + depreciación | **2.00** |
+| `Cl` | Consumo del vehículo (L/km) — cuántos litros gasta por km | **0.100** |
+| `Pc` | Precio del combustible (Bs/litro) — sin subvención gubernamental | **6.96** |
+| `Cl × Pc` | Costo de gasolina por km (Bs/km) — calculado | **0.696** |
+| `Cb + Cl × Pc` | Costo variable total por km (Bs/km) — calculado | **2.696** |
+| `FH` | Factor de altitud (4,100 msnm) — el motor trabaja más a gran altura | **1.40** |
 | `FR` | Factor de superficie | Asfalto: **1.0** / Tierra: **2.5** |
-| `Ct` | Costo por minuto de detención (Bs) | **0.50** |
-| `Td` | Tiempo de detención (min) | GPS en tiempo real |
+| `Ct` | Costo por minuto de detención (Bs) — tráfico, semáforos, espera | **0.50** |
+| `Td` | Tiempo de detención (min) — medido por GPS en tiempo real | GPS en tiempo real |
 
-> Los parámetros `Cb`, `FH`, `FR` y `Ct` son editables desde el panel de gerencia en **Parámetros Topográficos**, y los conductores los descargan automáticamente al iniciar la app.
+> El combustible se multiplica por `FH × FR` porque en terreno complicado y a gran altitud el motor consume proporcionalmente más gasolina, no solo la componente base.
 
 **Ejemplo — 5 km en asfalto, 10 min de espera:**
 ```
-T = 5 × 2.00 × 1.40 × 1.0 + 0.50 × 10
-T = 14.00 + 5.00
-T = Bs 19.00
+Cl × Pc  = 0.100 × 6.96  = 0.696 Bs/km  (costo gasolina por km)
+Cb + Cl×Pc = 2.00 + 0.696 = 2.696 Bs/km  (costo variable total)
+
+T = 5 × 2.696 × 1.40 × 1.0 + 0.50 × 10
+T = 18.872 + 5.000
+T = Bs 23.87  (asfalto)
 ```
+
+**Ejemplo — 5 km en tierra/barro, 10 min de espera:**
+```
+T = 5 × 2.696 × 1.40 × 2.5 + 0.50 × 10
+T = 47.180 + 5.000
+T = Bs 52.18  (tierra/barro)
+```
+
+Los parámetros `Cb`, `Cl`, `Pc`, `FH`, `FR` y `Ct` son editables desde el panel de gerencia en **Parámetros Topográficos**, y los conductores los descargan automáticamente al iniciar la app.
 
 ---
 
@@ -293,8 +320,7 @@ pulpos-taxis/
 │   ├── index.js                # Servidor principal + todas las rutas
 │   ├── db.js                   # Conexión PostgreSQL (pool)
 │   ├── package.json
-│   ├── Dockerfile
-│   └── .env.example
+│   └── Dockerfile
 │
 ├── 📁 pulpos_web_admin/        # Panel de gerencia React
 │   ├── src/
@@ -304,13 +330,12 @@ pulpos-taxis/
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── Dockerfile
-│   ├── nginx.conf
-│   └── .env
+│   └── nginx.conf
 │
-├── 📁 pulpos_tarifa_core/      # App móvil Flutter (Android)
+├── 📁 pulpos_apk/              # App móvil Flutter (Android)
 │   ├── lib/
 │   │   ├── main.dart           # Taxímetro principal
-│   │   ├── calculadora.dart    # Fórmula tarifaria + descarga params
+│   │   ├── calculadora.dart    # Fórmula tarifaria v3 + descarga params
 │   │   ├── motor_gps.dart      # GPS + envío posición al servidor
 │   │   ├── base_datos.dart     # SQLite local (modo offline)
 │   │   ├── pantalla_login.dart # Autenticación del conductor
@@ -324,7 +349,8 @@ pulpos-taxis/
 │   └── init.sql                # Schema + datos de prueba (auto-ejecuta en Docker)
 │
 ├── docker-compose.yml          # Orquestación de todos los servicios
-├── .env.example                # Variables de entorno de ejemplo
+├── .env.example                # Plantilla de variables de entorno (sin credenciales reales)
+├── .env                        # Variables reales — NO subir al repositorio
 └── README.md                   # Este archivo
 ```
 
@@ -332,15 +358,20 @@ pulpos-taxis/
 
 ## 🧪 Pruebas Unitarias
 
-El modelo matemático tiene pruebas unitarias en Dart:
+El modelo matemático tiene pruebas unitarias en Dart que cubren la fórmula v3:
 
 ```bash
-cd pulpos_tarifa_core
-dart test/calculadora_test.dart
+cd pulpos_apk
+flutter test test/calculadora_test.dart
 ```
 
-Prueba 1: Escenario crítico (tierra + detención) → debe dar **Bs 40.00**  
-Prueba 2: Escenario ideal (asfalto, sin espera) → debe dar **Bs 14.00**
+| Test | Escenario | Resultado esperado |
+|---|---|---|
+| Test 1 | Tierra/barro + 10 min espera, 5 km | **Bs 52.18** |
+| Test 2 | Asfalto + sin espera, 5 km | **Bs 18.87** |
+| Test 3 | Solo detención, 0 km + 20 min | **Bs 10.00** |
+| Test 4 | Regresión sin combustible (Pc=0) | **Bs 14.00** |
+| Test 5 | Sensibilidad: duplicar Pc | Δ **Bs 9.744** |
 
 ---
 
@@ -355,13 +386,12 @@ brew services stop postgresql    # Mac
 
 **Flutter: "Connection refused"**
 - Verificar que el backend esté corriendo (`http://localhost:3000`)
-- Verificar que la IP en `calculadora.dart` y `main.dart` sea la correcta
+- Verificar que la IP en `calculadora.dart`, `motor_gps.dart` y `main.dart` sea la correcta
 - Dispositivo y computadora deben estar en la **misma red WiFi**
 - En Android, la IP `127.0.0.1` no funciona — usar la IP real de la laptop
 
 **Panel Admin: pantalla en blanco**
 ```bash
-# Ver logs del contenedor
 docker compose logs web_admin
 docker compose logs backend
 ```
@@ -378,5 +408,5 @@ docker compose up --build
 ## 👤 Autor
 
 **Boris Benjamín Barboza Lima**  
-Taller de Grado I · Ingeniería Informática  
+Taller de Grado I · Ingeniería de Sistemas 
 Universidad Salesiana de Bolivia · El Alto - La Paz, Bolivia · 2026
