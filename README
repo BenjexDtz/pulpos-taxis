@@ -204,18 +204,19 @@ flutter run
 ### Credenciales para la app móvil
 
 ```
-Placa: 1234-PUL
-Contraseña: demo1234
+Placa: 1234-KKK
+Contraseña: 123
 ```
 
 ---
 
 ## 🔑 Credenciales de Prueba <a name="credenciales"></a>
 
+
 | Módulo | Usuario/Placa | Contraseña |
 |---|---|---|
-| Panel Admin (web) | `admin` | `pulpos2026` |
-| App Móvil (Flutter) | `1234-PUL` | `demo1234` |
+| Panel Admin (web) | `admin@pulpos.bo` | `password` |
+| App Móvil (Flutter) | `1234-KKK` | `123` |
 | PostgreSQL (Docker) | `pulpos` | `pulpos2026` |
 
 ---
@@ -378,5 +379,5 @@ docker compose up --build
 ## 👤 Autor
 
 **Boris Benjamín Barboza Lima**  
-Taller de Grado I · Ingeniería Informática  
+Taller de Grado I · Ingeniería de Sistemas  
 Universidad Salesiana de Bolivia · El Alto - La Paz, Bolivia · 2026
