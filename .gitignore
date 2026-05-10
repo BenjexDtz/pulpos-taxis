@@ -1,0 +1,20 @@
+# ── Variables de entorno con credenciales reales ─────────────────────────────
+.env
+# .env.example SÍ se sube al repositorio — contiene solo valores de referencia
+
+# ── Dependencias ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Build de producción ───────────────────────────────────────────────────────
+dist/
+build/
+
+# ── Sistema operativo ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.suo
+*.user
