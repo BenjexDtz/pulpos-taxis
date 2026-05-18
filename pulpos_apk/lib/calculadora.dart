@@ -72,7 +72,8 @@ class ParametrosTopograficos {
 
 // ─── Servicio de descarga de parámetros ──────────────────────────────────────
 class ParametrosService {
-  static const String _urlBase = 'http://192.168.0.9:3000'; // ⚠️ Cambia tu IP
+  static const String _urlBase =
+      'https://handclap-powwow-union.ngrok-free.dev'; // ⚠️ Cambia tu IP
   static const String _cacheKey = 'parametros_topograficos_v3';
 
   static Future<ParametrosTopograficos> obtener() async {
