@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class MotorGPS {
   // ─── Configuración ────────────────────────────────────────────────────────
   // ⚠️ Cambia esta IP por la de tu servidor cuando lo subas a la nube.
-  static const String _urlBase = 'http://192.168.0.102:3000';
+  static const String _urlBase = 'https://handclap-powwow-union.ngrok-free.dev';
 
   // Cada cuántas posiciones GPS enviar al servidor (10 = cada ~10 segundos)
   static const int _intervaloEnvio = 10;

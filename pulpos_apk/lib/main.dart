@@ -76,7 +76,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       ),
     );
 
-    const String urlBase = 'http://192.168.0.9:3000'; // ⚠️ Cambia tu IP
+    const String urlBase =
+        'https://handclap-powwow-union.ngrok-free.dev'; // ⚠️ Cambia tu IP
 
     final db = await BaseDatosLocal.instancia.database;
     final pendientes = await db.query(
@@ -200,6 +201,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     double tarifaFinal = calcularTarifa(
       distanciaKm: distanciaTotalKm,
       costoBaseKm: params.costoBaseKm,
+      consumoLitrosKm: params.consumoLitrosKm, // ← agregar
+      precioCombustibleBs: params.precioCombustibleBs, // ← agregar
       factorAltitud: params.factorAltitud,
       factorSuperficie: fSuperficie,
       tiempoDetencionMin: (segundosDetencion / 60),
@@ -252,6 +255,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     double tarifaEnVivo = calcularTarifa(
       distanciaKm: distanciaTotalKm,
       costoBaseKm: params.costoBaseKm,
+      consumoLitrosKm: params.consumoLitrosKm, // ← agregar
+      precioCombustibleBs: params.precioCombustibleBs, // ← agregar
       factorAltitud: params.factorAltitud,
       factorSuperficie: fSuperficie,
       tiempoDetencionMin: (segundosDetencion / 60),

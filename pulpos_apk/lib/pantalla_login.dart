@@ -28,7 +28,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
     });
 
     // ⚠️ La IP exacta de tu computadora donde corre Node.js
-    const String url = 'http://192.168.0.102:3000/api/login';
+    const String url = 'https://handclap-powwow-union.ngrok-free.dev/api/login';
 
     try {
       final response = await http.post(

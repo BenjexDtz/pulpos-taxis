@@ -5,7 +5,7 @@ import 'base_datos.dart';
 class ApiSync {
   // ⚠️ REEMPLAZA ESTA IP POR LA TUYA (Ej: 192.168.1.15)
   static const String urlServidor =
-      'http://192.168.0.102:3000/api/viajes/sincronizar';
+      'https://handclap-powwow-union.ngrok-free.dev/api/viajes/sincronizar';
 
   static Future<void> sincronizarViajesPendientes() async {
     try {
