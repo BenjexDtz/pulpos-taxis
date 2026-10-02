@@ -6,20 +6,41 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+const origenesPermitidos = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
+    .split(',')
+    .map(origen => origen.trim())
+    .filter(Boolean);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || origenesPermitidos.includes(origin)) return callback(null, true);
+        return callback(new Error('Origen no permitido por CORS.'));
+    }
+}));
+app.use(express.json({ limit: '100kb' }));
 
 // ── MIDDLEWARE JWT ─────────────────────────────────────────────────────────────
 const verificarToken = (req, res, next) => {
-    const token = req.headers['authorization'];
-    if (!token) return res.status(403).json({ error: '🚫 Acceso denegado.' });
+    const cabecera = req.headers.authorization;
+    if (!cabecera || !cabecera.startsWith('Bearer '))
+        return res.status(401).json({ error: '🚫 Se requiere un token Bearer.' });
+
+    const token = cabecera.slice(7).trim();
+    if (!token) return res.status(401).json({ error: '🚫 Token no proporcionado.' });
+
     try {
-        const tokenLimpio = token.split(' ')[1] || token;
-        req.usuario = jwt.verify(tokenLimpio, process.env.JWT_SECRET);
+        req.usuario = jwt.verify(token, process.env.JWT_SECRET);
         next();
     } catch {
         return res.status(401).json({ error: '🚫 Token inválido o expirado.' });
     }
+};
+
+const requerirRoles = (...rolesPermitidos) => (req, res, next) => {
+    if (!req.usuario || !rolesPermitidos.includes(req.usuario.rol))
+        return res.status(403).json({ error: '🚫 No tienes permisos para esta operación.' });
+    next();
 };
 
 app.get('/', (req, res) => res.json({ mensaje: '📡 Central de Radio Taxis Pulpos en línea' }));
@@ -53,7 +74,7 @@ app.get('/api/parametros', async (req, res) => {
 });
 
 // Admin — editar parámetros (incluyendo precio combustible)
-app.put('/api/admin/parametros/:id', verificarToken, async (req, res) => {
+app.put('/api/admin/parametros/:id', verificarToken, requerirRoles('gerente'), async (req, res) => {
     const { id } = req.params;
     const {
         zona_ciudad,
@@ -103,9 +124,8 @@ app.put('/api/admin/parametros/:id', verificarToken, async (req, res) => {
 // APP MÓVIL — SINCRONIZACIÓN
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.post('/api/viajes/sincronizar', async (req, res) => {
+app.post('/api/viajes/sincronizar', verificarToken, requerirRoles('chofer'), async (req, res) => {
     const {
-        chofer_id,
         distancia_km,
         tiempo_detencion_min,
         tarifa_cobrada,
@@ -119,8 +139,20 @@ app.post('/api/viajes/sincronizar', async (req, res) => {
         precio_combustible_aplicado = 6.96,
     } = req.body;
 
-    if (!chofer_id || distancia_km === undefined)
+    if (distancia_km === undefined || tiempo_detencion_min === undefined ||
+        tarifa_cobrada === undefined || !fecha_hora_viaje)
         return res.status(400).json({ error: 'Faltan datos del viaje.' });
+
+    const distancia = Number(distancia_km);
+    const detencion = Number(tiempo_detencion_min);
+    const tarifa = Number(tarifa_cobrada);
+
+    if (!Number.isFinite(distancia) || distancia <= 0 ||
+        !Number.isFinite(detencion) || detencion < 0 ||
+        !Number.isFinite(tarifa) || tarifa < 0)
+        return res.status(400).json({ error: 'Los valores del viaje no son válidos.' });
+
+    const chofer_id = req.usuario.id;
 
     try {
         const r = await pool.query(
@@ -155,16 +187,18 @@ app.post('/api/viajes/sincronizar', async (req, res) => {
 });
 
 // GPS en tiempo real
-app.post('/api/posicion', verificarToken, async (req, res) => {
+app.post('/api/posicion', verificarToken, requerirRoles('chofer'), async (req, res) => {
     const { lat, lng } = req.body;
-    if (lat === undefined || lng === undefined)
-        return res.status(400).json({ error: 'Se requieren lat y lng.' });
-    if (lat < -23 || lat > -9 || lng < -70 || lng > -57)
+    const latitud = Number(lat);
+    const longitud = Number(lng);
+    if (!Number.isFinite(latitud) || !Number.isFinite(longitud))
+        return res.status(400).json({ error: 'Se requieren lat y lng válidos.' });
+    if (latitud < -23 || latitud > -9 || longitud < -70 || longitud > -57)
         return res.status(400).json({ error: 'Fuera de Bolivia.' });
     try {
         await pool.query(
             `UPDATE choferes SET ultima_lat=$1, ultima_lng=$2, ultima_actualizacion=NOW() WHERE id=$3`,
-            [lat, lng, req.usuario.id]
+            [latitud, longitud, req.usuario.id]
         );
         res.json({ ok: true });
     } catch {
@@ -189,8 +223,8 @@ app.post('/api/login', async (req, res) => {
         if (!chofer.password_hash || !await bcrypt.compare(password, chofer.password_hash))
             return res.status(401).json({ error: '❌ Placa o contraseña incorrecta.' });
         const token = jwt.sign(
-            { id: chofer.id, placa: chofer.placa_vehiculo },
-            process.env.JWT_SECRET, { expiresIn: '30d' }
+            { id: chofer.id, placa: chofer.placa_vehiculo, rol: 'chofer' },
+            process.env.JWT_SECRET, { expiresIn: '30m' }
         );
         res.json({ mensaje: '🔓 Login exitoso', token,
             chofer: { id: chofer.id, nombre_completo: chofer.nombre_completo, placa_vehiculo: chofer.placa_vehiculo }
@@ -226,8 +260,10 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
-app.post('/api/choferes/registro', async (req, res) => {
+app.post('/api/choferes/registro', verificarToken, requerirRoles('gerente'), async (req, res) => {
     const { nombre_completo, placa_vehiculo, password } = req.body;
+    if (!nombre_completo || !placa_vehiculo || typeof password !== 'string' || password.length < 8)
+        return res.status(400).json({ error: '⚠️ Nombre, placa y una contraseña de al menos 8 caracteres son obligatorios.' });
     try {
         const hash = await bcrypt.hash(password, 10);
         const r = await pool.query(
@@ -244,7 +280,7 @@ app.post('/api/choferes/registro', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Viajes con auditoría completa incluyendo combustible
-app.get('/api/admin/viajes', verificarToken, async (req, res) => {
+app.get('/api/admin/viajes', verificarToken, requerirRoles('gerente'), async (req, res) => {
     try {
         const { desde, hasta } = req.query;
         let query = `
@@ -283,7 +319,7 @@ app.get('/api/admin/viajes', verificarToken, async (req, res) => {
 });
 
 // CSV con auditoría completa
-app.get('/api/admin/viajes/exportar', verificarToken, async (req, res) => {
+app.get('/api/admin/viajes/exportar', verificarToken, requerirRoles('gerente'), async (req, res) => {
     try {
         const { desde, hasta } = req.query;
         let query = `
@@ -330,7 +366,7 @@ app.get('/api/admin/viajes/exportar', verificarToken, async (req, res) => {
 });
 
 // Choferes
-app.get('/api/admin/choferes', verificarToken, async (req, res) => {
+app.get('/api/admin/choferes', verificarToken, requerirRoles('gerente'), async (req, res) => {
     try {
         const r = await pool.query(`
             SELECT id, nombre_completo, placa_vehiculo, estado_activo,
@@ -341,10 +377,10 @@ app.get('/api/admin/choferes', verificarToken, async (req, res) => {
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
 
-app.post('/api/admin/choferes', verificarToken, async (req, res) => {
+app.post('/api/admin/choferes', verificarToken, requerirRoles('gerente'), async (req, res) => {
     const { nombre_completo, placa_vehiculo, password } = req.body;
-    if (!nombre_completo || !placa_vehiculo || !password)
-        return res.status(400).json({ error: '⚠️ Faltan datos.' });
+    if (!nombre_completo || !placa_vehiculo || typeof password !== 'string' || password.length < 8)
+        return res.status(400).json({ error: '⚠️ Nombre, placa y una contraseña de al menos 8 caracteres son obligatorios.' });
     try {
         const hash = await bcrypt.hash(password, 10);
         const r = await pool.query(
@@ -359,10 +395,10 @@ app.post('/api/admin/choferes', verificarToken, async (req, res) => {
     }
 });
 
-app.patch('/api/admin/choferes/:id/password', verificarToken, async (req, res) => {
+app.patch('/api/admin/choferes/:id/password', verificarToken, requerirRoles('gerente'), async (req, res) => {
     const { nueva_password } = req.body;
-    if (!nueva_password || nueva_password.length < 4)
-        return res.status(400).json({ error: '⚠️ Mínimo 4 caracteres.' });
+    if (typeof nueva_password !== 'string' || nueva_password.length < 8)
+        return res.status(400).json({ error: '⚠️ La contraseña debe tener al menos 8 caracteres.' });
     try {
         const hash = await bcrypt.hash(nueva_password, 10);
         const r = await pool.query(
@@ -374,7 +410,7 @@ app.patch('/api/admin/choferes/:id/password', verificarToken, async (req, res) =
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
 
-app.patch('/api/admin/choferes/:id/estado', verificarToken, async (req, res) => {
+app.patch('/api/admin/choferes/:id/estado', verificarToken, requerirRoles('gerente'), async (req, res) => {
     const { estado_activo } = req.body;
     try {
         const r = await pool.query(
@@ -386,6 +422,10 @@ app.patch('/api/admin/choferes/:id/estado', verificarToken, async (req, res) => 
         res.json({ mensaje: `✅ Chofer ${estado_activo ? 'activado' : 'desactivado'}.`, chofer: r.rows[0] });
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    throw new Error('JWT_SECRET debe existir y tener al menos 32 caracteres.');
+}
 
 const PORT = process.env.PORT || 3000;
 
