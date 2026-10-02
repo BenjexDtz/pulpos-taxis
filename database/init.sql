@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Radio Taxis Pulpos — Schema v3
 -- Fórmula: T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
