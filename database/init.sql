@@ -144,3 +144,25 @@ FROM choferes c,
     (4.200, 15.00, 'tierra',  2.50)
 ) AS v(dist, deten, sup, fr)
 WHERE c.placa_vehiculo = '1234-PUL';
+
+-- ── 5. SESIONES / REFRESH TOKENS ───────────────────────────────────────────────
+-- El access token dura poco. El refresh token se almacena únicamente como hash
+-- para permitir revocación de sesiones sin guardar credenciales reutilizables.
+CREATE TABLE IF NOT EXISTS sesiones (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    usuario_tipo        VARCHAR(20) NOT NULL CHECK (usuario_tipo IN ('chofer', 'gerente')),
+    usuario_id          INTEGER NOT NULL,
+    refresh_token_hash  VARCHAR(64) UNIQUE NOT NULL,
+    fecha_creacion      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    fecha_expiracion    TIMESTAMP NOT NULL,
+    revocado            BOOLEAN DEFAULT FALSE,
+    ultimo_uso          TIMESTAMP,
+    ip                  INET,
+    user_agent          TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sesiones_usuario
+    ON sesiones(usuario_tipo, usuario_id);
+
+CREATE INDEX IF NOT EXISTS idx_sesiones_token_hash
+    ON sesiones(refresh_token_hash);
