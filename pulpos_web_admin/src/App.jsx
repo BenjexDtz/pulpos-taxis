@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useEffectEvent, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
   Activity, Car, DollarSign, RefreshCw, Lock, User, Users,
@@ -10,9 +10,9 @@ import {
 
 // ─── LEAFLET ──────────────────────────────────────────────────────────────────
 function useLeaflet() {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => Boolean(window.L));
   useEffect(() => {
-    if (window.L) { setReady(true); return; }
+    if (window.L) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -183,6 +183,8 @@ export default function App() {
   const [mensajeParams, setMensajeParams] = useState({ tipo: '', texto: '' });
 
   const [conexion, setConexion] = useState(navigator.onLine);
+  // Errores de carga que no pertenecen a una vista concreta (choferes, parámetros)
+  const [aviso, setAviso] = useState('');
 
   useEffect(() => {
     const on = () => setConexion(true), off = () => setConexion(false);
@@ -192,10 +194,16 @@ export default function App() {
 
   const headers = useCallback(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
-  const cerrarSesion = () => {
+  const cerrarSesion = useCallback(() => {
     localStorage.removeItem('admin_token');
-    setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard');
-  };
+    setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso('');
+  }, []);
+
+  // 401/403 = sesión vencida o sin permisos → volver al login; otro error → mostrarlo
+  const manejarErrorApi = useCallback((err, mostrar) => {
+    if (err.response?.status === 401 || err.response?.status === 403) cerrarSesion();
+    else mostrar(err.response?.data?.error || '⚠️ Error conectando al servidor.');
+  }, [cerrarSesion]);
 
   const iniciarSesion = async (e) => {
     e.preventDefault(); setErrorLogin(''); setLoginLoading(true);
@@ -214,39 +222,50 @@ export default function App() {
       const res = await axios.get(`${urlServidor}/api/admin/viajes${consultaFechas(fechaDesde, fechaHasta)}`, { headers: headers() });
       setViajes(res.data);
     } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) cerrarSesion();
-      else setErrorDashboard(err.response?.data?.error || '⚠️ Error conectando al servidor.');
+      manejarErrorApi(err, setErrorDashboard);
     } finally { setCargando(false); }
-  }, [token, urlServidor, headers, fechaDesde, fechaHasta]);
+  }, [token, urlServidor, headers, fechaDesde, fechaHasta, manejarErrorApi]);
 
   const cargarChoferes = useCallback(async () => {
     setCargandoChoferes(true);
     try {
       const res = await axios.get(`${urlServidor}/api/admin/choferes`, { headers: headers() });
       setChoferes(res.data);
-    } catch { } finally { setCargandoChoferes(false); }
-  }, [token, urlServidor, headers]);
+    } catch (err) {
+      manejarErrorApi(err, setAviso);
+    } finally { setCargandoChoferes(false); }
+  }, [urlServidor, headers, manejarErrorApi]);
 
   const cargarParametros = useCallback(async () => {
     try {
       const res = await axios.get(`${urlServidor}/api/parametros`);
       setParams(res.data);
       setFormParams(res.data);
-    } catch { }
-  }, [urlServidor]);
+    } catch (err) {
+      manejarErrorApi(err, setAviso);
+    }
+  }, [urlServidor, manejarErrorApi]);
 
-  useEffect(() => {
-    if (!token) return;
+  // Carga inicial al iniciar sesión (o al abrir el panel con una sesión guardada).
+  // useEffectEvent: se ejecuta solo cuando cambia el token, no cuando cambian
+  // las fechas u otros valores que usan los cargadores.
+  const cargarTodo = useEffectEvent(() => {
     cargarReporte(); cargarChoferes(); cargarParametros();
+  });
+  useEffect(() => {
+    // Pedir datos al servidor al tener sesión es sincronizar con un sistema externo
+    // (uso legítimo de un efecto); la regla salta solo por el `cargando = true`
+    // inicial de los cargadores, que cuesta un render extra.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (token) cargarTodo();
   }, [token]);
 
-  useEffect(() => {
-    if (!token) return;
-    if (vistaActiva === 'dashboard') cargarReporte();
-    if (vistaActiva === 'mapa') { cargarReporte(); cargarChoferes(); }
-    if (vistaActiva === 'conductores') { cargarReporte(); cargarChoferes(); }
-    if (vistaActiva === 'parametros') cargarParametros();
-  }, [vistaActiva]);
+  // Navegar entre vistas recarga sus datos desde el clic, no desde un efecto
+  const irA = (vista) => {
+    setVistaActiva(vista);
+    if (vista === 'parametros') { cargarParametros(); return; }
+    cargarReporte(); cargarChoferes();
+  };
 
   useEffect(() => {
     if (vistaActiva !== 'mapa' || !token) return;
@@ -292,7 +311,9 @@ export default function App() {
       await axios.patch(`${urlServidor}/api/admin/choferes/${chofer.id}/estado`,
         { estado_activo: !chofer.estado_activo }, { headers: headers() });
       cargarChoferes();
-    } catch { }
+    } catch (err) {
+      manejarErrorApi(err, texto => setMensajeChofer({ tipo: 'error', texto }));
+    }
   };
 
   const resetearPassword = async (e) => {
@@ -442,7 +463,7 @@ export default function App() {
           </div>
           <div className="flex items-center space-x-1 bg-gray-800 p-1 rounded-xl">
             {navItems.map(item => (
-              <button key={item.id} onClick={() => setVistaActiva(item.id)}
+              <button key={item.id} onClick={() => irA(item.id)}
                 className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold tracking-widest transition ${vistaActiva === item.id ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
                 <item.icon className="w-4 h-4" /><span className="hidden md:inline">{item.label}</span>
               </button>
@@ -459,6 +480,13 @@ export default function App() {
       </nav>
 
       <main className="max-w-screen-2xl mx-auto px-4 lg:px-8 py-6">
+
+        {aviso && (
+          <div className="mb-4 flex items-center justify-between gap-3 bg-red-950 border border-red-800 text-red-400 px-4 py-3 rounded-xl font-radar text-sm">
+            <span className="flex items-center gap-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{aviso}</span>
+            <button onClick={() => setAviso('')} className="text-red-500 hover:text-white"><X className="w-4 h-4" /></button>
+          </div>
+        )}
 
         {/* ── DASHBOARD ── */}
         {vistaActiva === 'dashboard' && (
