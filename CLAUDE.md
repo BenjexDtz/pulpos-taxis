@@ -13,12 +13,13 @@ Tres módulos + PostgreSQL:
 | `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST, un solo archivo `index.js` |
 | `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (gerencia), `Plataforma.jsx` (superadmin), `FormEmpresa.jsx` |
 | `pulpos_apk/` | Flutter (Dart SDK ^3.11) | Taxímetro Android offline-first |
-| `database/init.sql` | PostgreSQL 16 | **Esquema canónico** (v4) + semillas de dos empresas. `migraciones/` lleva una BD existente a la versión actual. `pulpos_backend/database.sql` es obsoleto |
+| `database/init.sql` | PostgreSQL 16 | **Esquema canónico** de la base principal + semillas de dos empresas. `migraciones/` lleva una BD existente a la versión actual. `pulpos_backend/database.sql` es obsoleto |
+| `database/auditoria/` | PostgreSQL 16 | Base de auditoría separada (`esquema.sql`, `rol_app.sql`; en Docker la inicializa `inicializar.sh`) |
 
 ## Comandos
 
 ```bash
-# Todo con Docker (db :5432, backend :3000, panel :8080)
+# Todo con Docker (db :5432, auditoria (interna), backend :3000, panel :8080)
 docker compose up --build
 
 # Backend (lee pulpos_backend/.env al correr manual)
@@ -45,7 +46,7 @@ psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
 
 CI (`.github/workflows/ci.yml`) corre en cada push: tests unitarios + integración (servicio PostgreSQL) + `npm audit` del backend, lint + build del panel, `flutter analyze` + `flutter test`.
 
-Tests del backend: `test/api.test.js` reemplaza `pool.query`/`pool.connect` antes de importar `index.js` (que exporta `{ app, filtroFechas, validarEmpresa, distanciaKm }` y solo hace `listen` si se ejecuta directamente). `test/integracion.test.js` usa `PGOPTIONS=-c search_path=<esquema temporal>`, carga `init.sql` y borra el esquema al terminar.
+Tests del backend: `test/api.test.js` reemplaza `pool.query`/`pool.connect` y las funciones de `auditoria.js` antes de importar `index.js` (que exporta `{ app, filtroFechas, validarEmpresa, distanciaKm }` y solo hace `listen` si se ejecuta directamente). `test/integracion.test.js` crea dos bases temporales (principal y auditoría) con las credenciales del `.env`, carga `init.sql` y `auditoria/esquema.sql`, y las borra al terminar.
 
 Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CREATE SCHEMA` temporal + `SET LOCAL search_path` y terminar con `ROLLBACK`.
 
@@ -56,6 +57,13 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - FK compuesta `viajes_historial (chofer_id, empresa_id) → choferes (id, empresa_id)`: la BD impide un viaje con chofer de otra empresa. Placa única **por empresa**.
 - Roles: `superadmin` (sin empresa, CHECK en BD) administra la plataforma; `gerente`/`supervisor` siempre con empresa.
 - Aislamiento en la aplicación: la empresa sale **siempre del token** (`req.empresa.id`), nunca del body ni de la URL. Toda consulta nueva de `/api/admin/*` debe filtrar por `empresa_id`; los tests de "Aislamiento" lo verifican. (RLS de PostgreSQL pendiente: el usuario local es superusuario y lo saltaría.)
+
+### Auditoría (`pulpos_backend/auditoria.js`, `database/auditoria/`)
+- Toda acción que modifica datos, cada login (también fallidos), acceso denegado, exportación y consulta de la bitácora llama a `auditar(req, {accion, entidad, entidad_id, datos_antes, datos_despues, resultado, detalle})`. Al añadir una ruta que modifica datos, auditarla. Las lecturas cotidianas no se auditan (el radar consulta cada 15 s).
+- Antes/después en una sola sentencia: `WITH antes AS (SELECT ... FOR UPDATE) UPDATE ... FROM antes RETURNING x.*, to_jsonb(antes) AS _antes, to_jsonb(x) AS _despues`; `separar()` los extrae.
+- `auditoria.registrar()` nunca lanza: si la base de auditoría falla, el evento va a `auditoria_pendiente` (base principal) y `reenviarPendientes()` lo reintenta cada 30 s. `limpiar()` quita `password*`, `token`.
+- En la base de auditoría, `id`, `hash_anterior` y `hash` (SHA-256 de `jsonb_build_array(...)`) los asigna el trigger `eventos_encadenar` bajo `pg_advisory_xact_lock`; UPDATE/DELETE/TRUNCATE los bloquea otro trigger. El backend escribe como `auditor_app` (solo INSERT/SELECT). Cada `AUDITORIA_ANCLA_CADA` eventos el hash se copia en `auditoria_anclas` (base principal); `verificar()` combina `auditoria_verificar()` con las anclas.
+- Si cambian las columnas de `eventos`, actualizar `auditoria_hash()` (y los eventos viejos dejarán de verificar: requiere migración de la cadena).
 
 ### Autenticación y autorización (`pulpos_backend/index.js`)
 - `/api/login` (choferes: `empresa` + placa + contraseña, token 30 días) y `/api/admin/login` (solo por email, token 8 h). Ambos con `limiteLogin` (10 fallos/15 min por IP).
@@ -83,7 +91,7 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
 ### Panel web
-- Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve solo `Plataforma`; los demás, las vistas de su empresa. 401/403 → cierra sesión.
+- Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve `Plataforma` y `Auditoria` (todas las empresas, verificación); los demás, las vistas de su empresa y su bitácora. 401/403 → cierra sesión.
 - Nombre, logo, color, moneda, centro del mapa y altitud vienen de `/api/config` (`empresa`).
 - Leaflet se carga en runtime desde unpkg (`useLeaflet`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
 - `VITE_API_URL` define el backend (en Docker llega como build arg).
