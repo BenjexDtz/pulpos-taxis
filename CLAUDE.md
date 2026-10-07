@@ -23,7 +23,8 @@ docker compose up --build
 
 # Backend (lee pulpos_backend/.env al correr manual)
 cd pulpos_backend && npm install && npm start
-npm test                                  # node:test, sin PostgreSQL (BD falsa en memoria)
+npm test                                  # unitarios con BD falsa en memoria
+PG_INTEGRACION=1 npm test                 # + integración en un esquema temporal de la BD del .env
 node --test --test-name-pattern="Login"   # un grupo/test por nombre
 
 # Panel web (dev en :5173)
