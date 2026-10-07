@@ -40,6 +40,25 @@ const verificarToken = (req, res, next) => {
     }
 };
 
+// Filtro de fechas de /api/admin/viajes y su CSV. Recibe días 'YYYY-MM-DD'
+// (cada uno opcional); 'hasta' incluye el día completo, no solo las 00:00.
+const esDiaValido = (s) =>
+    typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
+    !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s); // rechaza 2026-02-30
+
+const filtroFechas = ({ desde, hasta }) => {
+    for (const dia of [desde, hasta])
+        if (dia !== undefined && dia !== '' && !esDiaValido(dia))
+            return { error: '⚠️ Fecha inválida: usa el formato YYYY-MM-DD.' };
+    if (desde && hasta && desde > hasta)
+        return { error: '⚠️ La fecha "desde" es posterior a "hasta".' };
+
+    const condiciones = [], params = [];
+    if (desde) { params.push(desde); condiciones.push(`v.fecha_hora_viaje >= $${params.length}::date`); }
+    if (hasta) { params.push(hasta); condiciones.push(`v.fecha_hora_viaje < $${params.length}::date + 1`); }
+    return { where: condiciones.length ? ` WHERE ${condiciones.join(' AND ')}` : '', params };
+};
+
 // Límite de intentos de login fallidos por IP (los exitosos no cuentan)
 const limiteLogin = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -103,22 +122,38 @@ app.get('/api/parametros', async (req, res) => {
     }
 });
 
+// Rangos válidos [min, max]: los mismos min/max de los inputs del panel (App.jsx).
+// Si se cambia uno, cambiar el otro.
+const RANGOS_PARAMETROS = {
+    costo_base_km:          [0.5, 10],
+    consumo_litros_km:      [0.05, 0.5],
+    precio_combustible_bs:  [1, 30],
+    factor_altitud:         [1, 3],
+    factor_superficie:      [1, 5],
+    costo_minuto_detencion: [0.1, 5],
+};
+
 // Admin — editar parámetros (incluyendo precio combustible)
 app.put('/api/admin/parametros/:id', verificarToken, soloAdmin, async (req, res) => {
     const { id } = req.params;
-    const {
-        zona_ciudad,
-        costo_base_km,
-        consumo_litros_km,
-        precio_combustible_bs,
-        factor_altitud,
-        factor_superficie,
-        costo_minuto_detencion
-    } = req.body;
+    if (!/^\d+$/.test(id)) return res.status(404).json({ error: 'No encontrado.' });
 
-    if (!costo_base_km || !factor_altitud || !factor_superficie ||
-        !costo_minuto_detencion || !consumo_litros_km || !precio_combustible_bs)
-        return res.status(400).json({ error: '⚠️ Todos los campos son obligatorios.' });
+    const zona_ciudad = typeof req.body.zona_ciudad === 'string' ? req.body.zona_ciudad.trim() : '';
+    if (!zona_ciudad || zona_ciudad.length > 100)
+        return res.status(400).json({ error: '⚠️ La zona es obligatoria (máx. 100 caracteres).' });
+
+    // El panel envía los números como texto: se aceptan ambos, pero deben ser números válidos
+    const valores = {};
+    for (const [campo, [min, max]] of Object.entries(RANGOS_PARAMETROS)) {
+        const crudo = req.body[campo];
+        const n = (typeof crudo === 'number' || (typeof crudo === 'string' && crudo.trim() !== ''))
+            ? Number(crudo) : NaN;
+        if (!Number.isFinite(n) || n < min || n > max)
+            return res.status(400).json({ error: `⚠️ ${campo} debe ser un número entre ${min} y ${max}.` });
+        valores[campo] = n;
+    }
+    const { costo_base_km, consumo_litros_km, precio_combustible_bs,
+            factor_altitud, factor_superficie, costo_minuto_detencion } = valores;
 
     try {
         const r = await pool.query(
@@ -209,8 +244,8 @@ app.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, res)
 // GPS en tiempo real
 app.post('/api/posicion', verificarToken, soloChofer, async (req, res) => {
     const { lat, lng } = req.body;
-    if (lat === undefined || lng === undefined)
-        return res.status(400).json({ error: 'Se requieren lat y lng.' });
+    if (!Number.isFinite(lat) || !Number.isFinite(lng))
+        return res.status(400).json({ error: 'Se requieren lat y lng numéricos.' });
     if (lat < -23 || lat > -9 || lng < -70 || lng > -57)
         return res.status(400).json({ error: 'Fuera de Bolivia.' });
     try {
@@ -289,7 +324,6 @@ app.post('/api/admin/login', limiteLogin, async (req, res) => {
 // Viajes con auditoría completa incluyendo combustible
 app.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
     try {
-        const { desde, hasta } = req.query;
         let query = `
             SELECT
                 v.id_servidor                AS id,
@@ -314,8 +348,10 @@ app.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
             FROM viajes_historial v
             JOIN choferes c ON v.chofer_id = c.id
         `;
-        const params = [];
-        if (desde && hasta) { query += ` WHERE v.fecha_hora_viaje BETWEEN $1 AND $2`; params.push(desde, hasta); }
+        const filtro = filtroFechas(req.query);
+        if (filtro.error) return res.status(400).json({ error: filtro.error });
+        const params = filtro.params;
+        query += filtro.where;
         query += ` ORDER BY v.fecha_hora_viaje DESC`;
         const r = await pool.query(query, params);
         res.json(r.rows);
@@ -328,7 +364,6 @@ app.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
 // CSV con auditoría completa
 app.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, res) => {
     try {
-        const { desde, hasta } = req.query;
         let query = `
             SELECT
                 v.id_servidor                                     AS "ID",
@@ -350,8 +385,10 @@ app.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, res
                 TO_CHAR(v.fecha_hora_viaje,'DD/MM/YYYY HH24:MI') AS "Fecha"
             FROM viajes_historial v JOIN choferes c ON v.chofer_id = c.id
         `;
-        const params = [];
-        if (desde && hasta) { query += ` WHERE v.fecha_hora_viaje BETWEEN $1 AND $2`; params.push(desde, hasta); }
+        const filtro = filtroFechas(req.query);
+        if (filtro.error) return res.status(400).json({ error: filtro.error });
+        const params = filtro.params;
+        query += filtro.where;
         query += ` ORDER BY v.fecha_hora_viaje DESC`;
 
         const r = await pool.query(query, params);

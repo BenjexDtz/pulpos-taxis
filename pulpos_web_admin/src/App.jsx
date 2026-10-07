@@ -27,6 +27,15 @@ function useLeaflet() {
 
 const EL_ALTO_CENTER = [-16.5, -68.19];
 
+// Query de fechas para /api/admin/viajes: cada límite es opcional
+const consultaFechas = (desde, hasta) => {
+  const q = new URLSearchParams();
+  if (desde) q.set('desde', desde);
+  if (hasta) q.set('hasta', hasta);
+  const s = q.toString();
+  return s ? `?${s}` : '';
+};
+
 // Leaflet inserta el popup como HTML: todo texto que venga de la BD debe escaparse
 const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -202,12 +211,11 @@ export default function App() {
     if (!token) return;
     setCargando(true); setErrorDashboard(null);
     try {
-      const params_q = fechaDesde && fechaHasta ? `?desde=${fechaDesde}&hasta=${fechaHasta}` : '';
-      const res = await axios.get(`${urlServidor}/api/admin/viajes${params_q}`, { headers: headers() });
+      const res = await axios.get(`${urlServidor}/api/admin/viajes${consultaFechas(fechaDesde, fechaHasta)}`, { headers: headers() });
       setViajes(res.data);
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) cerrarSesion();
-      else setErrorDashboard('⚠️ Error conectando al servidor.');
+      else setErrorDashboard(err.response?.data?.error || '⚠️ Error conectando al servidor.');
     } finally { setCargando(false); }
   }, [token, urlServidor, headers, fechaDesde, fechaHasta]);
 
@@ -247,16 +255,21 @@ export default function App() {
   }, [vistaActiva, token, cargarChoferes]);
 
   const exportarCSV = () => {
-    const params_q = fechaDesde && fechaHasta ? `?desde=${fechaDesde}&hasta=${fechaHasta}` : '';
-    const url = `${urlServidor}/api/admin/viajes/exportar${params_q}`;
+    const url = `${urlServidor}/api/admin/viajes/exportar${consultaFechas(fechaDesde, fechaHasta)}`;
+    setErrorDashboard(null);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.blob())
+      .then(async r => {
+        // Sin esto, un error (400, 404 "Sin datos") se descargaba como si fuera el CSV
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || '⚠️ No se pudo exportar el CSV.');
+        return r.blob();
+      })
       .then(blob => {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = `pulpos_viajes_${new Date().toISOString().slice(0, 10)}.csv`;
         link.click();
-      });
+      })
+      .catch(err => setErrorDashboard(err.message));
   };
 
   const registrarNuevoChofer = async (e) => {
@@ -703,6 +716,7 @@ export default function App() {
                         onChange={e => setFormParams({ ...formParams, zona_ciudad: e.target.value })} />
                     </div>
 
+                    {/* Los min/max de estos inputs se validan igual en el backend (RANGOS_PARAMETROS en index.js) */}
                     {/* ── SECCIÓN COMBUSTIBLE (Cl y Pc) — NUEVA ── */}
                     <div>
                       <div className="flex items-center space-x-2 mb-3">
