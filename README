@@ -23,7 +23,7 @@
 
 ## Resumen del Sistema <a name="resumen"></a>
 
-Sistema informático compuesto por **tres módulos** que resuelven el problema de tarifas injustas en El Alto:
+Sistema informático **multiempresa** compuesto por **tres módulos** que resuelven el problema de tarifas injustas en El Alto. Una sola instalación atiende a varias empresas de radio taxis; cada una tiene sus propios datos, parámetros tarifarios, choferes, moneda y zona de operación, completamente aislados del resto:
 
 | Módulo | Tecnología | Descripción |
 |---|---|---|
@@ -118,7 +118,7 @@ Usar las credenciales definidas en tu archivo `.env`.
 http://localhost:3000
 ```
 
-Debe responder: `{"mensaje":"📡 Central de Radio Taxis Pulpos en línea"}`
+Debe responder: `{"mensaje":"📡 Central de radio taxis en línea"}`
 
 ### Detener los servicios
 
@@ -138,6 +138,13 @@ docker compose down -v
 # Crear base de datos en PostgreSQL local
 psql -U postgres -c "CREATE DATABASE pulpos_db;"
 psql -U postgres -d pulpos_db -f database/init.sql
+```
+
+**¿Ya tienes una base de datos de una versión anterior (sin empresas)?** No ejecutes `init.sql`; aplica la migración, que pasa todos los datos existentes a la empresa `pulpos` sin perder nada:
+
+```bash
+pg_dump -U postgres pulpos_db > respaldo_antes_de_migrar.sql
+psql -1 -U postgres -d pulpos_db -f database/migraciones/001_multiempresa.sql
 ```
 
 ### Backend
@@ -210,11 +217,24 @@ flutter test test/detector_detencion_test.dart  # solo el tiempo de espera
 
 ## 🔑 Credenciales de Prueba <a name="credenciales"></a>
 
-| Módulo | Usuario/Placa | Contraseña |
+La base de datos de demostración trae dos empresas para mostrar el aislamiento entre ellas.
+
+**Panel web**
+
+| Rol | Correo | Contraseña | Ve |
+|---|---|---|---|
+| Superadmin (plataforma) | `superadmin@plataforma.bo` | `password` | Gestión de todas las empresas |
+| Gerente Radio Taxis Pulpos | `admin@pulpos.bo` | `password` | Solo datos de Pulpos (El Alto) |
+| Gerente Radio Taxis Illimani | `admin@illimani.bo` | `password` | Solo datos de Illimani (La Paz) |
+
+**App móvil**
+
+| Código de empresa | Placa | Contraseña |
 |---|---|---|
-| Panel Admin (web) | `admin@pulpos.bo` | `password` |
-| App Móvil (Flutter) | `1234-KKK` | `123` |
-| PostgreSQL (Docker) | `pulpos` | `pulpos2026` |
+| `pulpos` | `1234-KKK` | `123` |
+| `illimani` | `5678-ILL` | `123` |
+
+**PostgreSQL (Docker):** usuario `pulpos`, contraseña `pulpos2026`.
 
 > ⚠️ **Importante:** Cambia todas las contraseñas antes de un despliegue en producción.
 
@@ -229,12 +249,13 @@ Base URL: `http://localhost:3000`
 | Método | Ruta | Descripción |
 |---|---|---|
 | `GET` | `/` | Estado del servidor |
-| `GET` | `/api/parametros` | Parámetros topográficos activos |
-| `POST` | `/api/login` | Login de conductor (app móvil) |
+| `GET` | `/api/empresas/:codigo` | Nombre, color y logo de una empresa activa |
+| `POST` | `/api/login` | Login de conductor: `{empresa, placa_vehiculo, password}` |
+| `POST` | `/api/admin/login` | Login del panel: `{usuario (correo), password}` |
 
 ### Panel Admin (requieren token Bearer de administrador; un token de chofer recibe 403)
 
-Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"TU_PASSWORD"}`
+Todas las rutas operan **solo sobre la empresa del token**; los datos de otras empresas no son accesibles.
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -245,13 +266,24 @@ Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"TU_PA
 | `POST` | `/api/admin/choferes` | Registrar conductor |
 | `PATCH` | `/api/admin/choferes/:id/password` | Resetear contraseña |
 | `PATCH` | `/api/admin/choferes/:id/estado` | Activar/desactivar |
-| `PUT` | `/api/admin/parametros/:id` | Editar parámetros topográficos |
+| `PUT` | `/api/admin/parametros` | Editar parámetros topográficos de la empresa |
+| `PUT` | `/api/admin/empresa` | Editar los datos de la empresa (identidad, zona, moneda) |
+| `GET` | `/api/config` | Datos de la empresa y sus parámetros (también para choferes) |
+
+### Plataforma (requieren token de superadmin)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/plataforma/empresas` | Listar empresas con totales de choferes y viajes |
+| `POST` | `/api/plataforma/empresas` | Crear empresa con parámetros iniciales y su gerente |
+| `PUT` | `/api/plataforma/empresas/:id` | Editar empresa |
+| `PATCH` | `/api/plataforma/empresas/:id/estado` | Activar/desactivar empresa (corta el acceso al instante) |
 
 ### App Móvil (requieren token del conductor)
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/api/posicion` | Enviar GPS en tiempo real |
+| `POST` | `/api/posicion` | Enviar GPS en tiempo real (dentro del radio de operación de la empresa) |
 | `POST` | `/api/viajes/sincronizar` | Subir viaje (el chofer se toma del token) |
 
 ---
