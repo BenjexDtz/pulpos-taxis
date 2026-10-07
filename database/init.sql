@@ -190,3 +190,23 @@ CROSS JOIN (VALUES
 CROSS JOIN LATERAL (SELECT CASE WHEN v.sup = 'tierra' THEN p.factor_superficie ELSE 1.00 END AS valor) fr
 WHERE c.placa_vehiculo IN ('1234-KKK', '5678-ILL')
   AND NOT EXISTS (SELECT 1 FROM viajes_historial vh WHERE vh.chofer_id = c.id);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- AUDITORÍA (la bitácora vive en otra base: database/auditoria/)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- Copia periódica del hash de la bitácora: impide reescribir su historia sin que se note
+CREATE TABLE IF NOT EXISTS auditoria_anclas (
+    id          SERIAL PRIMARY KEY,
+    evento_id   BIGINT   NOT NULL UNIQUE,
+    hash        CHAR(64) NOT NULL,
+    creado_en   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Eventos que no se pudieron escribir en la base de auditoría; se reenvían después
+CREATE TABLE IF NOT EXISTS auditoria_pendiente (
+    id          SERIAL PRIMARY KEY,
+    evento      JSONB    NOT NULL,
+    intentos    INTEGER  NOT NULL DEFAULT 0,
+    creado_en   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

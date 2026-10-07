@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
+const auditoria = require('./auditoria');
 
 const app = express();
 
@@ -37,23 +38,51 @@ const enTransaccion = async (fn) => {
     }
 };
 
+// ── AUDITORÍA ──────────────────────────────────────────────────────────────────
+const actorDe = (u) => {
+    if (!u) return { actor_tipo: 'anonimo' };
+    if (u.tipo === 'chofer') return { actor_tipo: 'chofer', actor_id: u.id, actor_nombre: u.placa };
+    return { actor_tipo: u.rol === 'superadmin' ? 'superadmin' : 'admin', actor_id: u.id, actor_rol: u.rol, actor_nombre: u.nombre };
+};
+
+const auditar = (req, evento) => auditoria.registrar({
+    empresa_id: req.empresa?.id ?? req.usuario?.empresa_id ?? null,
+    ...actorDe(req.usuario),
+    ip: req.ip,
+    user_agent: req.get('user-agent'),
+    resultado: 'exito',
+    ...evento,
+});
+
+const denegar = async (req, res, status, error) => {
+    await auditar(req, { accion: 'acceso.denegado', resultado: 'rechazado', detalle: `${req.method} ${req.originalUrl}: ${error}` });
+    return res.status(status).json({ error });
+};
+
+const separar = (fila) => {
+    if (!fila) return {};
+    const { _antes, ...despues } = fila;
+    return { antes: _antes, despues };
+};
+
 // ── MIDDLEWARE JWT ─────────────────────────────────────────────────────────────
-const verificarToken = (req, res, next) => {
+const verificarToken = async (req, res, next) => {
     const token = req.headers['authorization'];
-    if (!token) return res.status(403).json({ error: '🚫 Acceso denegado.' });
+    if (!token) return denegar(req, res, 403, '🚫 Acceso denegado.');
     try {
         const tokenLimpio = token.split(' ')[1] || token;
         req.usuario = jwt.verify(tokenLimpio, process.env.JWT_SECRET);
-        next();
     } catch {
+        await auditar(req, { accion: 'acceso.token_invalido', resultado: 'rechazado', detalle: `${req.method} ${req.originalUrl}` });
         return res.status(401).json({ error: '🚫 Token inválido o expirado.' });
     }
+    next();
 };
 
 const soloAdmin = async (req, res, next) => {
     const u = req.usuario;
     if (u?.tipo !== 'admin' || !u.empresa_id)
-        return res.status(403).json({ error: '🚫 Requiere permisos de administrador.' });
+        return denegar(req, res, 403, '🚫 Requiere permisos de administrador.');
     const r = await pool.query(
         `SELECT a.activo, e.activo AS empresa_activa, e.codigo, e.moneda_simbolo
          FROM administradores a JOIN empresas e ON e.id = a.empresa_id
@@ -62,7 +91,7 @@ const soloAdmin = async (req, res, next) => {
     );
     const fila = r.rows[0];
     if (!fila || !fila.activo || !fila.empresa_activa)
-        return res.status(403).json({ error: '🚫 Cuenta o empresa desactivada.' });
+        return denegar(req, res, 403, '🚫 Cuenta o empresa desactivada.');
     req.empresa = { id: u.empresa_id, codigo: fila.codigo, moneda_simbolo: fila.moneda_simbolo };
     next();
 };
@@ -70,18 +99,18 @@ const soloAdmin = async (req, res, next) => {
 const soloSuperadmin = async (req, res, next) => {
     const u = req.usuario;
     if (u?.tipo !== 'admin' || u.rol !== 'superadmin' || u.empresa_id)
-        return res.status(403).json({ error: '🚫 Requiere permisos de plataforma.' });
+        return denegar(req, res, 403, '🚫 Requiere permisos de plataforma.');
     const r = await pool.query(
         `SELECT activo FROM administradores WHERE id = $1 AND rol = 'superadmin'`, [u.id]
     );
-    if (!r.rows[0]?.activo) return res.status(403).json({ error: '🚫 Cuenta desactivada.' });
+    if (!r.rows[0]?.activo) return denegar(req, res, 403, '🚫 Cuenta desactivada.');
     next();
 };
 
 const soloChofer = async (req, res, next) => {
     const u = req.usuario;
     if (u?.tipo !== 'chofer' || !u.empresa_id)
-        return res.status(403).json({ error: '🚫 Solo para conductores.' });
+        return denegar(req, res, 403, '🚫 Solo para conductores.');
     const r = await pool.query(
         `SELECT c.estado_activo, e.activo AS empresa_activa,
                 e.centro_lat, e.centro_lng, e.radio_operacion_km
@@ -91,7 +120,7 @@ const soloChofer = async (req, res, next) => {
     );
     const fila = r.rows[0];
     if (!fila || !fila.estado_activo || !fila.empresa_activa)
-        return res.status(403).json({ error: '🚫 Cuenta desactivada. Contacta a la central.' });
+        return denegar(req, res, 403, '🚫 Cuenta desactivada. Contacta a la central.');
     req.empresa = {
         id: u.empresa_id,
         centro_lat: Number(fila.centro_lat),
@@ -109,13 +138,18 @@ const esDiaValido = (s) =>
     typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
     !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s);
 
-const filtroFechas = ({ desde, hasta }, params) => {
+const validarRangoDias = ({ desde, hasta }) => {
     for (const dia of [desde, hasta])
         if (dia !== undefined && dia !== '' && !esDiaValido(dia))
-            return { error: '⚠️ Fecha inválida: usa el formato YYYY-MM-DD.' };
+            return '⚠️ Fecha inválida: usa el formato YYYY-MM-DD.';
     if (desde && hasta && desde > hasta)
-        return { error: '⚠️ La fecha "desde" es posterior a "hasta".' };
+        return '⚠️ La fecha "desde" es posterior a "hasta".';
+    return null;
+};
 
+const filtroFechas = ({ desde, hasta }, params) => {
+    const error = validarRangoDias({ desde, hasta });
+    if (error) return { error };
     const condiciones = [];
     if (desde) { params.push(desde); condiciones.push(`v.fecha_hora_viaje >= $${params.length}::date`); }
     if (hasta) { params.push(hasta); condiciones.push(`v.fecha_hora_viaje < $${params.length}::date + 1`); }
@@ -234,7 +268,10 @@ const limiteLogin = rateLimit({
     skipSuccessfulRequests: true,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    message: { error: '⏳ Demasiados intentos fallidos. Espera 15 minutos.' },
+    handler: async (req, res, next, opciones) => {
+        await auditar(req, { accion: 'sesion.bloqueo_intentos', resultado: 'rechazado', detalle: req.originalUrl });
+        res.status(opciones.statusCode).json({ error: '⏳ Demasiados intentos fallidos. Espera 15 minutos.' });
+    },
 });
 
 app.get('/', (req, res) => res.json({ mensaje: '📡 Central de radio taxis en línea' }));
@@ -280,31 +317,40 @@ app.put('/api/admin/parametros', verificarToken, soloAdmin, async (req, res) => 
             factor_altitud, factor_superficie, costo_minuto_detencion } = valores;
 
     const r = await pool.query(
-        `UPDATE parametros_topograficos
+        `WITH antes AS (SELECT * FROM parametros_topograficos WHERE empresa_id=$8 FOR UPDATE)
+         UPDATE parametros_topograficos p
          SET zona_ciudad=$1, costo_base_km=$2,
              consumo_litros_km=$3, precio_combustible_bs=$4,
              factor_altitud=$5, factor_superficie=$6,
              costo_minuto_detencion=$7, fecha_actualizacion=NOW()
-         WHERE empresa_id=$8 RETURNING *`,
+         FROM antes WHERE p.id = antes.id
+         RETURNING p.*, to_jsonb(antes) AS _antes`,
         [zona_ciudad, costo_base_km, consumo_litros_km, precio_combustible_bs,
          factor_altitud, factor_superficie, costo_minuto_detencion, req.empresa.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
+    const { antes, despues } = separar(r.rows[0]);
+    await auditar(req, { accion: 'parametros.actualizar', entidad: 'parametros_topograficos', entidad_id: despues.id, datos_antes: antes, datos_despues: despues });
     res.json({
         mensaje: '✅ Parámetros actualizados. Los conductores los recibirán al iniciar la app.',
-        parametros: conCostos(r.rows[0]),
+        parametros: conCostos(despues),
     });
 });
+
+const actualizarEmpresa = (id, valores) => pool.query(
+    `WITH antes AS (SELECT * FROM empresas WHERE id=$${CAMPOS_EMPRESA.length + 1} FOR UPDATE)
+     UPDATE empresas e SET ${CAMPOS_EMPRESA.map((c, i) => `${c}=$${i + 1}`).join(', ')}
+     FROM antes WHERE e.id = antes.id
+     RETURNING e.*, to_jsonb(antes) AS _antes`,
+    [...CAMPOS_EMPRESA.map(c => valores[c]), id]
+);
 
 app.put('/api/admin/empresa', verificarToken, soloAdmin, async (req, res) => {
     const { error, valores } = validarEmpresa(req.body);
     if (error) return res.status(400).json({ error });
-    const sets = CAMPOS_EMPRESA.map((c, i) => `${c}=$${i + 1}`).join(', ');
-    const r = await pool.query(
-        `UPDATE empresas SET ${sets} WHERE id=$${CAMPOS_EMPRESA.length + 1} RETURNING *`,
-        [...CAMPOS_EMPRESA.map(c => valores[c]), req.empresa.id]
-    );
-    res.json({ mensaje: '✅ Datos de la empresa actualizados.', empresa: r.rows[0] });
+    const { antes, despues } = separar((await actualizarEmpresa(req.empresa.id, valores)).rows[0]);
+    await auditar(req, { accion: 'empresa.actualizar', entidad: 'empresas', entidad_id: req.empresa.id, datos_antes: antes, datos_despues: despues });
+    res.json({ mensaje: '✅ Datos de la empresa actualizados.', empresa: despues });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -329,7 +375,7 @@ app.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, res)
             consumo_litros_aplicado, precio_combustible_aplicado,
             fecha_hora_viaje
          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         RETURNING id_servidor`,
+         RETURNING *`,
         [
             req.empresa.id, req.usuario.id, distancia_km, tiempo_detencion_min, tarifa_cobrada,
             b.tipo_superficie ?? 'asfalto',
@@ -342,7 +388,9 @@ app.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, res)
             fecha_hora_viaje,
         ]
     );
-    res.status(201).json({ success: true, id_servidor: r.rows[0].id_servidor });
+    const viaje = r.rows[0];
+    await auditar(req, { accion: 'viaje.sincronizar', entidad: 'viajes_historial', entidad_id: viaje.id_servidor, datos_despues: viaje });
+    res.status(201).json({ success: true, id_servidor: viaje.id_servidor });
 });
 
 app.post('/api/posicion', verificarToken, soloChofer, async (req, res) => {
@@ -350,13 +398,16 @@ app.post('/api/posicion', verificarToken, soloChofer, async (req, res) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)
         return res.status(400).json({ error: 'Se requieren lat y lng numéricos.' });
     const { centro_lat, centro_lng, radio_operacion_km } = req.empresa;
-    if (distanciaKm(lat, lng, centro_lat, centro_lng) > radio_operacion_km)
+    if (distanciaKm(lat, lng, centro_lat, centro_lng) > radio_operacion_km) {
+        await auditar(req, { accion: 'posicion.actualizar', resultado: 'rechazado', entidad: 'choferes', entidad_id: req.usuario.id, detalle: 'Fuera de la zona de operación', datos_despues: { lat, lng } });
         return res.status(400).json({ error: 'Fuera de la zona de operación.' });
+    }
     await pool.query(
         `UPDATE choferes SET ultima_lat=$1, ultima_lng=$2, ultima_actualizacion=NOW()
          WHERE id=$3 AND empresa_id=$4`,
         [lat, lng, req.usuario.id, req.empresa.id]
     );
+    await auditar(req, { accion: 'posicion.actualizar', entidad: 'choferes', entidad_id: req.usuario.id, datos_despues: { lat, lng } });
     res.json({ ok: true });
 });
 
@@ -369,22 +420,32 @@ app.post('/api/login', limiteLogin, async (req, res) => {
     if ([empresa, placa_vehiculo, password].some(x => typeof x !== 'string' || !x.trim()))
         return res.status(400).json({ error: '⚠️ Empresa, placa y contraseña son obligatorias.' });
 
+    const codigo = empresa.trim().toLowerCase();
+    const placa = placa_vehiculo.trim().toUpperCase();
     const r = await pool.query(
         `SELECT c.*, e.activo AS empresa_activa, e.codigo AS empresa_codigo, e.nombre AS empresa_nombre,
                 e.moneda_simbolo, e.color_primario
          FROM choferes c JOIN empresas e ON e.id = c.empresa_id
          WHERE e.codigo = $1 AND c.placa_vehiculo = $2`,
-        [empresa.trim().toLowerCase(), placa_vehiculo.trim().toUpperCase()]
+        [codigo, placa]
     );
     const chofer = r.rows[0];
-    if (!chofer || !chofer.password_hash || !await bcrypt.compare(password, chofer.password_hash))
+    const actor = chofer
+        ? { empresa_id: chofer.empresa_id, actor_tipo: 'chofer', actor_id: chofer.id, actor_nombre: placa }
+        : { actor_nombre: placa };
+    if (!chofer || !chofer.password_hash || !await bcrypt.compare(password, chofer.password_hash)) {
+        await auditar(req, { ...actor, accion: 'sesion.login_chofer', resultado: 'rechazado', detalle: `Credenciales incorrectas (empresa ${codigo})` });
         return res.status(401).json({ error: '❌ Empresa, placa o contraseña incorrecta.' });
-    if (!chofer.estado_activo || !chofer.empresa_activa)
+    }
+    if (!chofer.estado_activo || !chofer.empresa_activa) {
+        await auditar(req, { ...actor, accion: 'sesion.login_chofer', resultado: 'rechazado', detalle: 'Cuenta o empresa desactivada' });
         return res.status(403).json({ error: '🚫 Cuenta desactivada. Contacta a la central.' });
+    }
 
     const token = firmar(
         { id: chofer.id, placa: chofer.placa_vehiculo, tipo: 'chofer', empresa_id: chofer.empresa_id }, '30d'
     );
+    await auditar(req, { ...actor, accion: 'sesion.login_chofer' });
     res.json({
         mensaje: '🔓 Login exitoso', token,
         chofer: { id: chofer.id, nombre_completo: chofer.nombre_completo, placa_vehiculo: chofer.placa_vehiculo },
@@ -407,14 +468,22 @@ app.post('/api/admin/login', limiteLogin, async (req, res) => {
         [usuario.trim()]
     );
     const admin = r.rows[0];
-    if (!admin || !await bcrypt.compare(password, admin.password_hash))
+    const actor = admin
+        ? { empresa_id: admin.empresa_id, ...actorDe({ ...admin, tipo: 'admin' }) }
+        : { actor_nombre: usuario.trim() };
+    if (!admin || !await bcrypt.compare(password, admin.password_hash)) {
+        await auditar(req, { ...actor, accion: 'sesion.login_admin', resultado: 'rechazado', detalle: 'Credenciales incorrectas' });
         return res.status(401).json({ error: '❌ Usuario o contraseña incorrecta.' });
-    if (admin.empresa_id && !admin.empresa_activa)
+    }
+    if (admin.empresa_id && !admin.empresa_activa) {
+        await auditar(req, { ...actor, accion: 'sesion.login_admin', resultado: 'rechazado', detalle: 'Empresa desactivada' });
         return res.status(403).json({ error: '🚫 La empresa está desactivada.' });
+    }
 
     const token = firmar(
         { id: admin.id, rol: admin.rol, nombre: admin.nombre, tipo: 'admin', empresa_id: admin.empresa_id }, '8h'
     );
+    await auditar(req, { ...actor, accion: 'sesion.login_admin' });
     res.json({ mensaje: `✅ Bienvenido, ${admin.nombre}`, token, rol: admin.rol });
 });
 
@@ -482,6 +551,10 @@ app.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, res
          ORDER BY v.fecha_hora_viaje DESC`,
         params
     );
+    await auditar(req, {
+        accion: 'viajes.exportar', entidad: 'viajes_historial',
+        detalle: `${r.rows.length} viajes (desde ${req.query.desde || '—'} hasta ${req.query.hasta || '—'})`,
+    });
     if (!r.rows.length) return res.status(404).json({ error: 'Sin datos.' });
 
     const m = req.empresa.moneda_simbolo;
@@ -527,7 +600,9 @@ app.post('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) => {
              VALUES ($1,$2,$3,$4) RETURNING id, nombre_completo, placa_vehiculo, estado_activo`,
             [req.empresa.id, nombre_completo.trim(), placa_vehiculo.trim().toUpperCase(), hash]
         );
-        res.status(201).json({ mensaje: '✅ Chofer registrado.', chofer: r.rows[0] });
+        const chofer = r.rows[0];
+        await auditar(req, { accion: 'chofer.crear', entidad: 'choferes', entidad_id: chofer?.id, datos_despues: chofer });
+        res.status(201).json({ mensaje: '✅ Chofer registrado.', chofer });
     } catch (e) {
         if (e.code === '23505') return res.status(400).json({ error: '❌ Placa ya registrada.' });
         throw e;
@@ -541,10 +616,11 @@ app.patch('/api/admin/choferes/:id/password', verificarToken, soloAdmin, async (
     if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'No encontrado.' });
     const hash = await bcrypt.hash(nueva_password, 10);
     const r = await pool.query(
-        'UPDATE choferes SET password_hash=$1 WHERE id=$2 AND empresa_id=$3 RETURNING nombre_completo',
+        'UPDATE choferes SET password_hash=$1 WHERE id=$2 AND empresa_id=$3 RETURNING nombre_completo, placa_vehiculo',
         [hash, req.params.id, req.empresa.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
+    await auditar(req, { accion: 'chofer.password', entidad: 'choferes', entidad_id: req.params.id, detalle: `Contraseña restablecida para ${r.rows[0].placa_vehiculo}` });
     res.json({ mensaje: `✅ Contraseña actualizada para ${r.rows[0].nombre_completo}.` });
 });
 
@@ -554,12 +630,57 @@ app.patch('/api/admin/choferes/:id/estado', verificarToken, soloAdmin, async (re
         return res.status(400).json({ error: '⚠️ estado_activo debe ser true o false.' });
     if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'No encontrado.' });
     const r = await pool.query(
-        `UPDATE choferes SET estado_activo=$1 WHERE id=$2 AND empresa_id=$3
-         RETURNING id, nombre_completo, estado_activo`,
+        `WITH antes AS (SELECT id, estado_activo FROM choferes WHERE id=$2 AND empresa_id=$3 FOR UPDATE)
+         UPDATE choferes c SET estado_activo=$1 FROM antes WHERE c.id = antes.id
+         RETURNING c.id, c.nombre_completo, c.estado_activo, to_jsonb(antes) AS _antes`,
         [estado_activo, req.params.id, req.empresa.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
-    res.json({ mensaje: `✅ Chofer ${estado_activo ? 'activado' : 'desactivado'}.`, chofer: r.rows[0] });
+    const { antes, despues } = separar(r.rows[0]);
+    await auditar(req, { accion: 'chofer.estado', entidad: 'choferes', entidad_id: req.params.id, datos_antes: antes, datos_despues: despues });
+    res.json({ mensaje: `✅ Chofer ${estado_activo ? 'activado' : 'desactivado'}.`, chofer: despues });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUDITORÍA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const consultarAuditoria = async (req, res, empresaId) => {
+    const error = validarRangoDias(req.query);
+    if (error) return res.status(400).json({ error });
+    const pagina = Math.max(1, Number.parseInt(req.query.pagina, 10) || 1);
+    const accion = typeof req.query.accion === 'string' ? req.query.accion.trim().slice(0, 60) : '';
+    try {
+        const eventos = await auditoria.consultar({
+            empresaId, desde: req.query.desde || null, hasta: req.query.hasta || null, accion, pagina,
+        });
+        await auditar(req, { accion: 'auditoria.consultar', resultado: 'exito', detalle: `página ${pagina}${accion ? `, acción ${accion}` : ''}` });
+        res.json(eventos);
+    } catch {
+        res.status(503).json({ error: '⚠️ La base de auditoría no está disponible.' });
+    }
+};
+
+app.get('/api/admin/auditoria', verificarToken, soloAdmin, (req, res) =>
+    consultarAuditoria(req, res, req.empresa.id));
+
+app.get('/api/plataforma/auditoria', verificarToken, soloSuperadmin, (req, res) => {
+    const id = req.query.empresa_id;
+    if (id !== undefined && id !== '' && !/^\d+$/.test(id)) return res.status(400).json({ error: '⚠️ empresa_id inválido.' });
+    return consultarAuditoria(req, res, id ? Number(id) : undefined);
+});
+
+app.get('/api/plataforma/auditoria/verificar', verificarToken, soloSuperadmin, async (req, res) => {
+    try {
+        const resultado = await auditoria.verificar();
+        await auditar(req, {
+            accion: 'auditoria.verificar', resultado: resultado.integra ? 'exito' : 'error',
+            detalle: resultado.integra ? `Cadena íntegra (${resultado.total_eventos} eventos)` : `Cadena alterada desde el evento ${resultado.primer_evento_invalido ?? '—'}`,
+        });
+        res.json(resultado);
+    } catch {
+        res.status(503).json({ error: '⚠️ La base de auditoría no está disponible.' });
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -615,6 +736,10 @@ app.post('/api/plataforma/empresas', verificarToken, soloSuperadmin, async (req,
             );
             return e;
         });
+        await auditar(req, {
+            empresa_id: empresa.id, accion: 'empresa.crear', entidad: 'empresas', entidad_id: empresa.id,
+            datos_despues: empresa, detalle: `Gerente inicial ${g.email.trim().toLowerCase()}`,
+        });
         res.status(201).json({ mensaje: `✅ Empresa ${empresa.nombre} creada.`, empresa });
     } catch (e) {
         if (e.code === '23505')
@@ -628,13 +753,11 @@ app.put('/api/plataforma/empresas/:id', verificarToken, soloSuperadmin, async (r
     if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'No encontrado.' });
     const { error, valores } = validarEmpresa(req.body);
     if (error) return res.status(400).json({ error });
-    const sets = CAMPOS_EMPRESA.map((c, i) => `${c}=$${i + 1}`).join(', ');
-    const r = await pool.query(
-        `UPDATE empresas SET ${sets} WHERE id=$${CAMPOS_EMPRESA.length + 1} RETURNING *`,
-        [...CAMPOS_EMPRESA.map(c => valores[c]), req.params.id]
-    );
+    const r = await actualizarEmpresa(req.params.id, valores);
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
-    res.json({ mensaje: '✅ Empresa actualizada.', empresa: r.rows[0] });
+    const { antes, despues } = separar(r.rows[0]);
+    await auditar(req, { empresa_id: despues.id, accion: 'empresa.actualizar', entidad: 'empresas', entidad_id: despues.id, datos_antes: antes, datos_despues: despues });
+    res.json({ mensaje: '✅ Empresa actualizada.', empresa: despues });
 });
 
 app.patch('/api/plataforma/empresas/:id/estado', verificarToken, soloSuperadmin, async (req, res) => {
@@ -642,10 +765,15 @@ app.patch('/api/plataforma/empresas/:id/estado', verificarToken, soloSuperadmin,
     if (typeof activo !== 'boolean') return res.status(400).json({ error: '⚠️ activo debe ser true o false.' });
     if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'No encontrado.' });
     const r = await pool.query(
-        'UPDATE empresas SET activo=$1 WHERE id=$2 RETURNING id, nombre, activo', [activo, req.params.id]
+        `WITH antes AS (SELECT id, activo FROM empresas WHERE id=$2 FOR UPDATE)
+         UPDATE empresas e SET activo=$1 FROM antes WHERE e.id = antes.id
+         RETURNING e.id, e.nombre, e.activo, to_jsonb(antes) AS _antes`,
+        [activo, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
-    res.json({ mensaje: `✅ Empresa ${activo ? 'activada' : 'desactivada'}.`, empresa: r.rows[0] });
+    const { antes, despues } = separar(r.rows[0]);
+    await auditar(req, { empresa_id: despues.id, accion: 'empresa.estado', entidad: 'empresas', entidad_id: despues.id, datos_antes: antes, datos_despues: despues });
+    res.json({ mensaje: `✅ Empresa ${activo ? 'activada' : 'desactivada'}.`, empresa: despues });
 });
 
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
@@ -665,6 +793,9 @@ if (require.main === module) {
     app.listen(PORT, '0.0.0.0', () =>
         console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
     );
+    if (!auditoria.configurada)
+        console.warn('⚠️ AUDIT_DB_NAME no está definido: los eventos de auditoría quedan en cola en la base principal.');
+    setInterval(() => auditoria.reenviarPendientes().catch(() => {}), 30_000).unref();
 }
 
 module.exports = { app, filtroFechas, validarEmpresa, distanciaKm };
