@@ -42,17 +42,38 @@ void main() {
 
   group('Sesion', () {
     TestWidgetsFlutterBinding.ensureInitialized();
+    const pulpos = EmpresaActual(codigo: 'pulpos', nombre: 'Radio Taxis Pulpos', monedaSimbolo: 'Bs');
 
     test('guarda con las claves que usan otros módulos (motor_gps lee jwt_token)', () async {
       SharedPreferences.setMockInitialValues({});
       final t = jwt({'exp': segundos(DateTime.now().add(const Duration(days: 1)))});
-      await Sesion.guardar(token: t, choferId: 6, nombre: 'Juancho Quispe');
+      await Sesion.guardar(token: t, choferId: 6, nombre: 'Juancho Quispe', empresa: pulpos);
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('jwt_token'), t);
       expect(await Sesion.choferId(), 6);
       expect(await Sesion.nombre(), 'Juancho Quispe');
       expect(await Sesion.tokenValido(), t);
+      final e = await Sesion.empresa();
+      expect(e?.codigo, 'pulpos');
+      expect(e?.nombre, 'Radio Taxis Pulpos');
+      expect(await Sesion.ultimoCodigoEmpresa(), 'pulpos');
+    });
+
+    test('al cerrar sesión se recuerda el código de empresa para el próximo login', () async {
+      SharedPreferences.setMockInitialValues({});
+      final t = jwt({'exp': segundos(DateTime.now().add(const Duration(days: 1)))});
+      await Sesion.guardar(token: t, choferId: 6, nombre: 'J', empresa: pulpos);
+      await Sesion.cerrar();
+      expect(await Sesion.empresa(), isNull);
+      expect(await Sesion.choferId(), isNull);
+      expect(await Sesion.ultimoCodigoEmpresa(), 'pulpos');
+    });
+
+    test('EmpresaActual: moneda por defecto y datos dañados no rompen la app', () async {
+      expect(EmpresaActual.fromJson({'codigo': 'sur', 'nombre': 'Taxis Sur'}).monedaSimbolo, 'Bs');
+      SharedPreferences.setMockInitialValues({'empresa': '{no es json'});
+      expect(await Sesion.empresa(), isNull);
     });
 
     test('token vencido: tokenValido devuelve null y borra la sesión', () async {
@@ -71,11 +92,13 @@ void main() {
         'jwt_token': 'x',
         'chofer_id': 6,
         'nombre_chofer': 'J',
-        'parametros_topograficos_v3': '{"id":1}',
+        'empresa': '{"codigo":"pulpos"}',
+        'ultimo_codigo_empresa': 'pulpos',
+        'parametros_pulpos': '{"id":1}',
       });
       await Sesion.cerrar();
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getKeys(), {'parametros_topograficos_v3'});
+      expect(prefs.getKeys(), {'ultimo_codigo_empresa', 'parametros_pulpos'});
     });
 
     test('sin sesión guardada', () async {

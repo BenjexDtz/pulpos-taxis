@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'config.dart';
+import 'sesion.dart';
 
 // ─── Modelo de parámetros ─────────────────────────────────────────────────────
 class ParametrosTopograficos {
@@ -73,30 +74,38 @@ class ParametrosTopograficos {
 
 // ─── Servicio de descarga de parámetros ──────────────────────────────────────
 class ParametrosService {
-  static const String _cacheKey = 'parametros_topograficos_v3';
+  static String _cacheKey(String? codigoEmpresa) => 'parametros_${codigoEmpresa ?? 'sin_empresa'}';
 
   static Future<ParametrosTopograficos> obtener() async {
-    try {
-      final response = await http
-          .get(Uri.parse('$urlServidor/api/parametros'))
-          .timeout(const Duration(seconds: 5));
+    final token = await Sesion.tokenValido();
+    final codigo = (await Sesion.empresa())?.codigo;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data != null) {
-          final params = ParametrosTopograficos.fromJson(data);
+    if (token != null) {
+      try {
+        final response = await http
+            .get(
+              Uri.parse('$urlServidor/api/config'),
+              headers: {'Authorization': 'Bearer $token'},
+            )
+            .timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final params = ParametrosTopograficos.fromJson(data['parametros']);
+          final empresa = EmpresaActual.fromJson(data['empresa']);
+          await Sesion.guardarEmpresa(empresa);
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_cacheKey, response.body);
+          await prefs.setString(_cacheKey(empresa.codigo), jsonEncode(data['parametros']));
           return params;
         }
+      } catch (_) {
+        // Sin conexión — intentar caché
       }
-    } catch (_) {
-      // Sin conexión — intentar caché
     }
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_cacheKey);
+      final cached = prefs.getString(_cacheKey(codigo));
       if (cached != null) {
         return ParametrosTopograficos.fromJson(jsonDecode(cached));
       }
@@ -210,5 +219,5 @@ class DesgloseTarifa {
       '(Cb=$costoBaseKm + Cl×Pc=${costoCombustibleKm.toStringAsFixed(3)}) × '
       'FH=$factorAltitud × FR=$factorSuperficie + '
       'Ct=${costoDetencion.toStringAsFixed(2)} = '
-      'Bs ${tarifaTotal.toStringAsFixed(2)}';
+      '${tarifaTotal.toStringAsFixed(2)}';
 }

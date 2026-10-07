@@ -14,17 +14,17 @@ import 'config.dart';
 import 'sesion.dart';
 
 void main() {
-  runApp(const AplicacionPulpos());
+  runApp(const AplicacionTaximetro());
 }
 
-class AplicacionPulpos extends StatelessWidget {
-  const AplicacionPulpos({super.key});
+class AplicacionTaximetro extends StatelessWidget {
+  const AplicacionTaximetro({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Radio Taxis Pulpos',
+      title: 'Taxímetro',
       theme: ThemeData(primarySwatch: Colors.blue, fontFamily: 'Roboto'),
       home: const PantallaInicio(),
     );
@@ -82,6 +82,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
 
   // ── Parámetros topográficos (desde servidor) ───────────────────────────────
   ParametrosTopograficos? _params;
+  EmpresaActual? _empresa;
+  String get _moneda => _empresa?.monedaSimbolo ?? 'Bs';
   bool _cargandoParams = true;
 
   // Factor de superficie elegido por el conductor (1.0 asfalto / 2.5 tierra)
@@ -97,8 +99,11 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   Future<void> _cargarParametros() async {
     setState(() => _cargandoParams = true);
     final params = await ParametrosService.obtener();
+    final empresa = await Sesion.empresa();
+    if (!mounted) return;
     setState(() {
       _params = params;
+      _empresa = empresa;
       _cargandoParams = false;
     });
   }
@@ -321,7 +326,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Viaje guardado. Total: Bs ${tarifaFinal.toStringAsFixed(2)}',
+            '✅ Viaje guardado. Total: $_moneda ${tarifaFinal.toStringAsFixed(2)}',
           ),
           backgroundColor: Colors.green[800],
           duration: const Duration(seconds: 4),
@@ -357,9 +362,9 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       appBar: enViaje
           ? null
           : AppBar(
-              title: const Text(
-                'Radio Taxis Pulpos',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              title: Text(
+                _empresa?.nombre ?? 'Taxímetro',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               backgroundColor: Colors.blue[800],
               foregroundColor: Colors.white,
@@ -454,7 +459,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                         ),
                       ),
                       Text(
-                        'Bs ${tarifaEnVivo.toStringAsFixed(2)}',
+                        '$_moneda ${tarifaEnVivo.toStringAsFixed(2)}',
                         style: TextStyle(
                           fontSize: 60,
                           fontWeight: FontWeight.bold,
@@ -543,7 +548,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                       if (!enViaje) ...[
                         const SizedBox(height: 16),
                         Text(
-                          'Cb: Bs ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · Ct: Bs ${params.costoMinutoDetencion}/min',
+                          'Cb: $_moneda ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · Ct: $_moneda ${params.costoMinutoDetencion}/min',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.grey[400],
