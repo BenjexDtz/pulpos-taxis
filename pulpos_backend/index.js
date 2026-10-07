@@ -61,8 +61,8 @@ const denegar = async (req, res, status, error) => {
 
 const separar = (fila) => {
     if (!fila) return {};
-    const { _antes, ...despues } = fila;
-    return { antes: _antes, despues };
+    const { _antes, _despues, ...despues } = fila;
+    return { antes: _antes, despues, auditado: _despues ?? despues };
 };
 
 // ── MIDDLEWARE JWT ─────────────────────────────────────────────────────────────
@@ -324,13 +324,13 @@ app.put('/api/admin/parametros', verificarToken, soloAdmin, async (req, res) => 
              factor_altitud=$5, factor_superficie=$6,
              costo_minuto_detencion=$7, fecha_actualizacion=NOW()
          FROM antes WHERE p.id = antes.id
-         RETURNING p.*, to_jsonb(antes) AS _antes`,
+         RETURNING p.*, to_jsonb(antes) AS _antes, to_jsonb(p) AS _despues`,
         [zona_ciudad, costo_base_km, consumo_litros_km, precio_combustible_bs,
          factor_altitud, factor_superficie, costo_minuto_detencion, req.empresa.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
-    const { antes, despues } = separar(r.rows[0]);
-    await auditar(req, { accion: 'parametros.actualizar', entidad: 'parametros_topograficos', entidad_id: despues.id, datos_antes: antes, datos_despues: despues });
+    const { antes, despues, auditado } = separar(r.rows[0]);
+    await auditar(req, { accion: 'parametros.actualizar', entidad: 'parametros_topograficos', entidad_id: despues.id, datos_antes: antes, datos_despues: auditado });
     res.json({
         mensaje: '✅ Parámetros actualizados. Los conductores los recibirán al iniciar la app.',
         parametros: conCostos(despues),
@@ -341,15 +341,15 @@ const actualizarEmpresa = (id, valores) => pool.query(
     `WITH antes AS (SELECT * FROM empresas WHERE id=$${CAMPOS_EMPRESA.length + 1} FOR UPDATE)
      UPDATE empresas e SET ${CAMPOS_EMPRESA.map((c, i) => `${c}=$${i + 1}`).join(', ')}
      FROM antes WHERE e.id = antes.id
-     RETURNING e.*, to_jsonb(antes) AS _antes`,
+     RETURNING e.*, to_jsonb(antes) AS _antes, to_jsonb(e) AS _despues`,
     [...CAMPOS_EMPRESA.map(c => valores[c]), id]
 );
 
 app.put('/api/admin/empresa', verificarToken, soloAdmin, async (req, res) => {
     const { error, valores } = validarEmpresa(req.body);
     if (error) return res.status(400).json({ error });
-    const { antes, despues } = separar((await actualizarEmpresa(req.empresa.id, valores)).rows[0]);
-    await auditar(req, { accion: 'empresa.actualizar', entidad: 'empresas', entidad_id: req.empresa.id, datos_antes: antes, datos_despues: despues });
+    const { antes, despues, auditado } = separar((await actualizarEmpresa(req.empresa.id, valores)).rows[0]);
+    await auditar(req, { accion: 'empresa.actualizar', entidad: 'empresas', entidad_id: req.empresa.id, datos_antes: antes, datos_despues: auditado });
     res.json({ mensaje: '✅ Datos de la empresa actualizados.', empresa: despues });
 });
 
@@ -632,12 +632,13 @@ app.patch('/api/admin/choferes/:id/estado', verificarToken, soloAdmin, async (re
     const r = await pool.query(
         `WITH antes AS (SELECT id, estado_activo FROM choferes WHERE id=$2 AND empresa_id=$3 FOR UPDATE)
          UPDATE choferes c SET estado_activo=$1 FROM antes WHERE c.id = antes.id
-         RETURNING c.id, c.nombre_completo, c.estado_activo, to_jsonb(antes) AS _antes`,
+         RETURNING c.id, c.nombre_completo, c.estado_activo, to_jsonb(antes) AS _antes,
+                   jsonb_build_object('id', c.id, 'estado_activo', c.estado_activo) AS _despues`,
         [estado_activo, req.params.id, req.empresa.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
-    const { antes, despues } = separar(r.rows[0]);
-    await auditar(req, { accion: 'chofer.estado', entidad: 'choferes', entidad_id: req.params.id, datos_antes: antes, datos_despues: despues });
+    const { antes, despues, auditado } = separar(r.rows[0]);
+    await auditar(req, { accion: 'chofer.estado', entidad: 'choferes', entidad_id: req.params.id, datos_antes: antes, datos_despues: auditado });
     res.json({ mensaje: `✅ Chofer ${estado_activo ? 'activado' : 'desactivado'}.`, chofer: despues });
 });
 
@@ -755,8 +756,8 @@ app.put('/api/plataforma/empresas/:id', verificarToken, soloSuperadmin, async (r
     if (error) return res.status(400).json({ error });
     const r = await actualizarEmpresa(req.params.id, valores);
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
-    const { antes, despues } = separar(r.rows[0]);
-    await auditar(req, { empresa_id: despues.id, accion: 'empresa.actualizar', entidad: 'empresas', entidad_id: despues.id, datos_antes: antes, datos_despues: despues });
+    const { antes, despues, auditado } = separar(r.rows[0]);
+    await auditar(req, { empresa_id: despues.id, accion: 'empresa.actualizar', entidad: 'empresas', entidad_id: despues.id, datos_antes: antes, datos_despues: auditado });
     res.json({ mensaje: '✅ Empresa actualizada.', empresa: despues });
 });
 
@@ -767,12 +768,13 @@ app.patch('/api/plataforma/empresas/:id/estado', verificarToken, soloSuperadmin,
     const r = await pool.query(
         `WITH antes AS (SELECT id, activo FROM empresas WHERE id=$2 FOR UPDATE)
          UPDATE empresas e SET activo=$1 FROM antes WHERE e.id = antes.id
-         RETURNING e.id, e.nombre, e.activo, to_jsonb(antes) AS _antes`,
+         RETURNING e.id, e.nombre, e.activo, to_jsonb(antes) AS _antes,
+                   jsonb_build_object('id', e.id, 'activo', e.activo) AS _despues`,
         [activo, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
-    const { antes, despues } = separar(r.rows[0]);
-    await auditar(req, { empresa_id: despues.id, accion: 'empresa.estado', entidad: 'empresas', entidad_id: despues.id, datos_antes: antes, datos_despues: despues });
+    const { antes, despues, auditado } = separar(r.rows[0]);
+    await auditar(req, { empresa_id: despues.id, accion: 'empresa.estado', entidad: 'empresas', entidad_id: despues.id, datos_antes: antes, datos_despues: auditado });
     res.json({ mensaje: `✅ Empresa ${activo ? 'activada' : 'desactivada'}.`, empresa: despues });
 });
 
