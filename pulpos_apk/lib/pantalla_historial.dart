@@ -1,6 +1,22 @@
 import 'package:flutter/material.dart';
 import 'base_datos.dart'; // Tu conexión a SQLite
 
+/// Suma las tarifas de los viajes hechos en el mismo día calendario que [dia].
+/// `fecha_hora` se guarda con `DateTime.now().toIso8601String()` (hora local).
+double totalDelDia(List<Map<String, dynamic>> viajes, DateTime dia) {
+  double total = 0;
+  for (final viaje in viajes) {
+    final fecha = DateTime.tryParse(viaje['fecha_hora']?.toString() ?? '');
+    if (fecha == null) continue;
+    if (fecha.year == dia.year &&
+        fecha.month == dia.month &&
+        fecha.day == dia.day) {
+      total += (viaje['tarifa_total'] as num? ?? 0).toDouble();
+    }
+  }
+  return total;
+}
+
 class PantallaHistorial extends StatefulWidget {
   const PantallaHistorial({super.key});
 
@@ -22,15 +38,6 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
     setState(() {
       _historialViajes = BaseDatosLocal.instancia.obtenerTodosLosViajes();
     });
-  }
-
-  // Función matemática rápida para sumar el total
-  double _calcularTotal(List<Map<String, dynamic>> viajes) {
-    double total = 0;
-    for (var viaje in viajes) {
-      total += viaje['tarifa_total'];
-    }
-    return total;
   }
 
   @override
@@ -69,7 +76,7 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
 
           // 4. Si hay datos, los mostramos
           final viajes = snapshot.data!;
-          final totalGanado = _calcularTotal(viajes);
+          final totalGanado = totalDelDia(viajes, DateTime.now());
 
           return Column(
             children: [
