@@ -1,4 +1,3 @@
-# Tests y verificaciones de los tres módulos en cada push y pull request
 name: CI
 
 on:

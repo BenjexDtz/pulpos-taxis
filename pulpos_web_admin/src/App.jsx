@@ -27,7 +27,6 @@ function useLeaflet() {
 
 const EL_ALTO_CENTER = [-16.5, -68.19];
 
-// Query de fechas para /api/admin/viajes: cada límite es opcional
 const consultaFechas = (desde, hasta) => {
   const q = new URLSearchParams();
   if (desde) q.set('desde', desde);
@@ -36,7 +35,6 @@ const consultaFechas = (desde, hasta) => {
   return s ? `?${s}` : '';
 };
 
-// Leaflet inserta el popup como HTML: todo texto que venga de la BD debe escaparse
 const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
@@ -53,8 +51,6 @@ function FleetMap({ choferes, viajes }) {
     const L = window.L;
     const map = L.map(mapRef.current, { zoomControl: false }).setView(EL_ALTO_CENTER, 14);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    // OpenStreetMap: libre y sin clave (CARTO dark_all ahora exige API key).
-    // La atribución es obligatoria. El tono oscuro se logra con CSS (.mapa-oscuro).
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
@@ -187,7 +183,6 @@ export default function App() {
   const [mensajeParams, setMensajeParams] = useState({ tipo: '', texto: '' });
 
   const [conexion, setConexion] = useState(navigator.onLine);
-  // Errores de carga que no pertenecen a una vista concreta (choferes, parámetros)
   const [aviso, setAviso] = useState('');
 
   useEffect(() => {
@@ -203,7 +198,6 @@ export default function App() {
     setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso('');
   }, []);
 
-  // 401/403 = sesión vencida o sin permisos → volver al login; otro error → mostrarlo
   const manejarErrorApi = useCallback((err, mostrar) => {
     if (err.response?.status === 401 || err.response?.status === 403) cerrarSesion();
     else mostrar(err.response?.data?.error || '⚠️ Error conectando al servidor.');
@@ -250,21 +244,14 @@ export default function App() {
     }
   }, [urlServidor, manejarErrorApi]);
 
-  // Carga inicial al iniciar sesión (o al abrir el panel con una sesión guardada).
-  // useEffectEvent: se ejecuta solo cuando cambia el token, no cuando cambian
-  // las fechas u otros valores que usan los cargadores.
   const cargarTodo = useEffectEvent(() => {
     cargarReporte(); cargarChoferes(); cargarParametros();
   });
   useEffect(() => {
-    // Pedir datos al servidor al tener sesión es sincronizar con un sistema externo
-    // (uso legítimo de un efecto); la regla salta solo por el `cargando = true`
-    // inicial de los cargadores, que cuesta un render extra.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (token) cargarTodo();
   }, [token]);
 
-  // Navegar entre vistas recarga sus datos desde el clic, no desde un efecto
   const irA = (vista) => {
     setVistaActiva(vista);
     if (vista === 'parametros') { cargarParametros(); return; }
@@ -282,7 +269,6 @@ export default function App() {
     setErrorDashboard(null);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(async r => {
-        // Sin esto, un error (400, 404 "Sin datos") se descargaba como si fuera el CSV
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || '⚠️ No se pudo exportar el CSV.');
         return r.blob();
       })
@@ -748,7 +734,6 @@ export default function App() {
                         onChange={e => setFormParams({ ...formParams, zona_ciudad: e.target.value })} />
                     </div>
 
-                    {/* Los min/max de estos inputs se validan igual en el backend (RANGOS_PARAMETROS en index.js) */}
                     {/* ── SECCIÓN COMBUSTIBLE (Cl y Pc) — NUEVA ── */}
                     <div>
                       <div className="flex items-center space-x-2 mb-3">

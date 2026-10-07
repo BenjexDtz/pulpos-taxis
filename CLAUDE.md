@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Proyecto
 
-Sistema de tarificación para Radio Taxis Pulpos (El Alto, Bolivia; proyecto de Taller de Grado). Código, comentarios, mensajes de API y commits en **español**.
+Sistema de tarificación para Radio Taxis Pulpos (El Alto, Bolivia; proyecto de Taller de Grado). Código, mensajes de API y commits en **español**. Comentarios mínimos: solo una línea donde algo no sea obvio; las explicaciones van en el commit.
 
 Tres módulos + PostgreSQL:
 

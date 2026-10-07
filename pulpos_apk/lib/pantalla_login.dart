@@ -45,7 +45,6 @@ class _PantallaLoginState extends State<PantallaLogin> {
         final int choferId = data['chofer']['id'];
         final String nombreChofer = data['chofer']['nombre_completo'];
 
-        // 2. Guardamos la sesión en el celular (se recuerda al reabrir la app)
         await Sesion.guardar(
           token: token,
           choferId: choferId,

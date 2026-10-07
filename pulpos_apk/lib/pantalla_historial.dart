@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'base_datos.dart'; // Tu conexión a SQLite
 
-/// Suma las tarifas de los viajes hechos en el mismo día calendario que [dia].
-/// `fecha_hora` se guarda con `DateTime.now().toIso8601String()` (hora local).
 double totalDelDia(List<Map<String, dynamic>> viajes, DateTime dia) {
   double total = 0;
   for (final viaje in viajes) {

@@ -23,8 +23,6 @@ export default defineConfig([
       },
     },
     rules: {
-      // Sin el plugin de React, ESLint no ve los usos en JSX (<Icon />):
-      // se ignoran los nombres en mayúscula, tanto variables como parámetros
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^[A-Z_]' }],
     },
   },

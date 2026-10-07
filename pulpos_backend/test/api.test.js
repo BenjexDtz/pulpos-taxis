@@ -1,9 +1,6 @@
-// Tests de la API sin PostgreSQL: pool.query se reemplaza por una BD falsa.
-// Ejecutar: npm test
 const { test, describe, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 
-// Entorno fijo, independiente del .env local (dotenv no pisa variables ya definidas)
 process.env.JWT_SECRET = 'secreto_de_prueba';
 process.env.CORS_ORIGINS = 'http://localhost:5173';
 
@@ -11,7 +8,6 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
 
-// ── BD falsa ─────────────────────────────────────────────────────────────────
 let consultas = [];
 let responder = () => ({ rows: [] });
 pool.query = async (sql, params = []) => {
@@ -24,9 +20,8 @@ const { app, filtroFechas } = require('../index');
 const firmar = (payload) => jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
 const TOKEN_ADMIN  = firmar({ id: 1, rol: 'gerente', nombre: 'Gerencia', tipo: 'admin' });
 const TOKEN_CHOFER = firmar({ id: 7, placa: '1234-KKK', tipo: 'chofer' });
-const TOKEN_VIEJO  = firmar({ id: 7, placa: '1234-KKK' }); // emitido antes de existir "tipo"
+const TOKEN_VIEJO  = firmar({ id: 7, placa: '1234-KKK' });
 
-// Chofer activo salvo que el test diga otra cosa
 const choferActivo = (activo = true) => (sql) =>
     sql.includes('SELECT estado_activo FROM choferes') ? { rows: [{ estado_activo: activo }] } : { rows: [] };
 
@@ -62,7 +57,6 @@ const RUTAS_ADMIN = [
     ['PUT', '/api/admin/parametros/1'],
 ];
 
-// ═════════════════════════════════════════════════════════════════════════════
 describe('Autorización por rol', () => {
     for (const [metodo, ruta] of RUTAS_ADMIN) {
         test(`${metodo} ${ruta}: sin token 403, token de chofer 403, token sin tipo 403`, async () => {
@@ -94,7 +88,6 @@ describe('Autorización por rol', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
 describe('Sincronización de viajes', () => {
     const viaje = { distancia_km: 3.5, tiempo_detencion_min: 8.5, tarifa_cobrada: 37.27, fecha_hora_viaje: '2026-10-07T10:00:00' };
 
@@ -117,7 +110,7 @@ describe('Sincronización de viajes', () => {
             ? { rows: [{ id_servidor: 99 }] }
             : choferActivo(true)(sql);
         const r = await pedir('POST', '/api/viajes/sincronizar', {
-            token: TOKEN_CHOFER, body: { ...viaje, chofer_id: 1 }, // intenta suplantar al chofer 1
+            token: TOKEN_CHOFER, body: { ...viaje, chofer_id: 1 },
         });
         assert.equal(r.status, 201);
         const insert = consultas.find(c => c.sql.includes('INSERT INTO viajes_historial'));
@@ -137,7 +130,6 @@ describe('Sincronización de viajes', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
 describe('Posición GPS', () => {
     test('solo choferes; lat/lng deben ser números dentro de Bolivia', async () => {
         assert.equal((await pedir('POST', '/api/posicion', { token: TOKEN_ADMIN, body: { lat: -16.5, lng: -68.1 } })).status, 403);
@@ -151,7 +143,6 @@ describe('Posición GPS', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
 describe('Parámetros topográficos', () => {
     const validos = {
         zona_ciudad: 'El Alto', costo_base_km: '2.00', consumo_litros_km: '0.100',
@@ -187,7 +178,6 @@ describe('Parámetros topográficos', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
 describe('Filtro de fechas', () => {
     test('"hasta" incluye el día completo', () => {
         const f = filtroFechas({ desde: '2026-05-18', hasta: '2026-05-18' });
@@ -215,7 +205,6 @@ describe('Filtro de fechas', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
 describe('Errores y cabeceras', () => {
     test('nunca se devuelve un stack trace ni rutas internas', async () => {
         for (const r of [
@@ -242,10 +231,9 @@ describe('Errores y cabeceras', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
 describe('Login', () => {
     const hash = bcrypt.hashSync('password', 4);
-    const IP = (n) => ({ 'X-Forwarded-For': `200.0.0.${n}` }); // cada test con su IP: el límite es por IP
+    const IP = (n) => ({ 'X-Forwarded-For': `200.0.0.${n}` });
 
     test('admin correcto recibe un token de tipo admin', async () => {
         responder = () => ({ rows: [{ id: 1, nombre: 'Gerencia', rol: 'gerente', password_hash: hash }] });

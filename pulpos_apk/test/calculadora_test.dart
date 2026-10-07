@@ -2,8 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pulpos_tarifa_core/api_sync.dart';
 import 'package:pulpos_tarifa_core/calculadora.dart';
 
-// Fórmula v3: T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
-// Parámetros de El Alto: Cb=2.00, Cl=0.100, Pc=6.96, FH=1.40, FR tierra=2.50, Ct=0.50
 void main() {
   group('calcularTarifa', () {
     double tarifaElAlto({
@@ -23,7 +21,6 @@ void main() {
     );
 
     test('escenario crítico: 5 km en tierra con 10 min de espera', () {
-      // 5 × (2 + 0.1×6.96) × 1.4 × 2.5 + 10 × 0.5 = 47.18 + 5 = 52.18
       final t = tarifaElAlto(
         distanciaKm: 5,
         factorSuperficie: 2.5,
@@ -33,7 +30,6 @@ void main() {
     });
 
     test('escenario ideal: 5 km en asfalto sin espera', () {
-      // 5 × 2.696 × 1.4 × 1.0 = 18.872
       final t = tarifaElAlto(
         distanciaKm: 5,
         factorSuperficie: 1.0,

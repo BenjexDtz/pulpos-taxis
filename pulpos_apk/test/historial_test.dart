@@ -14,8 +14,8 @@ void main() {
       final viajes = [
         viaje(DateTime(2026, 10, 7, 8, 0), 10.0),
         viaje(DateTime(2026, 10, 7, 14, 45), 5.5),
-        viaje(DateTime(2026, 10, 6, 22, 0), 100.0), // ayer
-        viaje(DateTime(2025, 10, 7, 9, 0), 50.0), // mismo día, otro año
+        viaje(DateTime(2026, 10, 6, 22, 0), 100.0),
+        viaje(DateTime(2025, 10, 7, 9, 0), 50.0),
       ];
       expect(totalDelDia(viajes, hoy), closeTo(15.5, 1e-9));
     });
@@ -24,7 +24,7 @@ void main() {
       final viajes = [
         viaje(DateTime(2026, 10, 7, 0, 0, 0), 1.0),
         viaje(DateTime(2026, 10, 7, 23, 59, 59), 2.0),
-        viaje(DateTime(2026, 10, 8, 0, 0, 0), 4.0), // mañana
+        viaje(DateTime(2026, 10, 8, 0, 0, 0), 4.0),
       ];
       expect(totalDelDia(viajes, hoy), closeTo(3.0, 1e-9));
     });

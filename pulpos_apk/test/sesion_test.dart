@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pulpos_tarifa_core/sesion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// JWT con el payload dado (firma falsa: la app no la verifica, el servidor sí).
 String jwt(Map<String, dynamic> payload) {
   String b64(Object o) => base64Url.encode(utf8.encode(jsonEncode(o))).replaceAll('=', '');
   return '${b64({'alg': 'HS256', 'typ': 'JWT'})}.${b64(payload)}.firma';
@@ -34,7 +33,6 @@ void main() {
     });
 
     test('payload base64url que necesita relleno (=) se decodifica bien', () {
-      // Distintos largos de payload producen distintos rellenos
       for (var i = 0; i < 4; i++) {
         final t = jwt({'x': 'a' * i, 'exp': segundos(ahora.add(const Duration(hours: 1)))});
         expect(tokenVigente(t, ahora), isTrue, reason: 'largo $i');

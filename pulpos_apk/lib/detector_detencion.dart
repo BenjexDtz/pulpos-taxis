@@ -1,16 +1,5 @@
 import 'dart:math';
 
-/// Mide el tiempo que el taxi pasa detenido (Td en la fórmula: Ct × Td).
-///
-/// El stream GPS usa distanceFilter de 10 m: con el taxi quieto NO llegan
-/// posiciones nuevas, así que la última velocidad recibida queda "congelada"
-/// en el valor que tenía en movimiento. Por eso el taxi se considera detenido si:
-///   - la última posición indica velocidad < [velocidadMinima], o
-///   - no llega ninguna posición nueva en [tiempoSinPosicion]
-///     (10 m en 10 s = menos de 3.6 km/h, prácticamente parado).
-///
-/// El tiempo se acumula con el reloj real entre ticks, no sumando 1 por tick,
-/// para que no se pierdan segundos si el sistema retrasa el timer.
 class DetectorDetencion {
   DetectorDetencion({
     required DateTime inicio,
@@ -22,7 +11,6 @@ class DetectorDetencion {
        _ultimaVelocidad = velocidadInicial,
        _detenido = velocidadInicial < velocidadMinima;
 
-  /// En m/s. Por debajo de esto el taxi se considera detenido.
   final double velocidadMinima;
   final Duration tiempoSinPosicion;
 
@@ -36,11 +24,6 @@ class DetectorDetencion {
   double get minutosDetenido => _segundosDetenido / 60;
   bool get detenido => _detenido;
 
-  /// Registrar cada posición GPS válida.
-  ///
-  /// Se usa la mayor entre la velocidad del GPS y la calculada con
-  /// [metros] recorridos, porque algunos equipos reportan speed = 0
-  /// aunque el vehículo se mueva.
   void registrarPosicion(
     DateTime t, {
     required double velocidadReportada,
@@ -52,10 +35,7 @@ class DetectorDetencion {
     _ultimaPosicion = t;
   }
 
-  /// Llamar periódicamente (p. ej. cada segundo). Devuelve si está detenido.
   bool tick(DateTime ahora) {
-    // El tramo desde el tick anterior se cobra según el estado que tenía
-    // durante ese tramo, y recién después se evalúa el estado nuevo.
     final segundos = ahora.difference(_ultimoTick).inMilliseconds / 1000;
     _ultimoTick = ahora;
     if (_detenido && segundos > 0) _segundosDetenido += segundos;

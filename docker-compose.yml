@@ -47,13 +47,11 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulpos2026}
       PORT: 3000
-      # Orígenes del navegador que pueden llamar a la API (panel web)
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
     ports:
       - "3000:3000"
     healthcheck:
-      # 127.0.0.1 y no localhost: en Alpine localhost resuelve a ::1 (IPv6) y el
-      # backend escucha en 0.0.0.0 (solo IPv4), así que el chequeo fallaba siempre
+      # localhost resuelve a ::1 en Alpine y el backend escucha solo en IPv4
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ || exit 1"]
       interval: 15s
       timeout: 5s

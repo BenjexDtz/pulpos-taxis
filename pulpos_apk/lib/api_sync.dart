@@ -1,11 +1,3 @@
-// ─── Conversión viaje local (SQLite) → body de /api/viajes/sincronizar ────────
-//
-// Se envían todos los parámetros con los que se cobró el viaje para que la
-// central pueda auditar cada tarifa. El chofer NO se envía: el servidor lo
-// toma del token.
-//
-// Los campos en NULL (viajes guardados antes de la v3 de la BD local) se omiten
-// para que el servidor aplique sus valores por defecto en lugar de recibir null.
 Map<String, dynamic> viajeParaServidor(Map<String, dynamic> viaje) {
   final factorSuperficie = viaje['factor_superficie'];
   final tipoSuperficie =

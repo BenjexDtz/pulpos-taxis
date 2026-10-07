@@ -9,22 +9,15 @@ const { rateLimit } = require('express-rate-limit');
 
 const app = express();
 
-// Proxy de confianza para obtener la IP real del cliente (req.ip).
-// 'loopback' = solo se cree X-Forwarded-For si la conexión llega desde 127.0.0.1,
-// que es el caso de ngrok: sin esto, todos los choferes compartirían la misma IP.
 app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
 
-// Cabeceras de seguridad (también quita X-Powered-By)
 app.use(helmet());
 
-// CORS: solo el panel web puede llamar a la API desde un navegador.
-// La app Flutter no envía Origin, así que no le afecta.
 const origenesPermitidos = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:8080')
     .split(',').map(o => o.trim()).filter(Boolean);
 app.use(cors({ origin: origenesPermitidos }));
 
 app.use(express.json());
-// Express 5 deja req.body en undefined si no llega JSON; así los handlers pueden desestructurar sin romperse
 app.use((req, res, next) => { req.body ??= {}; next(); });
 
 // ── MIDDLEWARE JWT ─────────────────────────────────────────────────────────────
@@ -40,11 +33,9 @@ const verificarToken = (req, res, next) => {
     }
 };
 
-// Filtro de fechas de /api/admin/viajes y su CSV. Recibe días 'YYYY-MM-DD'
-// (cada uno opcional); 'hasta' incluye el día completo, no solo las 00:00.
 const esDiaValido = (s) =>
     typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
-    !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s); // rechaza 2026-02-30
+    !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s);
 
 const filtroFechas = ({ desde, hasta }) => {
     for (const dia of [desde, hasta])
@@ -59,7 +50,6 @@ const filtroFechas = ({ desde, hasta }) => {
     return { where: condiciones.length ? ` WHERE ${condiciones.join(' AND ')}` : '', params };
 };
 
-// Límite de intentos de login fallidos por IP (los exitosos no cuentan)
 const limiteLogin = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 10,
@@ -69,16 +59,12 @@ const limiteLogin = rateLimit({
     message: { error: '⏳ Demasiados intentos fallidos. Espera 15 minutos.' },
 });
 
-// Solo administradores del panel (token emitido por /api/admin/login)
 const soloAdmin = (req, res, next) => {
     if (req.usuario?.tipo !== 'admin')
         return res.status(403).json({ error: '🚫 Requiere permisos de administrador.' });
     next();
 };
 
-// Solo choferes activos (token emitido por /api/login).
-// Se consulta la BD para que desactivar a un chofer corte su acceso al instante,
-// aunque su token de 30 días siga vigente.
 const soloChofer = async (req, res, next) => {
     if (req.usuario?.tipo !== 'chofer')
         return res.status(403).json({ error: '🚫 Solo para conductores.' });
@@ -94,9 +80,7 @@ const soloChofer = async (req, res, next) => {
 
 app.get('/', (req, res) => res.json({ mensaje: '📡 Central de Radio Taxis Pulpos en línea' }));
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // PARÁMETROS TOPOGRÁFICOS (incluye combustible)
-// ═══════════════════════════════════════════════════════════════════════════════
 
 // Público — Flutter lo descarga al iniciar
 app.get('/api/parametros', async (req, res) => {
@@ -122,8 +106,7 @@ app.get('/api/parametros', async (req, res) => {
     }
 });
 
-// Rangos válidos [min, max]: los mismos min/max de los inputs del panel (App.jsx).
-// Si se cambia uno, cambiar el otro.
+// Mismos límites que los inputs del panel
 const RANGOS_PARAMETROS = {
     costo_base_km:          [0.5, 10],
     consumo_litros_km:      [0.05, 0.5],
@@ -142,7 +125,6 @@ app.put('/api/admin/parametros/:id', verificarToken, soloAdmin, async (req, res)
     if (!zona_ciudad || zona_ciudad.length > 100)
         return res.status(400).json({ error: '⚠️ La zona es obligatoria (máx. 100 caracteres).' });
 
-    // El panel envía los números como texto: se aceptan ambos, pero deben ser números válidos
     const valores = {};
     for (const [campo, [min, max]] of Object.entries(RANGOS_PARAMETROS)) {
         const crudo = req.body[campo];
@@ -190,7 +172,6 @@ app.put('/api/admin/parametros/:id', verificarToken, soloAdmin, async (req, res)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, res) => {
-    // El chofer sale del token, nunca del body: así nadie puede subir viajes a nombre de otro
     const chofer_id = req.usuario.id;
     const {
         distancia_km,
@@ -468,13 +449,11 @@ app.patch('/api/admin/choferes/:id/estado', verificarToken, soloAdmin, async (re
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MANEJO DE ERRORES — nunca enviar stack traces ni rutas internas al cliente
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
 
 app.use((err, req, res, next) => {
-    // JSON mal formado o body demasiado grande (errores de express.json)
     if (err.type === 'entity.parse.failed')
         return res.status(400).json({ error: 'JSON inválido.' });
     if (err.status >= 400 && err.status < 500)
@@ -484,7 +463,6 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Error interno.' });
 });
 
-// Solo escucha al ejecutarse directamente (node index.js); los tests importan la app
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, '0.0.0.0', () =>

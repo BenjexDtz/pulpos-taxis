@@ -31,8 +31,6 @@ class AplicacionPulpos extends StatelessWidget {
   }
 }
 
-/// Al abrir la app: si hay una sesión vigente va directo al taxímetro;
-/// si no (o venció), al login.
 class PantallaInicio extends StatelessWidget {
   const PantallaInicio({super.key});
 
@@ -55,7 +53,6 @@ class PantallaInicio extends StatelessWidget {
   }
 }
 
-/// Cierra la sesión y vuelve al login borrando el historial de pantallas.
 Future<void> irAlLogin(BuildContext context) async {
   await Sesion.cerrar();
   if (!context.mounted) return;
@@ -138,7 +135,6 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     bool sesionRechazada = false;
     for (var viaje in pendientes) {
       try {
-        // El servidor identifica al chofer por el token, no por el body
         final response = await http.post(
           Uri.parse('$urlServidor/api/viajes/sincronizar'),
           headers: {
@@ -156,7 +152,6 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           );
           enviados++;
         } else if (response.statusCode == 401 || response.statusCode == 403) {
-          // Token vencido o cuenta desactivada: no tiene sentido seguir intentando
           sesionRechazada = true;
           break;
         }
@@ -174,7 +169,6 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           backgroundColor: Colors.red[800],
         ),
       );
-      // Los pendientes quedan guardados: se suben cuando vuelva a entrar
       await irAlLogin(context);
       return;
     }
@@ -189,9 +183,6 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     }
   }
 
-  // ── Cierre de sesión ───────────────────────────────────────────────────────
-  // Si quedan viajes sin subir se avisa: no se pierden (quedan en el teléfono),
-  // pero solo se podrán sincronizar cuando este mismo chofer vuelva a entrar.
   Future<void> _confirmarCierreSesion() async {
     final choferId = await Sesion.choferId();
     final pendientes = choferId == null
@@ -282,7 +273,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   void detenerRastreo() async {
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
-    _detector?.tick(DateTime.now()); // cierra el último tramo hasta este instante
+    _detector?.tick(DateTime.now());
 
     // Enviar última posición al servidor
     if (posicionAnterior != null) {
@@ -303,7 +294,6 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       costoMinutoDetencion: params.costoMinutoDetencion,
     );
 
-    // Antes caía a chofer 1 si no había sesión: el viaje quedaba a nombre de otro
     final idChofer = await Sesion.choferId();
 
     await BaseDatosLocal.instancia.insertarViaje({
@@ -315,7 +305,6 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       'tarifa_total': tarifaFinal,
       'estado_sincronizacion': 0,
       'fecha_hora': DateTime.now().toIso8601String(),
-      // Parámetros exactos con los que se calculó la tarifa (auditoría)
       'tipo_superficie': fSuperficie == 1.0 ? 'asfalto' : 'tierra',
       'costo_base_km': params.costoBaseKm,
       'costo_minuto_detencion': params.costoMinutoDetencion,

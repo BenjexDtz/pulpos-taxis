@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Sesión del chofer guardada en el teléfono (SharedPreferences).
-/// Las claves son las mismas que ya leen otros módulos (p. ej. motor_gps).
 class Sesion {
   static const _claveToken = 'jwt_token';
   static const _claveChofer = 'chofer_id';
@@ -19,7 +17,6 @@ class Sesion {
     await prefs.setString(_claveNombre, nombre);
   }
 
-  /// Token guardado si sigue vigente; si venció, lo borra y devuelve null.
   static Future<String?> tokenValido() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_claveToken);
@@ -34,8 +31,6 @@ class Sesion {
   static Future<String?> nombre() async =>
       (await SharedPreferences.getInstance()).getString(_claveNombre);
 
-  /// Borra solo la sesión. Los viajes en SQLite NO se tocan: los pendientes
-  /// se sincronizan cuando ese mismo chofer vuelva a iniciar sesión.
   static Future<void> cerrar() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_claveToken);
@@ -44,9 +39,7 @@ class Sesion {
   }
 }
 
-/// Lee el `exp` del JWT para saber si venció. No verifica la firma (eso lo hace
-/// el servidor en cada petición): solo evita entrar al taxímetro con una sesión
-/// vencida. Un token mal formado o sin `exp` se considera no vigente.
+// Solo lee exp; la firma la valida el servidor
 bool tokenVigente(String token, DateTime ahora) {
   final partes = token.split('.');
   if (partes.length != 3) return false;
