@@ -484,8 +484,12 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Error interno.' });
 });
 
-const PORT = process.env.PORT || 3000;
+// Solo escucha al ejecutarse directamente (node index.js); los tests importan la app
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, '0.0.0.0', () =>
+        console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
+    );
+}
 
-app.listen(PORT, '0.0.0.0', () =>
-  console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
-);
+module.exports = { app, filtroFechas };
