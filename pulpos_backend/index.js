@@ -4,9 +4,25 @@ const pool = require('./db');
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
 
 const app = express();
-app.use(cors());
+
+// Proxy de confianza para obtener la IP real del cliente (req.ip).
+// 'loopback' = solo se cree X-Forwarded-For si la conexión llega desde 127.0.0.1,
+// que es el caso de ngrok: sin esto, todos los choferes compartirían la misma IP.
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
+
+// Cabeceras de seguridad (también quita X-Powered-By)
+app.use(helmet());
+
+// CORS: solo el panel web puede llamar a la API desde un navegador.
+// La app Flutter no envía Origin, así que no le afecta.
+const origenesPermitidos = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:8080')
+    .split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors({ origin: origenesPermitidos }));
+
 app.use(express.json());
 // Express 5 deja req.body en undefined si no llega JSON; así los handlers pueden desestructurar sin romperse
 app.use((req, res, next) => { req.body ??= {}; next(); });
@@ -23,6 +39,16 @@ const verificarToken = (req, res, next) => {
         return res.status(401).json({ error: '🚫 Token inválido o expirado.' });
     }
 };
+
+// Límite de intentos de login fallidos por IP (los exitosos no cuentan)
+const limiteLogin = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    skipSuccessfulRequests: true,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: '⏳ Demasiados intentos fallidos. Espera 15 minutos.' },
+});
 
 // Solo administradores del panel (token emitido por /api/admin/login)
 const soloAdmin = (req, res, next) => {
@@ -203,7 +229,7 @@ app.post('/api/posicion', verificarToken, soloChofer, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Login app móvil (choferes)
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', limiteLogin, async (req, res) => {
     const { placa_vehiculo, password } = req.body;
     if (typeof placa_vehiculo !== 'string' || typeof password !== 'string' || !placa_vehiculo || !password)
         return res.status(400).json({ error: '⚠️ Placa y contraseña son obligatorias.' });
@@ -230,7 +256,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Login panel admin (tabla administradores)
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', limiteLogin, async (req, res) => {
     const { usuario, password } = req.body;
     if (typeof usuario !== 'string' || typeof password !== 'string' || !usuario || !password)
         return res.status(400).json({ error: '⚠️ Usuario y contraseña son obligatorios.' });

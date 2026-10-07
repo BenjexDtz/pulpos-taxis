@@ -47,6 +47,8 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulpos2026}
       PORT: 3000
+      # Orígenes del navegador que pueden llamar a la API (panel web)
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
     ports:
       - "3000:3000"
     healthcheck:
