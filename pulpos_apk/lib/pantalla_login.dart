@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'sesion.dart';
 import 'main.dart'; // Para poder saltar a tu taxímetro
 import 'config.dart';
 
@@ -45,11 +45,12 @@ class _PantallaLoginState extends State<PantallaLogin> {
         final int choferId = data['chofer']['id'];
         final String nombreChofer = data['chofer']['nombre_completo'];
 
-        // 2. Guardamos todo en el disco duro del celular (SharedPreferences)
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('jwt_token', token);
-        await prefs.setInt('chofer_id', choferId);
-        await prefs.setString('nombre_chofer', nombreChofer);
+        // 2. Guardamos la sesión en el celular (se recuerda al reabrir la app)
+        await Sesion.guardar(
+          token: token,
+          choferId: choferId,
+          nombre: nombreChofer,
+        );
 
         // 3. ¡Abrimos la puerta! Saltamos al taxímetro y destruimos la pantalla de login atrás
         if (mounted) {

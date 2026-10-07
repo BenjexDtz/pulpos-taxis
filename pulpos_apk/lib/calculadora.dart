@@ -97,8 +97,9 @@ class ParametrosService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString(_cacheKey);
-      if (cached != null)
+      if (cached != null) {
         return ParametrosTopograficos.fromJson(jsonDecode(cached));
+      }
     } catch (_) {}
 
     return ParametrosTopograficos.porDefecto;

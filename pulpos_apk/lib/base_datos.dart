@@ -84,6 +84,17 @@ class BaseDatosLocal {
     return idGenerado;
   }
 
+  // Viajes de ESE chofer aún no subidos. El servidor asigna cada viaje al chofer
+  // del token, así que nunca se deben enviar los de otro chofer del mismo teléfono.
+  Future<List<Map<String, dynamic>>> viajesPendientes(int choferId) async {
+    final db = await instancia.database;
+    return await db.query(
+      'viajes',
+      where: 'estado_sincronizacion = ? AND chofer_id = ?',
+      whereArgs: [0, choferId],
+    );
+  }
+
   // Esta función saca todo lo que hay en la tabla
   Future<List<Map<String, dynamic>>> obtenerTodosLosViajes() async {
     final db = await instancia.database;

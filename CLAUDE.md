@@ -58,11 +58,11 @@ Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa
 Los parámetros viven en una sola fila de `parametros_topograficos`. `GET /api/parametros` es público; la app los cachea en `SharedPreferences` y cae a `ParametrosTopograficos.porDefecto` sin red. `pg` devuelve `NUMERIC` como **string**: parsear siempre (`parseFloat` / `double.parse(x.toString())`).
 
 ### Flujo offline-first de la app
-1. Login → guarda `jwt_token` y `chofer_id` en `SharedPreferences`.
+1. `PantallaInicio` usa `Sesion.tokenValido()` (`lib/sesion.dart`, lee el `exp` del JWT) para ir directo al taxímetro o al login. Toda lectura/escritura de la sesión pasa por `Sesion`; `irAlLogin()` la cierra. Cerrar sesión **no** borra viajes de SQLite.
 2. Durante el viaje: `MotorGPS.obtenerFlujoUbicacion()` (distanceFilter 10 m) acumula distancia en `main.dart` y envía `/api/posicion` cada 10 posiciones.
 3. Espera (`Td`): `lib/detector_detencion.dart`. Como el GPS no emite posiciones con el taxi quieto, se considera detenido si velocidad < 0.5 m/s **o** pasan 10 s sin posición nueva. Lógica pura y testeada; no volver a leer `Position.speed` directamente.
 4. Al finalizar, el viaje se guarda en SQLite (`base_datos.dart`, tabla `viajes`) con todos los parámetros aplicados y `estado_sincronizacion = 0`.
-5. Botón "SINC. NUBE": `viajeParaServidor()` (`lib/api_sync.dart`) mapea columnas locales → campos `*_aplicado` del servidor y omite nulos (el servidor aplica defaults solo a `undefined`, no a `null`). Al recibir 201 se marca `estado_sincronizacion = 1`.
+5. Botón "SINC. NUBE": envía solo `BaseDatosLocal.viajesPendientes(choferId)` del chofer con sesión (el servidor asigna el viaje al chofer del token, así que mezclar choferes del mismo teléfono los reasignaría). `viajeParaServidor()` (`lib/api_sync.dart`) mapea columnas locales → campos `*_aplicado` del servidor y omite nulos (el servidor aplica defaults solo a `undefined`, no a `null`). Al recibir 201 se marca `estado_sincronizacion = 1`.
 
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
