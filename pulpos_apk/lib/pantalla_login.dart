@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart'; // Para poder saltar a tu taxímetro
+import 'config.dart';
 
 class PantallaLogin extends StatefulWidget {
   const PantallaLogin({super.key});
@@ -27,12 +28,9 @@ class _PantallaLoginState extends State<PantallaLogin> {
       _isLoading = true;
     });
 
-    // ⚠️ La IP exacta de tu computadora donde corre Node.js
-    const String url = 'https://handclap-powwow-union.ngrok-free.dev/api/login';
-
     try {
       final response = await http.post(
-        Uri.parse(url),
+        Uri.parse('$urlServidor/api/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'placa_vehiculo': _placaController.text.trim(),

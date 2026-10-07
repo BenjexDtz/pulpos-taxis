@@ -172,23 +172,14 @@ La app móvil no se incluye en Docker porque requiere un dispositivo Android fí
 - Android Studio o VS Code con extensión Flutter
 - Dispositivo Android o emulador con API ≥ 23
 
-### Configurar IP del servidor
+### Configurar la URL del servidor
 
-Antes de compilar, editar **tres archivos** con la IP de tu máquina:
+La URL del backend se define en un solo lugar: **`lib/config.dart`** (por defecto, el túnel de ngrok).
+Para usar otra sin editar código, pasarla al compilar o ejecutar:
 
-**`lib/calculadora.dart`** — constante `_urlBase`:
-```dart
-static const String _urlBase = 'http://TU_IP_AQUI:3000';
-```
-
-**`lib/motor_gps.dart`** — constante `_urlBase`:
-```dart
-static const String _urlBase = 'http://TU_IP_AQUI:3000';
-```
-
-**`lib/main.dart`** — constante `urlBase`:
-```dart
-const String urlBase = 'http://TU_IP_AQUI:3000';
+```bash
+flutter run --dart-define=API_URL=http://TU_IP_AQUI:3000
+flutter build apk --dart-define=API_URL=https://tu-tunel.ngrok-free.dev
 ```
 
 > **¿Cuál es mi IP?**  
@@ -196,13 +187,14 @@ const String urlBase = 'http://TU_IP_AQUI:3000';
 > Linux/Mac: `ip addr` o `ifconfig`  
 > Ejemplo típico: `192.168.1.15`  
 > ⚠️ La IP `127.0.0.1` **no funciona** en dispositivos Android — siempre usar la IP real de la red local.
+> ⚠️ Android 9+ bloquea `http://` sin cifrar: con una IP local la conexión fallará. Usar el túnel **https** de ngrok (opción por defecto).
 
 ### Ejecutar la app
 
 ```bash
 cd pulpos_apk
 flutter pub get
-flutter run
+flutter run   # añadir --dart-define=API_URL=... si no usas la URL por defecto
 ```
 
 ### Ejecutar pruebas unitarias del modelo matemático

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'config.dart';
 
 // ─── Modelo de parámetros ─────────────────────────────────────────────────────
 class ParametrosTopograficos {
@@ -72,14 +73,12 @@ class ParametrosTopograficos {
 
 // ─── Servicio de descarga de parámetros ──────────────────────────────────────
 class ParametrosService {
-  static const String _urlBase =
-      'https://handclap-powwow-union.ngrok-free.dev'; // ⚠️ Cambia tu IP
   static const String _cacheKey = 'parametros_topograficos_v3';
 
   static Future<ParametrosTopograficos> obtener() async {
     try {
       final response = await http
-          .get(Uri.parse('$_urlBase/api/parametros'))
+          .get(Uri.parse('$urlServidor/api/parametros'))
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {

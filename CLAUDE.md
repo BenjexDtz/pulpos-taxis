@@ -73,7 +73,7 @@ Los parámetros viven en una sola fila de `parametros_topograficos`. `GET /api/p
 
 ## Gotchas
 
-- **URL del servidor hardcodeada en la app** (dominio ngrok) en `pantalla_login.dart`, `calculadora.dart`, `motor_gps.dart` y `main.dart`. Cambiarla en todos.
+- La URL del backend en la app vive solo en `lib/config.dart` (`urlServidor`, default: túnel ngrok) y se sobrescribe con `--dart-define=API_URL=...`. Android 9+ bloquea `http://` sin cifrar: usar https (ngrok).
 - Credenciales de demo (semilla de `init.sql`): chofer `1234-KKK` / `123` y admin `admin@pulpos.bo` / `password`. Para validar cambios en `init.sql` sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CREATE SCHEMA` temporal + `SET LOCAL search_path` y terminar con `ROLLBACK`.
 - `ADMIN_USER` / `ADMIN_PASSWORD` del `.env` no los usa el backend; los admins viven en la tabla `administradores`.
 - Express 5: hay un middleware que fuerza `req.body ??= {}`; las rutas async propagan errores solas al manejador global.

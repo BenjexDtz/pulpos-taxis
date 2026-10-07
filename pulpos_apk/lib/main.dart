@@ -11,6 +11,7 @@ import 'pantalla_login.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'config.dart';
 
 void main() {
   runApp(const AplicacionPulpos());
@@ -79,9 +80,6 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       ),
     );
 
-    const String urlBase =
-        'https://handclap-powwow-union.ngrok-free.dev'; // ⚠️ Cambia tu IP
-
     final db = await BaseDatosLocal.instancia.database;
     final pendientes = await db.query(
       'viajes',
@@ -109,7 +107,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       try {
         // El servidor identifica al chofer por el token, no por el body
         final response = await http.post(
-          Uri.parse('$urlBase/api/viajes/sincronizar'),
+          Uri.parse('$urlServidor/api/viajes/sincronizar'),
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
