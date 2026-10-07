@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'api_sync.dart';
+import 'detector_detencion.dart';
 import 'motor_gps.dart';
 import 'calculadora.dart';
 import 'base_datos.dart';
@@ -42,7 +43,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   Position? posicionAnterior;
   bool enViaje = false;
   StreamSubscription<Position>? suscripcionGPS;
-  int segundosDetencion = 0;
+  DetectorDetencion? _detector;
+  double get minutosDetencion => _detector?.minutosDetenido ?? 0;
   Timer? relojDetencion;
   bool estaDetenido = false;
 
@@ -156,17 +158,9 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   // ── Control del viaje ──────────────────────────────────────────────────────
   void _iniciarRelojDetencion() {
     relojDetencion = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (enViaje && posicionAnterior != null) {
-        if (posicionAnterior!.speed < 0.5) {
-          setState(() {
-            segundosDetencion++;
-            estaDetenido = true;
-          });
-        } else {
-          setState(() {
-            estaDetenido = false;
-          });
-        }
+      if (enViaje && _detector != null) {
+        final detenido = _detector!.tick(DateTime.now());
+        setState(() => estaDetenido = detenido);
       }
     });
   }
@@ -178,7 +172,10 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     MotorGPS.resetContador();
     setState(() {
       distanciaTotalKm = 0.0;
-      segundosDetencion = 0;
+      _detector = DetectorDetencion(
+        inicio: DateTime.now(),
+        velocidadInicial: posInicial.speed,
+      );
       posicionAnterior = posInicial;
       enViaje = true;
     });
@@ -196,6 +193,11 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           nuevaPosicion.latitude,
           nuevaPosicion.longitude,
         );
+        _detector?.registrarPosicion(
+          DateTime.now(),
+          velocidadReportada: nuevaPosicion.speed,
+          metros: metros,
+        );
         setState(() {
           distanciaTotalKm += (metros / 1000);
         });
@@ -207,6 +209,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   void detenerRastreo() async {
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
+    _detector?.tick(DateTime.now()); // cierra el último tramo hasta este instante
 
     // Enviar última posición al servidor
     if (posicionAnterior != null) {
@@ -223,7 +226,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       precioCombustibleBs: params.precioCombustibleBs, // ← agregar
       factorAltitud: params.factorAltitud,
       factorSuperficie: fSuperficie,
-      tiempoDetencionMin: (segundosDetencion / 60),
+      tiempoDetencionMin: minutosDetencion,
       costoMinutoDetencion: params.costoMinutoDetencion,
     );
 
@@ -233,7 +236,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     await BaseDatosLocal.instancia.insertarViaje({
       'chofer_id': idChofer,
       'distancia_km': distanciaTotalKm,
-      'tiempo_detencion_min': (segundosDetencion / 60),
+      'tiempo_detencion_min': minutosDetencion,
       'factor_altitud': params.factorAltitud,
       'factor_superficie': fSuperficie,
       'tarifa_total': tarifaFinal,
@@ -283,7 +286,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       precioCombustibleBs: params.precioCombustibleBs, // ← agregar
       factorAltitud: params.factorAltitud,
       factorSuperficie: fSuperficie,
-      tiempoDetencionMin: (segundosDetencion / 60),
+      tiempoDetencionMin: minutosDetencion,
       costoMinutoDetencion: params.costoMinutoDetencion,
     );
 
