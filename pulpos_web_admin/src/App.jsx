@@ -5,8 +5,10 @@ import {
   UserPlus, LayoutDashboard, Search, KeyRound, ToggleLeft,
   ToggleRight, ShieldCheck, ShieldOff, Map, Radio, Wifi, WifiOff,
   TrendingUp, Clock, AlertCircle, X, MapPin, Download, Settings,
-  Save, Fuel
+  Save, Fuel, Building2
 } from 'lucide-react';
+import FormEmpresa from './FormEmpresa.jsx';
+import Plataforma from './Plataforma.jsx';
 
 // ─── LEAFLET ──────────────────────────────────────────────────────────────────
 function useLeaflet() {
@@ -25,7 +27,10 @@ function useLeaflet() {
   return ready;
 }
 
-const EL_ALTO_CENTER = [-16.5, -68.19];
+const leerToken = (token) => {
+  try { return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); }
+  catch { return null; }
+};
 
 const consultaFechas = (desde, hasta) => {
   const q = new URLSearchParams();
@@ -40,7 +45,7 @@ const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c => ({
 }[c]));
 
 // ─── FLEET MAP ────────────────────────────────────────────────────────────────
-function FleetMap({ choferes, viajes }) {
+function FleetMap({ choferes, viajes, empresa }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -49,7 +54,7 @@ function FleetMap({ choferes, viajes }) {
   useEffect(() => {
     if (!leafletReady || !mapRef.current || mapInstanceRef.current) return;
     const L = window.L;
-    const map = L.map(mapRef.current, { zoomControl: false }).setView(EL_ALTO_CENTER, 14);
+    const map = L.map(mapRef.current, { zoomControl: false });
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -59,6 +64,12 @@ function FleetMap({ choferes, viajes }) {
     mapInstanceRef.current = map;
     return () => { if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; } };
   }, [leafletReady]);
+
+  const centroLat = Number(empresa?.centro_lat ?? -16.5);
+  const centroLng = Number(empresa?.centro_lng ?? -68.19);
+  useEffect(() => {
+    if (leafletReady && mapInstanceRef.current) mapInstanceRef.current.setView([centroLat, centroLng], 14);
+  }, [leafletReady, centroLat, centroLng]);
 
   useEffect(() => {
     if (!leafletReady || !mapInstanceRef.current) return;
@@ -93,14 +104,14 @@ function FleetMap({ choferes, viajes }) {
             <div style="color:#888;">🚗 ${escaparHtml(chofer.placa_vehiculo)}</div>
             <hr style="border-color:#eee;margin:6px 0;"/>
             <div>Viajes: <b>${trips}</b></div>
-            <div>Recaudado: <b style="color:#16a34a;">Bs ${total.toFixed(2)}</b></div>
+            <div>Recaudado: <b style="color:#16a34a;">${escaparHtml(empresa?.moneda_simbolo ?? 'Bs')} ${total.toFixed(2)}</b></div>
             ${minutos !== null ? `<div style="color:${enVivo ? '#16a34a' : '#d97706'};margin-top:4px;">⏱ Hace ${minutos} min</div>` : ''}
             <div style="color:#999;font-size:10px;margin-top:4px;">📍 ${parseFloat(chofer.ultima_lat).toFixed(5)}, ${parseFloat(chofer.ultima_lng).toFixed(5)}</div>
           </div>
         `);
         markersRef.current.push(marker);
       });
-  }, [leafletReady, choferes, viajes]);
+  }, [leafletReady, choferes, viajes, empresa]);
 
   return (
     <div className="relative h-full w-full">
@@ -122,7 +133,7 @@ function FleetMap({ choferes, viajes }) {
           <div className="w-3 h-3 rounded-full bg-yellow-500" />
           <span>Sin actualizar (+5 min)</span>
         </div>
-        <div className="text-gray-600 pt-0.5">El Alto · 4,100 msnm</div>
+        {empresa && <div className="text-gray-600 pt-0.5">{empresa.ciudad}{empresa.altitud_msnm ? ` · ${empresa.altitud_msnm.toLocaleString('es-BO')} msnm` : ''}</div>}
       </div>
     </div>
   );
@@ -176,7 +187,10 @@ export default function App() {
   const [mensajeReset, setMensajeReset] = useState({ tipo: '', texto: '' });
   const [guardandoReset, setGuardandoReset] = useState(false);
 
-  // Parámetros topográficos
+  const [empresa, setEmpresa] = useState(null);
+  const [guardandoEmpresa, setGuardandoEmpresa] = useState(false);
+  const [mensajeEmpresa, setMensajeEmpresa] = useState({ tipo: '', texto: '' });
+
   const [params, setParams] = useState(null);
   const [formParams, setFormParams] = useState(null);
   const [guardandoParams, setGuardandoParams] = useState(false);
@@ -192,10 +206,17 @@ export default function App() {
   }, []);
 
   const headers = useCallback(() => ({ Authorization: `Bearer ${token}` }), [token]);
+  const esSuperadmin = leerToken(token ?? '')?.rol === 'superadmin';
+  const m = empresa?.moneda_simbolo ?? 'Bs';
+
+  useEffect(() => {
+    document.title = esSuperadmin ? 'Plataforma · Central de Operaciones' : empresa?.nombre ?? 'Central de Operaciones';
+  }, [esSuperadmin, empresa]);
 
   const cerrarSesion = useCallback(() => {
     localStorage.removeItem('admin_token');
     setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso('');
+    setEmpresa(null); setParams(null); setFormParams(null);
   }, []);
 
   const manejarErrorApi = useCallback((err, mostrar) => {
@@ -234,18 +255,20 @@ export default function App() {
     } finally { setCargandoChoferes(false); }
   }, [urlServidor, headers, manejarErrorApi]);
 
-  const cargarParametros = useCallback(async () => {
+  const cargarConfig = useCallback(async () => {
     try {
-      const res = await axios.get(`${urlServidor}/api/parametros`);
-      setParams(res.data);
-      setFormParams(res.data);
+      const res = await axios.get(`${urlServidor}/api/config`, { headers: headers() });
+      setEmpresa(res.data.empresa);
+      setParams(res.data.parametros);
+      setFormParams(res.data.parametros);
     } catch (err) {
       manejarErrorApi(err, setAviso);
     }
-  }, [urlServidor, manejarErrorApi]);
+  }, [urlServidor, headers, manejarErrorApi]);
 
   const cargarTodo = useEffectEvent(() => {
-    cargarReporte(); cargarChoferes(); cargarParametros();
+    if (esSuperadmin) return;
+    cargarReporte(); cargarChoferes(); cargarConfig();
   });
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -254,7 +277,7 @@ export default function App() {
 
   const irA = (vista) => {
     setVistaActiva(vista);
-    if (vista === 'parametros') { cargarParametros(); return; }
+    if (vista === 'parametros' || vista === 'empresa') { cargarConfig(); return; }
     cargarReporte(); cargarChoferes();
   };
 
@@ -275,7 +298,7 @@ export default function App() {
       .then(blob => {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `pulpos_viajes_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.download = `${empresa?.codigo ?? 'empresa'}_viajes_${new Date().toISOString().slice(0, 10)}.csv`;
         link.click();
       })
       .catch(err => setErrorDashboard(err.message));
@@ -321,13 +344,24 @@ export default function App() {
   const guardarParametros = async (e) => {
     e.preventDefault(); setGuardandoParams(true); setMensajeParams({ tipo: '', texto: '' });
     try {
-      const res = await axios.put(`${urlServidor}/api/admin/parametros/${params.id}`, formParams, { headers: headers() });
+      const res = await axios.put(`${urlServidor}/api/admin/parametros`, formParams, { headers: headers() });
       setMensajeParams({ tipo: 'exito', texto: res.data.mensaje });
       setParams(res.data.parametros);
       setTimeout(() => setMensajeParams({ tipo: '', texto: '' }), 5000);
     } catch (err) {
       setMensajeParams({ tipo: 'error', texto: err.response?.data?.error || 'Error al guardar.' });
     } finally { setGuardandoParams(false); }
+  };
+
+  const guardarEmpresa = async (datos) => {
+    setGuardandoEmpresa(true); setMensajeEmpresa({ tipo: '', texto: '' });
+    try {
+      const res = await axios.put(`${urlServidor}/api/admin/empresa`, datos, { headers: headers() });
+      setEmpresa(res.data.empresa);
+      setMensajeEmpresa({ tipo: 'exito', texto: res.data.mensaje });
+    } catch (err) {
+      manejarErrorApi(err, texto => setMensajeEmpresa({ tipo: 'error', texto }));
+    } finally { setGuardandoEmpresa(false); }
   };
 
   // ── Helpers para preview de fórmula ───────────────────────────────────────
@@ -380,17 +414,17 @@ export default function App() {
             <Radio className="w-9 h-9 text-green-400" />
             <span className="absolute top-0 right-0 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" /></span>
           </div>
-          <h1 className="text-4xl font-bold text-white tracking-widest" style={{ fontFamily: 'Rajdhani' }}>PULPOS</h1>
+          <h1 className="text-4xl font-bold text-white tracking-widest" style={{ fontFamily: 'Rajdhani' }}>RADIO TAXIS</h1>
           <p className="font-radar text-green-500 text-xs tracking-[0.4em] mt-1">CENTRAL DE OPERACIONES</p>
-          <p className="text-gray-600 text-xs mt-2 font-radar">El Alto · Bolivia · 4,100 msnm</p>
+          <p className="text-gray-600 text-xs mt-2 font-radar">Plataforma de tarificación</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8" style={{ boxShadow: '0 0 60px #10b98108' }}>
           {errorLogin && <div className="flex items-center space-x-2 bg-red-950 border border-red-800 text-red-400 p-3 rounded-lg mb-6 font-radar text-sm"><AlertCircle className="w-4 h-4 flex-shrink-0" /><span>{errorLogin}</span></div>}
           <form onSubmit={iniciarSesion} className="space-y-5">
             <div>
-              <label className="font-radar text-xs text-gray-500 tracking-widest block mb-2">USUARIO</label>
+              <label className="font-radar text-xs text-gray-500 tracking-widest block mb-2">CORREO</label>
               <div className="relative"><User className="w-4 h-4 absolute left-4 top-3.5 text-gray-600" />
-                <input type="text" value={usuario} onChange={e => setUsuario(e.target.value)} className="w-full bg-gray-800 border border-gray-700 text-white pl-11 pr-4 py-3 rounded-xl font-radar text-sm focus:outline-none focus:border-green-500 transition placeholder-gray-700" placeholder="admin" /></div>
+                <input type="email" value={usuario} onChange={e => setUsuario(e.target.value)} className="w-full bg-gray-800 border border-gray-700 text-white pl-11 pr-4 py-3 rounded-xl font-radar text-sm focus:outline-none focus:border-green-500 transition placeholder-gray-700" placeholder="gerencia@empresa.bo" /></div>
             </div>
             <div>
               <label className="font-radar text-xs text-gray-500 tracking-widest block mb-2">CONTRASEÑA</label>
@@ -407,12 +441,17 @@ export default function App() {
     </div>
   );
 
-  const navItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'TABLERO' },
-    { id: 'mapa', icon: Map, label: 'RADAR' },
-    { id: 'conductores', icon: Users, label: 'FLOTA' },
-    { id: 'parametros', icon: Settings, label: 'PARÁMETROS' },
-  ];
+  const navItems = esSuperadmin
+    ? [{ id: 'plataforma', icon: Building2, label: 'EMPRESAS' }]
+    : [
+      { id: 'dashboard', icon: LayoutDashboard, label: 'TABLERO' },
+      { id: 'mapa', icon: Map, label: 'RADAR' },
+      { id: 'conductores', icon: Users, label: 'FLOTA' },
+      { id: 'parametros', icon: Settings, label: 'PARÁMETROS' },
+      { id: 'empresa', icon: Building2, label: 'EMPRESA' },
+    ];
+  const vista = esSuperadmin ? 'plataforma' : vistaActiva;
+  const colorMarca = empresa?.color_primario ?? '#10b981';
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
@@ -445,16 +484,21 @@ export default function App() {
       <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-4 lg:px-8 py-3 flex justify-between items-center">
           <div className="flex items-center space-x-3">
-            <div className="relative">
-              <Radio className="w-7 h-7 text-green-400" />
-              <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" /></span>
+            {empresa?.logo_url
+              ? <img src={empresa.logo_url} alt="" className="w-8 h-8 rounded-lg object-contain bg-gray-800" />
+              : <div className="relative">
+                  <Radio className="w-7 h-7" style={{ color: colorMarca }} />
+                  <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" /></span>
+                </div>}
+            <div className="flex items-baseline gap-2 min-w-0 max-w-[24rem]">
+              <span className="truncate text-white font-bold text-xl tracking-widest">{esSuperadmin ? 'PLATAFORMA' : (empresa?.nombre ?? '').toUpperCase()}</span>
+              <span className="shrink-0 font-bold text-xl tracking-widest" style={{ color: colorMarca }}>ADMIN</span>
             </div>
-            <div><span className="text-white font-bold text-xl tracking-widest">PULPOS</span><span className="text-green-500 font-bold text-xl tracking-widest"> ADMIN</span></div>
           </div>
           <div className="flex items-center space-x-1 bg-gray-800 p-1 rounded-xl">
             {navItems.map(item => (
               <button key={item.id} onClick={() => irA(item.id)}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold tracking-widest transition ${vistaActiva === item.id ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold tracking-widest transition ${vista === item.id ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
                 <item.icon className="w-4 h-4" /><span className="hidden md:inline">{item.label}</span>
               </button>
             ))}
@@ -478,11 +522,32 @@ export default function App() {
           </div>
         )}
 
+        {vista === 'plataforma' && (
+          <Plataforma urlServidor={urlServidor} headers={headers} manejarErrorApi={manejarErrorApi} />
+        )}
+
+        {vista === 'empresa' && (
+          <div className="max-w-3xl bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center space-x-3">
+              <Building2 className="w-5 h-5 text-yellow-400" />
+              <div>
+                <h2 className="font-bold text-white tracking-wider">DATOS DE LA EMPRESA</h2>
+                <p className="font-radar text-xs text-gray-600">Código para los choferes: <span className="text-yellow-400">{empresa?.codigo}</span></p>
+              </div>
+            </div>
+            <div className="p-6">
+              {empresa
+                ? <FormEmpresa key={empresa.id} inicial={empresa} onGuardar={guardarEmpresa} guardando={guardandoEmpresa} mensaje={mensajeEmpresa} />
+                : <div className="text-center py-10 text-gray-700 font-radar text-sm">Cargando...</div>}
+            </div>
+          </div>
+        )}
+
         {/* ── DASHBOARD ── */}
-        {vistaActiva === 'dashboard' && (
+        {vista === 'dashboard' && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard icon={DollarSign} label="RECAUDACIÓN" value={`Bs ${totalRecaudado.toFixed(2)}`} sub="viajes filtrados" color="green" />
+              <StatCard icon={DollarSign} label="RECAUDACIÓN" value={`${m} ${totalRecaudado.toFixed(2)}`} sub="viajes filtrados" color="green" />
               <StatCard icon={Activity} label="VIAJES" value={viajesFiltrados.length} sub={`de ${viajes.length} total`} color="blue" />
               <StatCard icon={Car} label="FLOTA ACTIVA" value={activosCount} sub={`${conGPSVivo} con GPS en vivo`} color="yellow" pulse />
               <StatCard icon={TrendingUp} label="KM RECORRIDOS" value={kmTotal.toFixed(1)} sub="kilómetros acumulados" color="purple" />
@@ -525,7 +590,7 @@ export default function App() {
                         <td className="px-5 py-4"><div className="font-semibold text-white">{viaje.chofer}</div><div className="font-radar text-xs text-green-500 mt-0.5">{viaje.placa_vehiculo}</div></td>
                         <td className="px-5 py-4 font-radar text-blue-400">{parseFloat(viaje.distancia_km).toFixed(2)} km</td>
                         <td className="px-5 py-4 font-radar text-yellow-500">{Math.floor(viaje.tiempo_detencion_min)} min</td>
-                        <td className="px-5 py-4 font-radar text-green-400 font-bold text-base">Bs {parseFloat(viaje.tarifa_total).toFixed(2)}</td>
+                        <td className="px-5 py-4 font-radar text-green-400 font-bold text-base">{m} {parseFloat(viaje.tarifa_total).toFixed(2)}</td>
                         <td className="px-5 py-4 font-radar text-xs text-gray-600">{new Date(viaje.fecha_hora).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                       </tr>
                     ))}
@@ -537,7 +602,7 @@ export default function App() {
         )}
 
         {/* ── RADAR ── */}
-        {vistaActiva === 'mapa' && (
+        {vista === 'mapa' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -550,7 +615,7 @@ export default function App() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
               <div className="lg:col-span-3 bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden" style={{ height: '540px' }}>
-                <FleetMap choferes={choferes} viajes={viajes} />
+                <FleetMap choferes={choferes} viajes={viajes} empresa={empresa} />
               </div>
               <div className="space-y-3">
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -594,11 +659,11 @@ export default function App() {
                       {[
                         ['FH Altitud', `${params.factor_altitud}×`],
                         ['FR Tierra', `${params.factor_superficie}×`],
-                        ['Cb/km', `Bs ${params.costo_base_km}`],
+                        ['Cb/km', `${m} ${params.costo_base_km}`],
                         ['Cl', `${params.consumo_litros_km} L/km`],
-                        ['Pc', `Bs ${params.precio_combustible_bs}/L`],
-                        ['Cl×Pc/km', `Bs ${params.costo_combustible_km}`],
-                        ['Ct/min', `Bs ${params.costo_minuto_detencion}`],
+                        ['Pc', `${m} ${params.precio_combustible_bs}/L`],
+                        ['Cl×Pc/km', `${m} ${params.costo_combustible_km}`],
+                        ['Ct/min', `${m} ${params.costo_minuto_detencion}`],
                       ].map(([k, v]) => (
                         <div key={k} className="flex justify-between">
                           <span className="font-radar text-xs text-gray-600">{k}</span>
@@ -614,7 +679,7 @@ export default function App() {
         )}
 
         {/* ── FLOTA ── */}
-        {vistaActiva === 'conductores' && (
+        {vista === 'conductores' && (
           <div className="space-y-6">
             <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden max-w-2xl">
               <div className="px-6 py-4 border-b border-gray-800 flex items-center space-x-3">
@@ -691,7 +756,7 @@ export default function App() {
         )}
 
         {/* ── PARÁMETROS TOPOGRÁFICOS ── */}
-        {vistaActiva === 'parametros' && (
+        {vista === 'parametros' && (
           <div className="max-w-2xl space-y-6">
             <div>
               <h2 className="font-bold text-white text-2xl tracking-wider flex items-center space-x-2">
@@ -758,7 +823,7 @@ export default function App() {
                         </div>
                         <div>
                           <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
-                            Pc — PRECIO GASOLINA (Bs/litro)
+                            Pc — PRECIO COMBUSTIBLE ({m}/litro)
                           </label>
                           <p className="font-radar text-xs text-gray-700 mb-2">
                             Precio actual sin subvención gubernamental
@@ -768,14 +833,14 @@ export default function App() {
                             value={formParams.precio_combustible_bs}
                             onChange={e => setFormParams({ ...formParams, precio_combustible_bs: e.target.value })} />
                           <p className="font-radar text-xs text-gray-700 mt-1">
-                            Ref: Bs 6.96 (mayo 2026)
+                            Precio vigente del litro en tu ciudad
                           </p>
                         </div>
                         {/* Resultado calculado en tiempo real */}
                         <div className="col-span-2 bg-gray-900 border border-orange-900 rounded-lg px-4 py-2 flex items-center justify-between">
                           <span className="font-radar text-xs text-gray-600">Cl × Pc = costo gasolina/km</span>
                           <span className="font-radar text-sm text-orange-400 font-bold">
-                            Bs {previewCostoCombustibleKm()}/km
+                            {m} {previewCostoCombustibleKm()}/km
                           </span>
                         </div>
                       </div>
@@ -790,7 +855,7 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-5">
                         <div>
                           <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
-                            Cb — COSTO BASE / KM (Bs)
+                            Cb — COSTO BASE / KM ({m})
                           </label>
                           <p className="font-radar text-xs text-gray-700 mb-2">
                             Ganancia del conductor + depreciación
@@ -805,7 +870,7 @@ export default function App() {
                             FH — FACTOR ALTITUD
                           </label>
                           <p className="font-radar text-xs text-gray-700 mb-2">
-                            Penalización por operar a 4,100 msnm
+                            Penalización por la altitud{empresa?.altitud_msnm ? ` (${empresa.altitud_msnm.toLocaleString('es-BO')} msnm)` : ''}
                           </p>
                           <input type="number" step="0.01" min="1" max="3" required
                             className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl font-radar text-sm focus:outline-none focus:border-yellow-500 transition"
@@ -826,7 +891,7 @@ export default function App() {
                         </div>
                         <div>
                           <label className="font-radar text-xs text-gray-600 tracking-widest block mb-1">
-                            Ct — COSTO / MIN DETENCIÓN (Bs)
+                            Ct — COSTO / MIN DETENCIÓN ({m})
                           </label>
                           <p className="font-radar text-xs text-gray-700 mb-2">
                             Cobro por tiempo en espera o tráfico
@@ -841,7 +906,7 @@ export default function App() {
                         <div className="col-span-2 bg-gray-900 border border-yellow-900 rounded-lg px-4 py-2 flex items-center justify-between">
                           <span className="font-radar text-xs text-gray-600">Cb + Cl×Pc = costo variable total/km</span>
                           <span className="font-radar text-sm text-yellow-400 font-bold">
-                            Bs {previewCostoVariableKm()}/km
+                            {m} {previewCostoVariableKm()}/km
                           </span>
                         </div>
                       </div>
@@ -862,7 +927,7 @@ export default function App() {
                           <span className="text-gray-600"> + 10×Ct</span>
                         </div>
                         <div className="text-right">
-                          <span className="text-green-400 text-base font-bold">Bs {previewTarifa(1.0)}</span>
+                          <span className="text-green-400 text-base font-bold">{m} {previewTarifa(1.0)}</span>
                           <span className="text-gray-600 text-xs ml-2">asfalto</span>
                         </div>
                       </div>
@@ -876,7 +941,7 @@ export default function App() {
                         </div>
                         <div className="text-right">
                           <span className="text-orange-400 text-base font-bold">
-                            Bs {previewTarifa(parseFloat(formParams.factor_superficie || 1))}
+                            {m} {previewTarifa(parseFloat(formParams.factor_superficie || 1))}
                           </span>
                           <span className="text-gray-600 text-xs ml-2">tierra/complejo</span>
                         </div>
