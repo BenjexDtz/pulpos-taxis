@@ -207,42 +207,26 @@ flutter run
 
 ### Ejecutar pruebas unitarias del modelo matemático
 
-<<<<<<< HEAD
 ```bash
 cd pulpos_apk
-flutter test test/calculadora_test.dart
-=======
-```
-Placa: 1234-KKK
-Contraseña: 123
->>>>>>> ef55731b7f5a4c3d5df2808445867fea9da7f791
+flutter test                                    # todas las pruebas
+flutter test test/calculadora_test.dart         # solo la fórmula tarifaria
+flutter test test/detector_detencion_test.dart  # solo el tiempo de espera
 ```
 
 ---
 
 ## 🔑 Credenciales de Prueba <a name="credenciales"></a>
 
-<<<<<<< HEAD
-Las credenciales de acceso se definen en el archivo `.env` de la raíz del proyecto.  
-El archivo `.env.example` contiene los valores de referencia.
-
-USUARIO: pulpos@admin.bo y contraseña es password
-
-| Módulo | Usuario / Placa | Contraseña |
-|---|---|---|
-| Panel Admin (web) | `admin` | la definida en `ADMIN_PASSWORD` de tu `.env` |
-| App Móvil (Flutter) | `1234-PUL` | `demo1234` |
-| PostgreSQL (Docker) | el valor de `DB_USER` | el valor de `DB_PASSWORD` |
-
-> ⚠️ **Importante:** Cambia todas las contraseñas antes de un despliegue en producción.
-=======
-
 | Módulo | Usuario/Placa | Contraseña |
 |---|---|---|
 | Panel Admin (web) | `admin@pulpos.bo` | `password` |
 | App Móvil (Flutter) | `1234-KKK` | `123` |
 | PostgreSQL (Docker) | `pulpos` | `pulpos2026` |
->>>>>>> ef55731b7f5a4c3d5df2808445867fea9da7f791
+
+> ℹ️ En una base de datos nueva creada con `database/init.sql`, el chofer de demo es `1234-PUL` con contraseña `password`.
+
+> ⚠️ **Importante:** Cambia todas las contraseñas antes de un despliegue en producción.
 
 ---
 
@@ -423,9 +407,5 @@ docker compose up --build
 ## 👤 Autor
 
 **Boris Benjamín Barboza Lima**  
-<<<<<<< HEAD
-Taller de Grado I · Ingeniería de Sistemas 
-=======
 Taller de Grado I · Ingeniería de Sistemas  
->>>>>>> ef55731b7f5a4c3d5df2808445867fea9da7f791
 Universidad Salesiana de Bolivia · El Alto - La Paz, Bolivia · 2026
