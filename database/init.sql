@@ -109,11 +109,11 @@ VALUES (
     'gerente'
 ) ON CONFLICT (email) DO NOTHING;
 
--- Chofer de demo (contraseña: demo1234)
+-- Chofer de demo (placa: 1234-KKK, contraseña: 123)
 INSERT INTO choferes (nombre_completo, placa_vehiculo, password_hash, estado_activo)
 VALUES (
-    'Boris Benjamín Barboza', '1234-PUL',
-    '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+    'Boris Benjamín Barboza', '1234-KKK',
+    '$2b$10$aJCtorlTfrhbfijHttiQ2O83wcfgf8iTdQKpz1x.ap4wRnox8DB82',
     TRUE
 ) ON CONFLICT (placa_vehiculo) DO NOTHING;
 
@@ -143,4 +143,4 @@ FROM choferes c,
     (1.800,  5.00, 'asfalto', 1.00),
     (4.200, 15.00, 'tierra',  2.50)
 ) AS v(dist, deten, sup, fr)
-WHERE c.placa_vehiculo = '1234-PUL';
+WHERE c.placa_vehiculo = '1234-KKK';

@@ -224,8 +224,6 @@ flutter test test/detector_detencion_test.dart  # solo el tiempo de espera
 | App Móvil (Flutter) | `1234-KKK` | `123` |
 | PostgreSQL (Docker) | `pulpos` | `pulpos2026` |
 
-> ℹ️ En una base de datos nueva creada con `database/init.sql`, el chofer de demo es `1234-PUL` con contraseña `password`.
-
 > ⚠️ **Importante:** Cambia todas las contraseñas antes de un despliegue en producción.
 
 ---
