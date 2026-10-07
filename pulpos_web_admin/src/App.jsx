@@ -27,6 +27,11 @@ function useLeaflet() {
 
 const EL_ALTO_CENTER = [-16.5, -68.19];
 
+// Leaflet inserta el popup como HTML: todo texto que venga de la BD debe escaparse
+const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[c]));
+
 // ─── FLEET MAP ────────────────────────────────────────────────────────────────
 function FleetMap({ choferes, viajes }) {
   const mapRef = useRef(null);
@@ -75,8 +80,8 @@ function FleetMap({ choferes, viajes }) {
 
         const marker = L.marker(pos, { icon }).addTo(map).bindPopup(`
           <div style="font-family:monospace;min-width:200px;font-size:12px;">
-            <div style="font-weight:bold;color:${color};margin-bottom:4px;">${chofer.nombre_completo}</div>
-            <div style="color:#888;">🚗 ${chofer.placa_vehiculo}</div>
+            <div style="font-weight:bold;color:${color};margin-bottom:4px;">${escaparHtml(chofer.nombre_completo)}</div>
+            <div style="color:#888;">🚗 ${escaparHtml(chofer.placa_vehiculo)}</div>
             <hr style="border-color:#eee;margin:6px 0;"/>
             <div>Viajes: <b>${trips}</b></div>
             <div>Recaudado: <b style="color:#16a34a;">Bs ${total.toFixed(2)}</b></div>

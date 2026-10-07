@@ -8,6 +8,8 @@ const jwt = require('jsonwebtoken');
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Express 5 deja req.body en undefined si no llega JSON; así los handlers pueden desestructurar sin romperse
+app.use((req, res, next) => { req.body ??= {}; next(); });
 
 // ── MIDDLEWARE JWT ─────────────────────────────────────────────────────────────
 const verificarToken = (req, res, next) => {
@@ -203,6 +205,8 @@ app.post('/api/posicion', verificarToken, soloChofer, async (req, res) => {
 // Login app móvil (choferes)
 app.post('/api/login', async (req, res) => {
     const { placa_vehiculo, password } = req.body;
+    if (typeof placa_vehiculo !== 'string' || typeof password !== 'string' || !placa_vehiculo || !password)
+        return res.status(400).json({ error: '⚠️ Placa y contraseña son obligatorias.' });
     try {
         const r = await pool.query('SELECT * FROM choferes WHERE placa_vehiculo = $1', [placa_vehiculo]);
         if (!r.rows.length)
@@ -228,6 +232,8 @@ app.post('/api/login', async (req, res) => {
 // Login panel admin (tabla administradores)
 app.post('/api/admin/login', async (req, res) => {
     const { usuario, password } = req.body;
+    if (typeof usuario !== 'string' || typeof password !== 'string' || !usuario || !password)
+        return res.status(400).json({ error: '⚠️ Usuario y contraseña son obligatorios.' });
     try {
         const r = await pool.query(
             `SELECT * FROM administradores WHERE (email=$1 OR nombre=$1) AND activo=TRUE LIMIT 1`,
@@ -396,6 +402,23 @@ app.patch('/api/admin/choferes/:id/estado', verificarToken, soloAdmin, async (re
         if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
         res.json({ mensaje: `✅ Chofer ${estado_activo ? 'activado' : 'desactivado'}.`, chofer: r.rows[0] });
     } catch { res.status(500).json({ error: 'Error.' }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MANEJO DE ERRORES — nunca enviar stack traces ni rutas internas al cliente
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
+
+app.use((err, req, res, next) => {
+    // JSON mal formado o body demasiado grande (errores de express.json)
+    if (err.type === 'entity.parse.failed')
+        return res.status(400).json({ error: 'JSON inválido.' });
+    if (err.status >= 400 && err.status < 500)
+        return res.status(err.status).json({ error: 'Petición inválida.' });
+
+    console.error('❌ Error no controlado:', err);
+    res.status(500).json({ error: 'Error interno.' });
 });
 
 const PORT = process.env.PORT || 3000;
