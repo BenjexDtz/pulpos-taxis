@@ -22,6 +22,29 @@ const verificarToken = (req, res, next) => {
     }
 };
 
+// Solo administradores del panel (token emitido por /api/admin/login)
+const soloAdmin = (req, res, next) => {
+    if (req.usuario?.tipo !== 'admin')
+        return res.status(403).json({ error: '🚫 Requiere permisos de administrador.' });
+    next();
+};
+
+// Solo choferes activos (token emitido por /api/login).
+// Se consulta la BD para que desactivar a un chofer corte su acceso al instante,
+// aunque su token de 30 días siga vigente.
+const soloChofer = async (req, res, next) => {
+    if (req.usuario?.tipo !== 'chofer')
+        return res.status(403).json({ error: '🚫 Solo para conductores.' });
+    try {
+        const r = await pool.query('SELECT estado_activo FROM choferes WHERE id=$1', [req.usuario.id]);
+        if (!r.rows.length || !r.rows[0].estado_activo)
+            return res.status(403).json({ error: '🚫 Cuenta desactivada. Contacta a la central.' });
+        next();
+    } catch {
+        return res.status(500).json({ error: 'Error interno.' });
+    }
+};
+
 app.get('/', (req, res) => res.json({ mensaje: '📡 Central de Radio Taxis Pulpos en línea' }));
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -53,7 +76,7 @@ app.get('/api/parametros', async (req, res) => {
 });
 
 // Admin — editar parámetros (incluyendo precio combustible)
-app.put('/api/admin/parametros/:id', verificarToken, async (req, res) => {
+app.put('/api/admin/parametros/:id', verificarToken, soloAdmin, async (req, res) => {
     const { id } = req.params;
     const {
         zona_ciudad,
@@ -103,9 +126,10 @@ app.put('/api/admin/parametros/:id', verificarToken, async (req, res) => {
 // APP MÓVIL — SINCRONIZACIÓN
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.post('/api/viajes/sincronizar', async (req, res) => {
+app.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, res) => {
+    // El chofer sale del token, nunca del body: así nadie puede subir viajes a nombre de otro
+    const chofer_id = req.usuario.id;
     const {
-        chofer_id,
         distancia_km,
         tiempo_detencion_min,
         tarifa_cobrada,
@@ -119,7 +143,7 @@ app.post('/api/viajes/sincronizar', async (req, res) => {
         precio_combustible_aplicado = 6.96,
     } = req.body;
 
-    if (!chofer_id || distancia_km === undefined)
+    if (distancia_km === undefined)
         return res.status(400).json({ error: 'Faltan datos del viaje.' });
 
     try {
@@ -155,7 +179,7 @@ app.post('/api/viajes/sincronizar', async (req, res) => {
 });
 
 // GPS en tiempo real
-app.post('/api/posicion', verificarToken, async (req, res) => {
+app.post('/api/posicion', verificarToken, soloChofer, async (req, res) => {
     const { lat, lng } = req.body;
     if (lat === undefined || lng === undefined)
         return res.status(400).json({ error: 'Se requieren lat y lng.' });
@@ -189,7 +213,7 @@ app.post('/api/login', async (req, res) => {
         if (!chofer.password_hash || !await bcrypt.compare(password, chofer.password_hash))
             return res.status(401).json({ error: '❌ Placa o contraseña incorrecta.' });
         const token = jwt.sign(
-            { id: chofer.id, placa: chofer.placa_vehiculo },
+            { id: chofer.id, placa: chofer.placa_vehiculo, tipo: 'chofer' },
             process.env.JWT_SECRET, { expiresIn: '30d' }
         );
         res.json({ mensaje: '🔓 Login exitoso', token,
@@ -215,7 +239,7 @@ app.post('/api/admin/login', async (req, res) => {
         if (!await bcrypt.compare(password, admin.password_hash))
             return res.status(401).json({ error: '❌ Usuario o contraseña incorrecta.' });
         const token = jwt.sign(
-            { id: admin.id, rol: admin.rol, nombre: admin.nombre },
+            { id: admin.id, rol: admin.rol, nombre: admin.nombre, tipo: 'admin' },
             process.env.JWT_SECRET, { expiresIn: '8h' }
         );
         console.log(`🔑 Admin login: ${admin.nombre} (${admin.rol})`);
@@ -226,25 +250,12 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
-app.post('/api/choferes/registro', async (req, res) => {
-    const { nombre_completo, placa_vehiculo, password } = req.body;
-    try {
-        const hash = await bcrypt.hash(password, 10);
-        const r = await pool.query(
-            `INSERT INTO choferes (nombre_completo, placa_vehiculo, password_hash)
-             VALUES ($1,$2,$3) RETURNING id, nombre_completo, placa_vehiculo`,
-            [nombre_completo, placa_vehiculo, hash]
-        );
-        res.status(201).json({ mensaje: '✅ Chofer registrado', chofer: r.rows[0] });
-    } catch { res.status(500).json({ error: 'Error.' }); }
-});
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PANEL ADMIN — ENDPOINTS PROTEGIDOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Viajes con auditoría completa incluyendo combustible
-app.get('/api/admin/viajes', verificarToken, async (req, res) => {
+app.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
     try {
         const { desde, hasta } = req.query;
         let query = `
@@ -283,7 +294,7 @@ app.get('/api/admin/viajes', verificarToken, async (req, res) => {
 });
 
 // CSV con auditoría completa
-app.get('/api/admin/viajes/exportar', verificarToken, async (req, res) => {
+app.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, res) => {
     try {
         const { desde, hasta } = req.query;
         let query = `
@@ -330,7 +341,7 @@ app.get('/api/admin/viajes/exportar', verificarToken, async (req, res) => {
 });
 
 // Choferes
-app.get('/api/admin/choferes', verificarToken, async (req, res) => {
+app.get('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) => {
     try {
         const r = await pool.query(`
             SELECT id, nombre_completo, placa_vehiculo, estado_activo,
@@ -341,7 +352,7 @@ app.get('/api/admin/choferes', verificarToken, async (req, res) => {
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
 
-app.post('/api/admin/choferes', verificarToken, async (req, res) => {
+app.post('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) => {
     const { nombre_completo, placa_vehiculo, password } = req.body;
     if (!nombre_completo || !placa_vehiculo || !password)
         return res.status(400).json({ error: '⚠️ Faltan datos.' });
@@ -359,7 +370,7 @@ app.post('/api/admin/choferes', verificarToken, async (req, res) => {
     }
 });
 
-app.patch('/api/admin/choferes/:id/password', verificarToken, async (req, res) => {
+app.patch('/api/admin/choferes/:id/password', verificarToken, soloAdmin, async (req, res) => {
     const { nueva_password } = req.body;
     if (!nueva_password || nueva_password.length < 4)
         return res.status(400).json({ error: '⚠️ Mínimo 4 caracteres.' });
@@ -374,7 +385,7 @@ app.patch('/api/admin/choferes/:id/password', verificarToken, async (req, res) =
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
 
-app.patch('/api/admin/choferes/:id/estado', verificarToken, async (req, res) => {
+app.patch('/api/admin/choferes/:id/estado', verificarToken, soloAdmin, async (req, res) => {
     const { estado_activo } = req.body;
     try {
         const r = await pool.query(

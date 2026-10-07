@@ -97,14 +97,21 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       return;
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('jwt_token');
+
     int enviados = 0;
+    bool sesionRechazada = false;
     for (var viaje in pendientes) {
       try {
+        // El servidor identifica al chofer por el token, no por el body
         final response = await http.post(
           Uri.parse('$urlBase/api/viajes/sincronizar'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
           body: jsonEncode({
-            'chofer_id': viaje['chofer_id'],
             'distancia_km': viaje['distancia_km'],
             'tiempo_detencion_min': viaje['tiempo_detencion_min'],
             'tarifa_cobrada': viaje['tarifa_total'],
@@ -119,10 +126,25 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
             whereArgs: [viaje['id']],
           );
           enviados++;
+        } else if (response.statusCode == 401 || response.statusCode == 403) {
+          // Token vencido o cuenta desactivada: no tiene sentido seguir intentando
+          sesionRechazada = true;
+          break;
         }
       } catch (e) {
         print("Error de red: $e");
       }
+    }
+
+    if (mounted && sesionRechazada) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            '🔒 Sesión no válida o cuenta desactivada. Vuelve a iniciar sesión.',
+          ),
+          backgroundColor: Colors.red[800],
+        ),
+      );
     }
 
     if (mounted && enviados > 0) {

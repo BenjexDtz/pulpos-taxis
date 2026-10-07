@@ -257,9 +257,8 @@ Base URL: `http://localhost:3000`
 | `GET` | `/` | Estado del servidor |
 | `GET` | `/api/parametros` | Parámetros topográficos activos |
 | `POST` | `/api/login` | Login de conductor (app móvil) |
-| `POST` | `/api/viajes/sincronizar` | Subir viaje desde la app |
 
-### Panel Admin (requieren token Bearer)
+### Panel Admin (requieren token Bearer de administrador; un token de chofer recibe 403)
 
 Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"TU_PASSWORD"}`
 
@@ -279,6 +278,7 @@ Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"TU_PA
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/api/posicion` | Enviar GPS en tiempo real |
+| `POST` | `/api/viajes/sincronizar` | Subir viaje (el chofer se toma del token) |
 
 ---
 
