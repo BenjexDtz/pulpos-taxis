@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'api_sync.dart';
 import 'motor_gps.dart';
 import 'calculadora.dart';
 import 'base_datos.dart';
@@ -111,12 +112,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
           },
-          body: jsonEncode({
-            'distancia_km': viaje['distancia_km'],
-            'tiempo_detencion_min': viaje['tiempo_detencion_min'],
-            'tarifa_cobrada': viaje['tarifa_total'],
-            'fecha_hora_viaje': viaje['fecha_hora'],
-          }),
+          body: jsonEncode(viajeParaServidor(viaje)),
         );
         if (response.statusCode == 201) {
           await db.update(
@@ -243,6 +239,12 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       'tarifa_total': tarifaFinal,
       'estado_sincronizacion': 0,
       'fecha_hora': DateTime.now().toIso8601String(),
+      // Parámetros exactos con los que se calculó la tarifa (auditoría)
+      'tipo_superficie': fSuperficie == 1.0 ? 'asfalto' : 'tierra',
+      'costo_base_km': params.costoBaseKm,
+      'costo_minuto_detencion': params.costoMinutoDetencion,
+      'consumo_litros_km': params.consumoLitrosKm,
+      'precio_combustible_bs': params.precioCombustibleBs,
     });
 
     setState(() {

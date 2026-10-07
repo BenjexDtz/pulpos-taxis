@@ -1,57 +1,32 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'base_datos.dart';
+// ─── Conversión viaje local (SQLite) → body de /api/viajes/sincronizar ────────
+//
+// Se envían todos los parámetros con los que se cobró el viaje para que la
+// central pueda auditar cada tarifa. El chofer NO se envía: el servidor lo
+// toma del token.
+//
+// Los campos en NULL (viajes guardados antes de la v3 de la BD local) se omiten
+// para que el servidor aplique sus valores por defecto en lugar de recibir null.
+Map<String, dynamic> viajeParaServidor(Map<String, dynamic> viaje) {
+  final factorSuperficie = viaje['factor_superficie'];
+  final tipoSuperficie =
+      viaje['tipo_superficie'] ??
+      (factorSuperficie == null
+          ? null
+          : (factorSuperficie == 1.0 ? 'asfalto' : 'tierra'));
 
-class ApiSync {
-  // ⚠️ REEMPLAZA ESTA IP POR LA TUYA (Ej: 192.168.1.15)
-  static const String urlServidor =
-      'https://handclap-powwow-union.ngrok-free.dev/api/viajes/sincronizar';
-
-  static Future<void> sincronizarViajesPendientes() async {
-    try {
-      final db = await BaseDatosLocal.instancia.database;
-
-      // 1. Buscamos en SQLite los viajes que NO se han subido (estado = 0)
-      final List<Map<String, dynamic>> viajesPendientes = await db.query(
-        'viajes', // Asegúrate de que este es el nombre de tu tabla en SQLite
-        where: 'estado_sincronizacion = ?',
-        whereArgs: [0],
-      );
-
-      if (viajesPendientes.isEmpty) {
-        print('✅ Todo está al día. No hay viajes nuevos para sincronizar.');
-        return;
-      }
-
-      print('🚀 Intentando sincronizar ${viajesPendientes.length} viajes...');
-
-      // 2. Empaquetamos los datos en formato JSON
-      final bodyJson = jsonEncode(viajesPendientes);
-
-      // 3. Hacemos el disparo (POST) al servidor de Node.js
-      final respuesta = await http.post(
-        Uri.parse(urlServidor),
-        headers: {'Content-Type': 'application/json'},
-        body: bodyJson,
-      );
-
-      // 4. Si el servidor nos responde OK (200), actualizamos el celular
-      if (respuesta.statusCode == 200) {
-        // Marcamos esos viajes como "Subidos" (estado = 1) en SQLite
-        for (var viaje in viajesPendientes) {
-          await db.update(
-            'viajes',
-            {'estado_sincronizacion': 1},
-            where: 'id = ?',
-            whereArgs: [viaje['id']],
-          );
-        }
-        print('📥 ¡Sincronización exitosa con la Central!');
-      } else {
-        print('❌ El servidor rechazó los datos: ${respuesta.body}');
-      }
-    } catch (e) {
-      print('⚠️ Error de conexión (¿Estás en el mismo WiFi?): $e');
-    }
-  }
+  final body = <String, dynamic>{
+    'distancia_km': viaje['distancia_km'],
+    'tiempo_detencion_min': viaje['tiempo_detencion_min'],
+    'tarifa_cobrada': viaje['tarifa_total'],
+    'fecha_hora_viaje': viaje['fecha_hora'],
+    'tipo_superficie': tipoSuperficie,
+    'factor_altitud_aplicado': viaje['factor_altitud'],
+    'factor_superficie_aplicado': factorSuperficie,
+    'costo_base_aplicado': viaje['costo_base_km'],
+    'costo_minuto_aplicado': viaje['costo_minuto_detencion'],
+    'consumo_litros_aplicado': viaje['consumo_litros_km'],
+    'precio_combustible_aplicado': viaje['precio_combustible_bs'],
+  };
+  body.removeWhere((_, valor) => valor == null);
+  return body;
 }

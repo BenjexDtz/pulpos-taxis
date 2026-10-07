@@ -22,7 +22,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 2, // 🔥 SUBIMOS A VERSION 2 PARA FORZAR LA MIGRACION
+      version: 3, // v3: guarda todos los parámetros aplicados (auditoría)
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -40,16 +40,36 @@ class BaseDatosLocal {
         factor_superficie REAL,
         tarifa_total REAL,
         estado_sincronizacion INTEGER,
-        fecha_hora TEXT
+        fecha_hora TEXT,
+        $_columnasV3
       )
     ''');
   }
 
-  // 🔥 MIGRACIÓN: Si el teléfono tiene la DB vieja (v1), la borra y recrea
+  // Columnas añadidas en v3: parámetros exactos con los que se cobró el viaje
+  static const _columnasV3 = '''
+        tipo_superficie TEXT,
+        costo_base_km REAL,
+        costo_minuto_detencion REAL,
+        consumo_litros_km REAL,
+        precio_combustible_bs REAL''';
+
+  // 🔥 MIGRACIONES
   Future _actualizarDB(Database db, int oldVersion, int newVersion) async {
-    await db.execute('DROP TABLE IF EXISTS viajes_offline');
-    await db.execute('DROP TABLE IF EXISTS viajes');
-    await _crearDB(db, newVersion);
+    if (oldVersion < 2) {
+      // v1 tenía otro esquema: se recrea (ya crea las columnas v3)
+      await db.execute('DROP TABLE IF EXISTS viajes_offline');
+      await db.execute('DROP TABLE IF EXISTS viajes');
+      await _crearDB(db, newVersion);
+      return;
+    }
+    if (oldVersion < 3) {
+      // v2 → v3: se AÑADEN columnas, sin borrar viajes pendientes de sincronizar.
+      // Los viajes viejos quedan con NULL y el servidor usa sus valores por defecto.
+      for (final columna in _columnasV3.split(',')) {
+        await db.execute('ALTER TABLE viajes ADD COLUMN ${columna.trim()}');
+      }
+    }
   }
 
   // Función para guardar un nuevo viaje en la "caja negra"
