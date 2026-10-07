@@ -53,8 +53,12 @@ function FleetMap({ choferes, viajes }) {
     const L = window.L;
     const map = L.map(mapRef.current, { zoomControl: false }).setView(EL_ALTO_CENTER, 14);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '©OpenStreetMap ©CARTO', maxZoom: 19
+    // OpenStreetMap: libre y sin clave (CARTO dark_all ahora exige API key).
+    // La atribución es obligatoria. El tono oscuro se logra con CSS (.mapa-oscuro).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+      className: 'mapa-oscuro',
     }).addTo(map);
     mapInstanceRef.current = map;
     return () => { if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; } };
