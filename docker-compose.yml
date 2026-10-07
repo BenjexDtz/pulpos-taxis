@@ -52,7 +52,9 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      # 127.0.0.1 y no localhost: en Alpine localhost resuelve a ::1 (IPv6) y el
+      # backend escucha en 0.0.0.0 (solo IPv4), así que el chequeo fallaba siempre
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3

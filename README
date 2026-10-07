@@ -67,7 +67,7 @@ Sistema informático compuesto por **tres módulos** que resuelven el problema d
 - 2 GB de RAM libre
 
 ### Para desarrollo manual
-- Node.js ≥ 20
+- Node.js ≥ 22
 - PostgreSQL ≥ 15
 - Flutter SDK ≥ 3.11 (solo para la app móvil)
 
@@ -100,7 +100,7 @@ docker compose up --build
 
 Esperar hasta ver:
 ```
-pulpos_backend  | 🚀 Servidor corriendo en http://localhost:3000
+pulpos_backend  | 🚀 Servidor corriendo en puerto 3000
 pulpos_web_admin | /docker-entrypoint.sh: Configuration complete
 ```
 

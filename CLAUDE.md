@@ -10,7 +10,7 @@ Tres módulos + PostgreSQL:
 
 | Carpeta | Stack | Rol |
 |---|---|---|
-| `pulpos_backend/` | Node 20+, Express **5**, `pg`, JWT | API REST, un solo archivo `index.js` |
+| `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST, un solo archivo `index.js` |
 | `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel de gerencia, casi todo en `src/App.jsx` |
 | `pulpos_apk/` | Flutter (Dart SDK ^3.11) | Taxímetro Android offline-first |
 | `database/init.sql` | PostgreSQL 16 | **Esquema canónico** + datos semilla (`pulpos_backend/database.sql` es obsoleto) |
@@ -22,8 +22,9 @@ Tres módulos + PostgreSQL:
 docker compose up --build
 
 # Backend (lee pulpos_backend/.env al correr manual)
-cd pulpos_backend && npm install && node index.js
-node --check index.js            # no hay tests ni linter en el backend
+cd pulpos_backend && npm install && npm start
+npm test                                  # node:test, sin PostgreSQL (BD falsa en memoria)
+node --test --test-name-pattern="Login"   # un grupo/test por nombre
 
 # Panel web (dev en :5173)
 cd pulpos_web_admin && npm run dev
@@ -37,6 +38,10 @@ flutter test test/detector_detencion_test.dart            # un archivo
 flutter test --plain-name "en movimiento constante"       # un test por nombre
 flutter analyze
 ```
+
+CI (`.github/workflows/ci.yml`) corre en cada push: tests + `npm audit` del backend, lint + build del panel, `flutter analyze` + `flutter test`.
+
+Los tests del backend (`test/api.test.js`) reemplazan `pool.query` antes de importar `index.js`, que exporta `{ app, filtroFechas }` y solo hace `listen` si se ejecuta directamente.
 
 Para probar el backend sin pisar el puerto 3000 ni ensuciar la BD: `PORT=3999 node index.js`, y firmar tokens de prueba con `jsonwebtoken` usando el `JWT_SECRET` del `.env` (con el claim `tipo`, ver abajo).
 
