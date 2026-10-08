@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'base_datos.dart'; // Tu conexión a SQLite
+import 'sesion.dart';
 
 double totalDelDia(List<Map<String, dynamic>> viajes, DateTime dia) {
   double total = 0;
@@ -25,6 +26,7 @@ class PantallaHistorial extends StatefulWidget {
 class _PantallaHistorialState extends State<PantallaHistorial> {
   // Aquí guardaremos la lista de viajes que venga de SQLite
   late Future<List<Map<String, dynamic>>> _historialViajes;
+  String _moneda = 'Bs';
 
   @override
   void initState() {
@@ -34,8 +36,16 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
 
   void _cargarDatos() {
     setState(() {
-      _historialViajes = BaseDatosLocal.instancia.obtenerTodosLosViajes();
+      _historialViajes = _viajesDelChofer();
     });
+  }
+
+  Future<List<Map<String, dynamic>>> _viajesDelChofer() async {
+    final choferId = await Sesion.choferId();
+    final empresa = await Sesion.empresa();
+    if (empresa != null && mounted) setState(() => _moneda = empresa.monedaSimbolo);
+    if (choferId == null) return [];
+    return BaseDatosLocal.instancia.viajesDeChofer(choferId);
   }
 
   @override
@@ -104,7 +114,7 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'Bs ${totalGanado.toStringAsFixed(2)}',
+                      '$_moneda ${totalGanado.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
@@ -150,7 +160,7 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
                           'Distancia: ${viaje['distancia_km']} km\nFecha: $fechaLimpia',
                         ),
                         trailing: Text(
-                          'Bs ${viaje['tarifa_total'].toStringAsFixed(2)}',
+                          '$_moneda ${viaje['tarifa_total'].toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,

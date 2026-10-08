@@ -13,13 +13,26 @@ class PantallaLogin extends StatefulWidget {
 }
 
 class _PantallaLoginState extends State<PantallaLogin> {
+  final TextEditingController _empresaController = TextEditingController();
   final TextEditingController _placaController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    Sesion.ultimoCodigoEmpresa().then((codigo) {
+      if (codigo != null && mounted && _empresaController.text.isEmpty) {
+        _empresaController.text = codigo;
+      }
+    });
+  }
+
   Future<void> _iniciarSesion() async {
     // Evitar que el usuario mande campos vacíos
-    if (_placaController.text.isEmpty || _passwordController.text.isEmpty) {
+    if (_empresaController.text.trim().isEmpty ||
+        _placaController.text.isEmpty ||
+        _passwordController.text.isEmpty) {
       _mostrarError('Por favor, llena todos los campos.');
       return;
     }
@@ -33,6 +46,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
         Uri.parse('$urlServidor/api/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          'empresa': _empresaController.text.trim().toLowerCase(),
           'placa_vehiculo': _placaController.text.trim(),
           'password': _passwordController.text.trim(),
         }),
@@ -49,6 +63,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
           token: token,
           choferId: choferId,
           nombre: nombreChofer,
+          empresa: EmpresaActual.fromJson(data['empresa']),
         );
 
         // 3. ¡Abrimos la puerta! Saltamos al taxímetro y destruimos la pantalla de login atrás
@@ -100,7 +115,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  'RADIO TAXIS\nPULPOS',
+                  'RADIO TAXIS',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 32,
@@ -117,12 +132,37 @@ class _PantallaLoginState extends State<PantallaLogin> {
                 ),
                 const SizedBox(height: 50),
 
+                TextField(
+                  controller: _empresaController,
+                  autocorrect: false,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Código de empresa (Ej. pulpos)',
+                    labelStyle: TextStyle(color: Colors.grey[400]),
+                    prefixIcon: const Icon(
+                      Icons.business,
+                      color: Colors.blueAccent,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.grey[800]!),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: const BorderSide(color: Colors.blueAccent),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
                 // Campo: Placa del Vehículo
                 TextField(
                   controller: _placaController,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    labelText: 'Placa del Vehículo (Ej. 9999-TESIS)',
+                    labelText: 'Placa del Vehículo (Ej. 1234-ABC)',
                     labelStyle: TextStyle(color: Colors.grey[400]),
                     prefixIcon: const Icon(
                       Icons.directions_car,

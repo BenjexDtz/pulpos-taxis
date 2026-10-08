@@ -89,6 +89,16 @@ class BaseDatosLocal {
     );
   }
 
+  Future<List<Map<String, dynamic>>> viajesDeChofer(int choferId) async {
+    final db = await instancia.database;
+    return await db.query(
+      'viajes',
+      where: 'chofer_id = ?',
+      whereArgs: [choferId],
+      orderBy: 'id DESC',
+    );
+  }
+
   // Esta función saca todo lo que hay en la tabla
   Future<List<Map<String, dynamic>>> obtenerTodosLosViajes() async {
     final db = await instancia.database;

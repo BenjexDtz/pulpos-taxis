@@ -40,7 +40,7 @@ class MotorGPS {
         forceLocationManager: true,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationText: 'Calculando tarifa y distancia...',
-          notificationTitle: 'Radio Taxis Pulpos Activo 🚖',
+          notificationTitle: 'Taxímetro activo 🚖',
           enableWakeLock: true,
         ),
       );
