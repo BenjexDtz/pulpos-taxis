@@ -11,7 +11,7 @@ Tres módulos + PostgreSQL:
 | Carpeta | Stack | Rol |
 |---|---|---|
 | `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST, un solo archivo `index.js` |
-| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (gerencia), `Plataforma.jsx` (superadmin), `FormEmpresa.jsx` |
+| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (gerencia), `Plataforma.jsx` (superadmin), `FormEmpresa.jsx`, `Auditoria.jsx`, `Mfa.jsx` (segundo factor) |
 | `pulpos_apk/` | Flutter (Dart SDK ^3.11) | Taxímetro Android offline-first |
 | `database/init.sql` | PostgreSQL 16 | **Esquema canónico** de la base principal + semillas de dos empresas. `migraciones/` lleva una BD existente a la versión actual. `pulpos_backend/database.sql` es obsoleto |
 | `database/auditoria/` | PostgreSQL 16 | Base de auditoría separada (`esquema.sql`, `rol_app.sql`; en Docker la inicializa `inicializar.sh`) |
@@ -46,7 +46,7 @@ psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
 
 CI (`.github/workflows/ci.yml`) corre en cada push: tests unitarios + integración (servicio PostgreSQL) + `npm audit` del backend, lint + build del panel, `flutter analyze` + `flutter test`.
 
-Tests del backend: `test/api.test.js` reemplaza `pool.query`/`pool.connect` y las funciones de `auditoria.js` antes de importar `index.js` (que exporta `{ app, filtroFechas, validarEmpresa, distanciaKm }` y solo hace `listen` si se ejecuta directamente). `test/integracion.test.js` crea dos bases temporales (principal y auditoría) con las credenciales del `.env`, carga `init.sql` y `auditoria/esquema.sql`, y las borra al terminar.
+Tests del backend: `test/api.test.js` reemplaza `pool.query`/`pool.connect` y las funciones de `auditoria.js` antes de importar `index.js` (que exporta `{ app, filtroFechas, validarEmpresa, distanciaKm }` y solo hace `listen` si se ejecuta directamente). `test/mfa.test.js` cubre TOTP con los vectores de RFC 6238. `test/integracion.test.js` (su `loginAdmin` completa el segundo factor) crea dos bases temporales (principal y auditoría) con las credenciales del `.env`, carga `init.sql` y `auditoria/esquema.sql`, y las borra al terminar.
 
 Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CREATE SCHEMA` temporal + `SET LOCAL search_path` y terminar con `ROLLBACK`.
 
@@ -70,6 +70,7 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - JWT con `tipo: 'admin' | 'chofer'` y `empresa_id`. Middlewares tras `verificarToken`: `soloAdmin` (`/api/admin/*`), `soloSuperadmin` (`/api/plataforma/*`), `soloChofer` (`/api/posicion`, `/api/viajes/sincronizar`), `deEmpresa` (`/api/config`, admin o chofer). Todos consultan la BD en cada petición: desactivar un usuario o su empresa corta el acceso al instante.
 - En rutas de chofer, `chofer_id` y `empresa_id` salen del token.
 - No existe registro público de choferes.
+- **MFA (TOTP) obligatorio en el panel** (`mfa.js`, implementación propia con `node:crypto`; `qrcode` solo dibuja el QR). `/api/admin/login` no da sesión: devuelve `{mfa: 'configurar'|'verificar', token_mfa}` (JWT `tipo: 'mfa'`, 5 min) que solo aceptan `/api/admin/mfa/{configurar,activar,verificar}` vía `tokenMfa(etapa)`. El secreto va cifrado (AES-256-GCM, clave `MFA_CLAVE` o derivada de `JWT_SECRET`); códigos de respaldo en `mfa_codigos_respaldo` como SHA-256; `mfa_ultimo_paso` impide reutilizar un código; 5 fallos → `mfa_bloqueado_hasta`. `soloAdmin`/`soloSuperadmin` exigen `mfa_activo`: restablecerlo corta las sesiones. Los choferes no tienen MFA.
 - `trust proxy` = `TRUST_PROXY` o `'loopback'` (el backend se expone vía **ngrok** en la misma máquina). CORS limitado a `CORS_ORIGINS`.
 - Manejador de errores global al final que responde JSON genérico; no devolver stack traces.
 
@@ -99,6 +100,6 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 ## Gotchas
 
 - La URL del backend en la app vive solo en `lib/config.dart` (`urlServidor`) y se sobrescribe con `--dart-define=API_URL=...`. Android 9+ bloquea `http://` sin cifrar: usar https (ngrok).
-- Credenciales de demo (semillas de `init.sql`): superadmin `superadmin@plataforma.bo`, gerentes `admin@pulpos.bo` y `admin@illimani.bo` (todos `password`); choferes `pulpos`/`1234-KKK` e `illimani`/`5678-ILL` (contraseña `123`, menor que el mínimo de 4 que exige la API para choferes nuevos).
+- Credenciales de demo (semillas de `init.sql`): superadmin `superadmin@plataforma.bo`, gerentes `admin@pulpos.bo` y `admin@illimani.bo` (todos `password`; el primer ingreso pide escanear el QR del segundo factor); choferes `pulpos`/`1234-KKK` e `illimani`/`5678-ILL` (contraseña `123`, menor que el mínimo de 4 que exige la API para choferes nuevos).
 - `ADMIN_USER` / `ADMIN_PASSWORD` del `.env` no los usa el backend.
 - Express 5: hay un middleware que fuerza `req.body ??= {}`; las rutas async propagan errores solas al manejador global.
