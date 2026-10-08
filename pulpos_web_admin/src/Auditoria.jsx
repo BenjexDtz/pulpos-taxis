@@ -8,6 +8,13 @@ const ACCIONES = {
   'sesion.login_admin': 'Inicio de sesión (panel)',
   'sesion.login_chofer': 'Inicio de sesión (app)',
   'sesion.bloqueo_intentos': 'Bloqueo por intentos',
+  'sesion.password_correcta': 'Contraseña correcta (falta 2.º factor)',
+  'sesion.mfa_fallido': 'Código de 2.º factor incorrecto',
+  'sesion.mfa_bloqueado': 'Cuenta bloqueada (2.º factor)',
+  'mfa.configurar': 'Configuración de 2.º factor',
+  'mfa.activar': 'Activación de 2.º factor',
+  'mfa.respaldo_regenerar': 'Códigos de respaldo regenerados',
+  'mfa.restablecer': '2.º factor restablecido',
   'acceso.denegado': 'Acceso denegado',
   'acceso.token_invalido': 'Token inválido',
   'chofer.crear': 'Alta de chofer',
@@ -25,7 +32,7 @@ const ACCIONES = {
 };
 
 const GRUPOS = [
-  ['', 'Todas las acciones'], ['sesion.', 'Sesiones'], ['acceso.', 'Accesos rechazados'],
+  ['', 'Todas las acciones'], ['sesion.', 'Sesiones'], ['mfa.', 'Segundo factor'], ['acceso.', 'Accesos rechazados'],
   ['chofer.', 'Choferes'], ['parametros.', 'Parámetros'], ['empresa.', 'Empresa'],
   ['viaje', 'Viajes y exportaciones'], ['posicion.', 'Posiciones GPS'], ['auditoria.', 'Auditoría'],
 ];

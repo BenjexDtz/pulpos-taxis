@@ -10,6 +10,7 @@ import {
 import FormEmpresa from './FormEmpresa.jsx';
 import Plataforma from './Plataforma.jsx';
 import Auditoria from './Auditoria.jsx';
+import { SegundoFactor, SeguridadCuenta } from './Mfa.jsx';
 
 // ─── LEAFLET ──────────────────────────────────────────────────────────────────
 function useLeaflet() {
@@ -168,6 +169,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [errorLogin, setErrorLogin] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [mfaPendiente, setMfaPendiente] = useState(null);
 
   const [viajes, setViajes] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -207,7 +209,8 @@ export default function App() {
   }, []);
 
   const headers = useCallback(() => ({ Authorization: `Bearer ${token}` }), [token]);
-  const esSuperadmin = leerToken(token ?? '')?.rol === 'superadmin';
+  const sesion = leerToken(token ?? '');
+  const esSuperadmin = sesion?.rol === 'superadmin';
   const m = empresa?.moneda_simbolo ?? 'Bs';
 
   useEffect(() => {
@@ -216,7 +219,7 @@ export default function App() {
 
   const cerrarSesion = useCallback(() => {
     localStorage.removeItem('admin_token');
-    setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso('');
+    setToken(null); setMfaPendiente(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso('');
     setEmpresa(null); setParams(null); setFormParams(null);
   }, []);
 
@@ -229,10 +232,16 @@ export default function App() {
     e.preventDefault(); setErrorLogin(''); setLoginLoading(true);
     try {
       const res = await axios.post(`${urlServidor}/api/admin/login`, { usuario, password });
-      localStorage.setItem('admin_token', res.data.token);
-      setToken(res.data.token);
-    } catch { setErrorLogin('Credenciales incorrectas.'); }
+      setMfaPendiente({ etapa: res.data.mfa, token_mfa: res.data.token_mfa });
+      setPassword('');
+    } catch (err) { setErrorLogin(err.response?.data?.error || '⚠️ Error conectando al servidor.'); }
     finally { setLoginLoading(false); }
+  };
+
+  const entrar = (nuevoToken, avisoInicial) => {
+    localStorage.setItem('admin_token', nuevoToken);
+    setMfaPendiente(null); setAviso(avisoInicial);
+    setToken(nuevoToken);
   };
 
   const cargarReporte = useCallback(async () => {
@@ -278,7 +287,7 @@ export default function App() {
 
   const irA = (vista) => {
     setVistaActiva(vista);
-    if (esSuperadmin || vista === 'auditoria') return;
+    if (esSuperadmin || vista === 'auditoria' || vista === 'seguridad') return;
     if (vista === 'parametros' || vista === 'empresa') { cargarConfig(); return; }
     cargarReporte(); cargarChoferes();
   };
@@ -421,6 +430,10 @@ export default function App() {
           <p className="text-gray-600 text-xs mt-2 font-radar">Plataforma de tarificación</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8" style={{ boxShadow: '0 0 60px #10b98108' }}>
+          {mfaPendiente ? (
+            <SegundoFactor urlServidor={urlServidor} pendiente={mfaPendiente} cuenta={usuario}
+              onSesion={entrar} onCancelar={() => { setMfaPendiente(null); setErrorLogin(''); }} />
+          ) : <>
           {errorLogin && <div className="flex items-center space-x-2 bg-red-950 border border-red-800 text-red-400 p-3 rounded-lg mb-6 font-radar text-sm"><AlertCircle className="w-4 h-4 flex-shrink-0" /><span>{errorLogin}</span></div>}
           <form onSubmit={iniciarSesion} className="space-y-5">
             <div>
@@ -438,6 +451,7 @@ export default function App() {
               <span>{loginLoading ? 'VERIFICANDO...' : 'ACCEDER AL SISTEMA'}</span>
             </button>
           </form>
+          </>}
         </div>
       </div>
     </div>
@@ -447,6 +461,7 @@ export default function App() {
     ? [
       { id: 'plataforma', icon: Building2, label: 'EMPRESAS' },
       { id: 'auditoria', icon: ScrollText, label: 'AUDITORÍA' },
+      { id: 'seguridad', icon: ShieldCheck, label: 'SEGURIDAD' },
     ]
     : [
       { id: 'dashboard', icon: LayoutDashboard, label: 'TABLERO' },
@@ -455,8 +470,9 @@ export default function App() {
       { id: 'parametros', icon: Settings, label: 'PARÁMETROS' },
       { id: 'empresa', icon: Building2, label: 'EMPRESA' },
       { id: 'auditoria', icon: ScrollText, label: 'AUDITORÍA' },
+      { id: 'seguridad', icon: ShieldCheck, label: 'SEGURIDAD' },
     ];
-  const vista = esSuperadmin && vistaActiva !== 'auditoria' ? 'plataforma' : vistaActiva;
+  const vista = esSuperadmin && !['auditoria', 'seguridad'].includes(vistaActiva) ? 'plataforma' : vistaActiva;
   const colorMarca = empresa?.color_primario ?? '#10b981';
 
   return (
@@ -529,7 +545,11 @@ export default function App() {
         )}
 
         {vista === 'plataforma' && (
-          <Plataforma urlServidor={urlServidor} headers={headers} manejarErrorApi={manejarErrorApi} />
+          <Plataforma urlServidor={urlServidor} headers={headers} manejarErrorApi={manejarErrorApi} usuarioId={sesion?.id} />
+        )}
+
+        {vista === 'seguridad' && (
+          <SeguridadCuenta urlServidor={urlServidor} headers={headers} manejarErrorApi={manejarErrorApi} cuenta={sesion?.nombre} />
         )}
 
         {vista === 'auditoria' && (

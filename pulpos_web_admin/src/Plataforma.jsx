@@ -1,20 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Building2, Plus, Pencil, RefreshCw, ToggleLeft, ToggleRight, X } from 'lucide-react';
+import { Building2, Plus, Pencil, RefreshCw, ToggleLeft, ToggleRight, X, ShieldCheck, ShieldOff, Users } from 'lucide-react';
 import FormEmpresa from './FormEmpresa.jsx';
 
-export default function Plataforma({ urlServidor, headers, manejarErrorApi }) {
+export default function Plataforma({ urlServidor, headers, manejarErrorApi, usuarioId }) {
   const [empresas, setEmpresas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [aviso, setAviso] = useState('');
   const [edicion, setEdicion] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
+  const [admins, setAdmins] = useState([]);
+  const [confirmarReset, setConfirmarReset] = useState(null);
 
   const pedirEmpresas = useCallback(
     () => axios.get(`${urlServidor}/api/plataforma/empresas`, { headers: headers() }),
     [urlServidor, headers]
   );
+
+  const pedirAdmins = useCallback(
+    () => axios.get(`${urlServidor}/api/plataforma/administradores`, { headers: headers() }),
+    [urlServidor, headers]
+  );
+
+  useEffect(() => {
+    let vigente = true;
+    pedirAdmins()
+      .then(r => { if (vigente) setAdmins(r.data); })
+      .catch(err => { if (vigente) manejarErrorApi(err, setAviso); });
+    return () => { vigente = false; };
+  }, [pedirAdmins, manejarErrorApi]);
 
   useEffect(() => {
     let vigente = true;
@@ -27,7 +42,10 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi }) {
 
   const recargar = async () => {
     setCargando(true);
-    try { setEmpresas((await pedirEmpresas()).data); }
+    try {
+      setEmpresas((await pedirEmpresas()).data);
+      setAdmins((await pedirAdmins()).data);
+    }
     catch (err) { manejarErrorApi(err, setAviso); }
     finally { setCargando(false); }
   };
@@ -53,6 +71,16 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi }) {
     try {
       await axios.patch(`${urlServidor}/api/plataforma/empresas/${empresa.id}/estado`,
         { activo: !empresa.activo }, { headers: headers() });
+      recargar();
+    } catch (err) { manejarErrorApi(err, setAviso); }
+  };
+
+  const restablecerMfa = async (admin) => {
+    if (confirmarReset !== admin.id) { setConfirmarReset(admin.id); return; }
+    setConfirmarReset(null);
+    try {
+      const res = await axios.post(`${urlServidor}/api/plataforma/administradores/${admin.id}/mfa/restablecer`, {}, { headers: headers() });
+      setMensaje({ tipo: 'exito', texto: res.data.mensaje });
       recargar();
     } catch (err) { manejarErrorApi(err, setAviso); }
   };
@@ -141,6 +169,51 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi }) {
                         {e.activo ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                       </button>
                     </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-800 flex items-center space-x-3">
+          <Users className="w-5 h-5 text-blue-400" />
+          <div>
+            <h2 className="font-bold text-white tracking-wider">ADMINISTRADORES</h2>
+            <p className="font-radar text-xs text-gray-600">Si alguien pierde su app autenticadora y sus códigos de respaldo, restablece su segundo factor: lo configurará de nuevo al entrar.</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-800">
+                {['NOMBRE', 'EMPRESA', 'ROL', 'SEGUNDO FACTOR', 'ACCIONES'].map(h =>
+                  <th key={h} className="px-5 py-3 text-left font-radar text-xs text-gray-600 tracking-widest">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {admins.map(a => (
+                <tr key={a.id} className={`border-b border-gray-800 ${!a.activo ? 'opacity-40' : ''}`}>
+                  <td className="px-5 py-3">
+                    <div className="font-semibold text-white">{a.nombre}</div>
+                    <div className="font-radar text-xs text-gray-500">{a.email}</div>
+                  </td>
+                  <td className="px-5 py-3 text-gray-300 text-sm">{a.empresa_nombre ?? 'Plataforma'}</td>
+                  <td className="px-5 py-3 font-radar text-xs text-gray-400 uppercase">{a.rol}</td>
+                  <td className="px-5 py-3 font-radar text-xs">
+                    {a.mfa_activo
+                      ? <span className="flex items-center gap-1 text-green-400"><ShieldCheck className="w-3.5 h-3.5" />ACTIVO</span>
+                      : <span className="text-gray-500">PENDIENTE DE CONFIGURAR</span>}
+                  </td>
+                  <td className="px-5 py-3">
+                    {a.mfa_activo && a.id !== usuarioId && (
+                      <button onClick={() => restablecerMfa(a)} onBlur={() => setConfirmarReset(null)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-950 text-red-400 hover:bg-red-900 border border-red-800 transition font-radar text-xs">
+                        <ShieldOff className="w-3.5 h-3.5" />{confirmarReset === a.id ? '¿CONFIRMAR?' : 'RESTABLECER'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
