@@ -78,6 +78,7 @@ async function pedir(metodo, ruta, { token, body, headers = {}, crudo } = {}) {
 const RUTAS_EMPRESA = [
     ['GET', '/api/admin/viajes'],
     ['GET', '/api/admin/viajes/exportar'],
+    ['GET', '/api/admin/estadisticas'],
     ['GET', '/api/admin/choferes'],
     ['POST', '/api/admin/choferes'],
     ['PATCH', '/api/admin/choferes/2/password'],
@@ -224,6 +225,32 @@ describe('Posición GPS', () => {
         const d = distanciaKm(-16.5, -68.19, -16.4955, -68.1336);
         assert.ok(d > 5 && d < 7, String(d));
         assert.ok(distanciaKm(-16.5, -68.19, -17.39, -66.16) > 200);
+    });
+});
+
+describe('Estadísticas del tablero', () => {
+    test('las cinco consultas usan la empresa del token, nunca la de la URL', async () => {
+        responder = (sql) => sql.includes('AS resumen')
+            ? { rows: [{ desde: '2026-09-08', hasta: '2026-10-07', resumen: { viajes: 3 }, anterior: { viajes: 1 } }] }
+            : { rows: [] };
+        const r = await pedir('GET', '/api/admin/estadisticas?empresa_id=99', { token: TOKEN_ADMIN });
+        assert.equal(r.status, 200);
+        const datos = consultasDeDatos();
+        assert.equal(datos.length, 5);
+        for (const c of datos) {
+            assert.match(c.sql, /empresa_id = \$1/);
+            assert.deepEqual(c.params, [2, null, null]);
+        }
+        assert.deepEqual(Object.keys(r.json).sort(),
+            ['anterior', 'choferes', 'desde', 'hasta', 'horas', 'por_dia', 'resumen', 'superficie']);
+    });
+
+    test('pasa las fechas a la consulta y rechaza fechas inválidas o rangos de más de un año', async () => {
+        responder = () => ({ rows: [{}] });
+        await pedir('GET', '/api/admin/estadisticas?desde=2026-01-01&hasta=2026-01-31', { token: TOKEN_ADMIN });
+        assert.deepEqual(consultasDeDatos()[0].params, [2, '2026-01-01', '2026-01-31']);
+        for (const q of ['desde=2026-02-30', 'desde=2026-03-01&hasta=2026-02-01', 'desde=2024-01-01&hasta=2026-01-01'])
+            assert.equal((await pedir('GET', `/api/admin/estadisticas?${q}`, { token: TOKEN_ADMIN })).status, 400, q);
     });
 });
 
