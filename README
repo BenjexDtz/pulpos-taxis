@@ -16,8 +16,9 @@
 6. [App Móvil Flutter](#flutter)
 7. [Credenciales de Prueba](#credenciales)
 8. [Endpoints de la API](#api)
-9. [Modelo Matemático](#modelo)
-10. [Estructura de Carpetas](#estructura)
+9. [Auditoría](#auditoria)
+10. [Modelo Matemático](#modelo)
+11. [Estructura de Carpetas](#estructura)
 
 ---
 
@@ -145,7 +146,18 @@ psql -U postgres -d pulpos_db -f database/init.sql
 ```bash
 pg_dump -U postgres pulpos_db > respaldo_antes_de_migrar.sql
 psql -1 -U postgres -d pulpos_db -f database/migraciones/001_multiempresa.sql
+psql -1 -U postgres -d pulpos_db -f database/migraciones/002_auditoria.sql
 ```
+
+### Base de datos de auditoría
+
+```bash
+psql -U postgres -c "CREATE DATABASE pulpos_auditoria;"
+psql -U postgres -d pulpos_auditoria -f database/auditoria/esquema.sql
+psql -U postgres -d pulpos_auditoria -v clave_auditor='UNA_CLAVE_SEGURA' -f database/auditoria/rol_app.sql
+```
+
+Luego definir `AUDIT_DB_*` en `pulpos_backend/.env` (ver `.env.example`) con el usuario `auditor_app` y esa clave.
 
 ### Backend
 
@@ -269,6 +281,7 @@ Todas las rutas operan **solo sobre la empresa del token**; los datos de otras e
 | `PUT` | `/api/admin/parametros` | Editar parámetros topográficos de la empresa |
 | `PUT` | `/api/admin/empresa` | Editar los datos de la empresa (identidad, zona, moneda) |
 | `GET` | `/api/config` | Datos de la empresa y sus parámetros (también para choferes) |
+| `GET` | `/api/admin/auditoria?desde=&hasta=&accion=&pagina=` | Bitácora de auditoría de la empresa |
 
 ### Plataforma (requieren token de superadmin)
 
@@ -278,6 +291,8 @@ Todas las rutas operan **solo sobre la empresa del token**; los datos de otras e
 | `POST` | `/api/plataforma/empresas` | Crear empresa con parámetros iniciales y su gerente |
 | `PUT` | `/api/plataforma/empresas/:id` | Editar empresa |
 | `PATCH` | `/api/plataforma/empresas/:id/estado` | Activar/desactivar empresa (corta el acceso al instante) |
+| `GET` | `/api/plataforma/auditoria?empresa_id=&desde=&hasta=&accion=&pagina=` | Bitácora de todas las empresas |
+| `GET` | `/api/plataforma/auditoria/verificar` | Verificar la integridad de la bitácora |
 
 ### App Móvil (requieren token del conductor)
 
@@ -285,6 +300,26 @@ Todas las rutas operan **solo sobre la empresa del token**; los datos de otras e
 |---|---|---|
 | `POST` | `/api/posicion` | Enviar GPS en tiempo real (dentro del radio de operación de la empresa) |
 | `POST` | `/api/viajes/sincronizar` | Subir viaje (el chofer se toma del token) |
+
+---
+
+## 🛡️ Auditoría <a name="auditoria"></a>
+
+Cada acción relevante queda registrada en una **base de datos de auditoría separada** (en Docker, un servidor PostgreSQL propio: `auditoria`).
+
+**Qué se registra:** inicios de sesión exitosos y fallidos, bloqueos por intentos, accesos denegados, tokens inválidos, todas las modificaciones (con su estado **antes y después**), viajes sincronizados, posiciones GPS, exportaciones CSV y las consultas a la propia bitácora. Las contraseñas, hashes y tokens se eliminan antes de guardar. Las consultas de solo lectura del día a día no se registran.
+
+**Cómo se protege:**
+
+| Mecanismo | Protege contra |
+|---|---|
+| Usuario `auditor_app` con permiso solo de `INSERT` y `SELECT` | Que la aplicación (o quien la comprometa) modifique o borre eventos |
+| Triggers que rechazan `UPDATE`, `DELETE` y `TRUNCATE` | Modificaciones incluso del dueño de la base |
+| Cadena SHA-256: cada evento incluye el hash del anterior, calculado por la BD | Alterar o borrar un evento intermedio sin que se note |
+| Anclas: cada 50 eventos el hash se copia en la **base principal** | Que un superusuario de la base de auditoría reescriba todo el historial o borre los últimos eventos |
+| Cola `auditoria_pendiente` en la base principal | Perder eventos si la base de auditoría no está disponible (se reenvían cada 30 s) |
+
+**Verificar la integridad:** en el panel, como superadmin → **AUDITORÍA → VERIFICAR INTEGRIDAD**. Si un evento fue alterado o falta, indica desde cuál.
 
 ---
 

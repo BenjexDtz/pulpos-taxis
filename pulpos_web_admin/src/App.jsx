@@ -5,10 +5,11 @@ import {
   UserPlus, LayoutDashboard, Search, KeyRound, ToggleLeft,
   ToggleRight, ShieldCheck, ShieldOff, Map, Radio, Wifi, WifiOff,
   TrendingUp, Clock, AlertCircle, X, MapPin, Download, Settings,
-  Save, Fuel, Building2
+  Save, Fuel, Building2, ScrollText
 } from 'lucide-react';
 import FormEmpresa from './FormEmpresa.jsx';
 import Plataforma from './Plataforma.jsx';
+import Auditoria from './Auditoria.jsx';
 
 // ─── LEAFLET ──────────────────────────────────────────────────────────────────
 function useLeaflet() {
@@ -277,6 +278,7 @@ export default function App() {
 
   const irA = (vista) => {
     setVistaActiva(vista);
+    if (esSuperadmin || vista === 'auditoria') return;
     if (vista === 'parametros' || vista === 'empresa') { cargarConfig(); return; }
     cargarReporte(); cargarChoferes();
   };
@@ -442,15 +444,19 @@ export default function App() {
   );
 
   const navItems = esSuperadmin
-    ? [{ id: 'plataforma', icon: Building2, label: 'EMPRESAS' }]
+    ? [
+      { id: 'plataforma', icon: Building2, label: 'EMPRESAS' },
+      { id: 'auditoria', icon: ScrollText, label: 'AUDITORÍA' },
+    ]
     : [
       { id: 'dashboard', icon: LayoutDashboard, label: 'TABLERO' },
       { id: 'mapa', icon: Map, label: 'RADAR' },
       { id: 'conductores', icon: Users, label: 'FLOTA' },
       { id: 'parametros', icon: Settings, label: 'PARÁMETROS' },
       { id: 'empresa', icon: Building2, label: 'EMPRESA' },
+      { id: 'auditoria', icon: ScrollText, label: 'AUDITORÍA' },
     ];
-  const vista = esSuperadmin ? 'plataforma' : vistaActiva;
+  const vista = esSuperadmin && vistaActiva !== 'auditoria' ? 'plataforma' : vistaActiva;
   const colorMarca = empresa?.color_primario ?? '#10b981';
 
   return (
@@ -524,6 +530,10 @@ export default function App() {
 
         {vista === 'plataforma' && (
           <Plataforma urlServidor={urlServidor} headers={headers} manejarErrorApi={manejarErrorApi} />
+        )}
+
+        {vista === 'auditoria' && (
+          <Auditoria urlServidor={urlServidor} headers={headers} manejarErrorApi={manejarErrorApi} plataforma={esSuperadmin} />
         )}
 
         {vista === 'empresa' && (

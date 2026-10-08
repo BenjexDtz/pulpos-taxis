@@ -4,15 +4,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const activo = process.env.PG_INTEGRACION === '1';
-const esquema = `it_${Date.now()}_${process.pid}`;
+const sufijo = `${Date.now()}_${process.pid}`;
+const BD_PRINCIPAL = `it_principal_${sufijo}`;
+const BD_AUDITORIA = `it_auditoria_${sufijo}`;
 
 if (activo) {
-    process.env.PGOPTIONS = `-c search_path=${esquema}`;
+    require('dotenv').config({ quiet: true, path: path.join(__dirname, '../.env') });
+    process.env.DB_NAME = BD_PRINCIPAL;
+    Object.assign(process.env, {
+        AUDIT_DB_HOST: process.env.DB_HOST, AUDIT_DB_PORT: process.env.DB_PORT,
+        AUDIT_DB_USER: process.env.DB_USER, AUDIT_DB_PASSWORD: process.env.DB_PASSWORD,
+        AUDIT_DB_NAME: BD_AUDITORIA, AUDITORIA_ANCLA_CADA: '5',
+    });
     process.env.JWT_SECRET ??= 'secreto_integracion';
 }
 
 describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !activo && 'definir PG_INTEGRACION=1' }, () => {
-    let pool, base, server;
+    let pool, admin, auditoria, base, server;
 
     const pedir = async (metodo, ruta, { token, body } = {}) => {
         const h = {};
@@ -29,9 +37,14 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         (await pedir('POST', '/api/login', { body: { empresa, placa_vehiculo: placa, password } })).json;
 
     before(async () => {
+        const { Pool } = require('pg');
+        admin = new Pool({ database: 'postgres', user: process.env.DB_USER, password: process.env.DB_PASSWORD, host: process.env.DB_HOST, port: process.env.DB_PORT });
+        await admin.query(`CREATE DATABASE ${BD_PRINCIPAL}`);
+        await admin.query(`CREATE DATABASE ${BD_AUDITORIA}`);
         pool = require('../db');
-        await pool.query(`CREATE SCHEMA ${esquema}`);
         await pool.query(fs.readFileSync(path.join(__dirname, '../../database/init.sql'), 'utf8'));
+        auditoria = require('../auditoria');
+        await auditoria.pool.query(fs.readFileSync(path.join(__dirname, '../../database/auditoria/esquema.sql'), 'utf8'));
         const { app } = require('../index');
         server = app.listen(0);
         await new Promise(r => server.once('listening', r));
@@ -40,8 +53,11 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
 
     after(async () => {
         server?.close();
-        await pool?.query(`DROP SCHEMA IF EXISTS ${esquema} CASCADE`);
         await pool?.end();
+        await auditoria?.pool.end();
+        await admin?.query(`DROP DATABASE IF EXISTS ${BD_PRINCIPAL} WITH (FORCE)`);
+        await admin?.query(`DROP DATABASE IF EXISTS ${BD_AUDITORIA} WITH (FORCE)`);
+        await admin?.end();
     });
 
     test('cada gerente ve solo los choferes y viajes de su empresa', async () => {
@@ -156,5 +172,64 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const { token } = await loginChofer('pulpos', '1234-KKK');
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -16.52, lng: -68.20 } })).status, 200);
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -17.39, lng: -66.16 } })).status, 400);
+    });
+    test('auditoría: cada acción queda en la bitácora, con la empresa correcta y sin secretos', async () => {
+        const illimani = await loginAdmin('admin@illimani.bo');
+        await pedir('POST', '/api/admin/choferes', { token: illimani,
+            body: { nombre_completo: 'Auditado', placa_vehiculo: '9090-AUD', password: 'secreta99' } });
+        await pedir('POST', '/api/admin/login', { body: { usuario: 'admin@illimani.bo', password: 'mala-clave' } });
+
+        const eventos = (await pedir('GET', '/api/admin/auditoria', { token: illimani })).json;
+        const idIllimani = (await pool.query(`SELECT id FROM empresas WHERE codigo = 'illimani'`)).rows[0].id;
+        assert.ok(eventos.length > 0);
+        assert.ok(eventos.every(e => e.empresa_id === idIllimani), 'solo eventos de su empresa');
+        const alta = eventos.find(e => e.accion === 'chofer.crear' && e.datos_despues?.placa_vehiculo === '9090-AUD');
+        assert.equal(alta.actor_nombre, 'Gerencia Illimani');
+        assert.ok(eventos.some(e => e.accion === 'sesion.login_admin' && e.resultado === 'rechazado'));
+
+        const todo = JSON.stringify((await auditoria.pool.query('SELECT * FROM eventos')).rows);
+        assert.doesNotMatch(todo, /\$2[aby]\$|secreta99|mala-clave/);
+    });
+
+    test('auditoría: si la base de auditoría falla, los eventos esperan en cola y luego se envían', async () => {
+        await auditoria.pool.query('ALTER TABLE eventos RENAME TO eventos_fuera');
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        assert.ok(pulpos, 'el sistema sigue funcionando sin la base de auditoría');
+        const enCola = (await pool.query('SELECT count(*)::int n FROM auditoria_pendiente')).rows[0].n;
+        assert.ok(enCola >= 1);
+
+        await auditoria.pool.query('ALTER TABLE eventos_fuera RENAME TO eventos');
+        assert.equal(await auditoria.reenviarPendientes(), enCola);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM auditoria_pendiente')).rows[0].n, 0);
+    });
+
+    test('auditoría: la cadena es íntegra y hay anclas en la base principal', async () => {
+        const sa = await loginAdmin('superadmin@plataforma.bo');
+        const v = (await pedir('GET', '/api/plataforma/auditoria/verificar', { token: sa })).json;
+        assert.equal(v.integra, true, JSON.stringify(v));
+        assert.ok(v.total_eventos >= 5);
+        assert.ok(v.anclas.total >= 1);
+    });
+
+    test('auditoría: detecta un evento alterado y el borrado de los últimos eventos', async () => {
+        const sa = await loginAdmin('superadmin@plataforma.bo');
+        const c = await auditoria.pool.connect();
+        try {
+            await c.query('ALTER TABLE eventos DISABLE TRIGGER eventos_inmutables_trg');
+            await c.query(`UPDATE eventos SET detalle = 'manipulado' WHERE id = 3`);
+            let v = (await pedir('GET', '/api/plataforma/auditoria/verificar', { token: sa })).json;
+            assert.equal(v.integra, false);
+            assert.equal(v.primer_evento_invalido, '3');
+
+            await c.query(`UPDATE eventos SET detalle = NULL WHERE id = 3`);
+            const ancla = (await pool.query('SELECT max(evento_id) AS id FROM auditoria_anclas')).rows[0].id;
+            await c.query('DELETE FROM eventos WHERE id >= $1', [ancla]);
+            v = (await pedir('GET', '/api/plataforma/auditoria/verificar', { token: sa })).json;
+            assert.equal(v.integra, false);
+            assert.ok(v.anclas.faltantes.includes(ancla), JSON.stringify(v.anclas));
+        } finally {
+            await c.query('ALTER TABLE eventos ENABLE TRIGGER eventos_inmutables_trg').catch(() => {});
+            c.release();
+        }
     });
 });

@@ -28,6 +28,12 @@ pool.connect = async () => ({
     release: () => {},
 });
 
+const auditoria = require('../auditoria');
+let eventos = [], filtrosAuditoria = [];
+auditoria.registrar = async (e) => { eventos.push(e); return { id: eventos.length }; };
+auditoria.consultar = async (f) => { filtrosAuditoria.push(f); return [{ id: 1, accion: 'sesion.login_admin' }]; };
+auditoria.verificar = async () => ({ integra: true, total_eventos: 3, primer_evento_invalido: null, anclas: { total: 0, faltantes: [], alteradas: [] } });
+
 const { app, filtroFechas, validarEmpresa, distanciaKm } = require('../index');
 
 const firmar = (payload) => jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
@@ -49,6 +55,8 @@ before(async () => {
 after(() => { server.close(); });
 beforeEach(() => {
     consultas = [];
+    eventos = [];
+    filtrosAuditoria = [];
     responder = () => ({ rows: [] });
     estadoAdmin = { activo: true, empresa_activa: true, codigo: 'pulpos', moneda_simbolo: 'Bs' };
     estadoChofer = { estado_activo: true, empresa_activa: true, centro_lat: '-16.5', centro_lng: '-68.19', radio_operacion_km: '40' };
@@ -453,5 +461,94 @@ describe('Login', () => {
         for (let i = 1; i <= 10; i++) assert.equal((await fallar(50)).status, 401, `intento ${i}`);
         assert.equal((await fallar(50)).status, 429);
         assert.equal((await fallar(51)).status, 401);
+    });
+});
+
+describe('Auditoría', () => {
+    const hash = bcrypt.hashSync('password', 4);
+    const ultimo = (accion) => eventos.filter(e => e.accion === accion).at(-1);
+
+    test('login fallido queda registrado como rechazado y sin la contraseña', async () => {
+        responder = () => ({ rows: [] });
+        await pedir('POST', '/api/admin/login', { headers: { 'X-Forwarded-For': '200.9.9.1' }, body: { usuario: 'intruso@x.bo', password: 'Secreta123' } });
+        const e = ultimo('sesion.login_admin');
+        assert.equal(e.resultado, 'rechazado');
+        assert.equal(e.actor_tipo, 'anonimo');
+        assert.equal(e.actor_nombre, 'intruso@x.bo');
+        assert.equal(e.ip, '200.9.9.1');
+        assert.doesNotMatch(JSON.stringify(e), /Secreta123/);
+    });
+
+    test('login exitoso de chofer registra actor, empresa y placa', async () => {
+        responder = () => ({ rows: [{ id: 7, empresa_id: 2, placa_vehiculo: '1234-KKK', estado_activo: true, empresa_activa: true, password_hash: hash }] });
+        await pedir('POST', '/api/login', { headers: { 'X-Forwarded-For': '200.9.9.2' }, body: { empresa: 'pulpos', placa_vehiculo: '1234-KKK', password: 'password' } });
+        const e = ultimo('sesion.login_chofer');
+        assert.deepEqual([e.actor_tipo, e.actor_id, e.actor_nombre, e.empresa_id, e.resultado], ['chofer', 7, '1234-KKK', 2, 'exito']);
+    });
+
+    test('los accesos denegados y tokens inválidos se registran', async () => {
+        await pedir('GET', '/api/admin/choferes');
+        await pedir('GET', '/api/plataforma/empresas', { token: TOKEN_ADMIN });
+        await pedir('GET', '/api/admin/choferes', { token: 'basura' });
+        assert.deepEqual(eventos.map(e => [e.accion, e.actor_tipo, e.resultado]), [
+            ['acceso.denegado', 'anonimo', 'rechazado'],
+            ['acceso.denegado', 'admin', 'rechazado'],
+            ['acceso.token_invalido', 'anonimo', 'rechazado'],
+        ]);
+        assert.match(eventos[1].detalle, /GET \/api\/plataforma\/empresas/);
+    });
+
+    test('actualizar parámetros guarda el estado antes y después', async () => {
+        responder = () => ({ rows: [{ id: 1, costo_base_km: '3.00', _antes: { id: 1, costo_base_km: '2.00' } }] });
+        await pedir('PUT', '/api/admin/parametros', { token: TOKEN_ADMIN, body: {
+            zona_ciudad: 'El Alto', costo_base_km: 3, consumo_litros_km: 0.1, precio_combustible_bs: 6.96,
+            factor_altitud: 1.4, factor_superficie: 2.5, costo_minuto_detencion: 0.5 } });
+        const e = ultimo('parametros.actualizar');
+        assert.equal(e.empresa_id, 2);
+        assert.equal(e.actor_rol, 'gerente');
+        assert.deepEqual(e.datos_antes, { id: 1, costo_base_km: '2.00' });
+        assert.equal(e.datos_despues.costo_base_km, '3.00');
+        assert.equal(e.datos_despues._antes, undefined);
+    });
+
+    test('cambiar el estado de un chofer y restablecer su contraseña quedan registrados', async () => {
+        responder = (sql) => sql.includes('password_hash')
+            ? { rows: [{ nombre_completo: 'Ana', placa_vehiculo: '1111-AAA' }] }
+            : { rows: [{ id: 5, estado_activo: false, _antes: { id: 5, estado_activo: true } }] };
+        await pedir('PATCH', '/api/admin/choferes/5/estado', { token: TOKEN_ADMIN, body: { estado_activo: false } });
+        await pedir('PATCH', '/api/admin/choferes/5/password', { token: TOKEN_ADMIN, body: { nueva_password: 'nueva1234' } });
+        assert.deepEqual(ultimo('chofer.estado').datos_antes, { id: 5, estado_activo: true });
+        const p = ultimo('chofer.password');
+        assert.equal(p.entidad_id, '5');
+        assert.doesNotMatch(JSON.stringify(p), /nueva1234/);
+    });
+
+    test('sincronizar un viaje y exportar el CSV quedan registrados', async () => {
+        responder = (sql) => sql.includes('INSERT') ? { rows: [{ id_servidor: 44, tarifa_cobrada: '9.90' }] } : { rows: [{ a: 1 }] };
+        await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { distancia_km: 1, tiempo_detencion_min: 0, tarifa_cobrada: 9.9, fecha_hora_viaje: '2026-10-07' } });
+        await pedir('GET', '/api/admin/viajes/exportar?desde=2026-10-01', { token: TOKEN_ADMIN });
+        assert.equal(ultimo('viaje.sincronizar').actor_tipo, 'chofer');
+        assert.equal(ultimo('viaje.sincronizar').entidad_id, 44);
+        assert.match(ultimo('viajes.exportar').detalle, /desde 2026-10-01/);
+    });
+
+    test('un gerente consulta solo la bitácora de su empresa', async () => {
+        const r = await pedir('GET', '/api/admin/auditoria?empresa_id=99&accion=sesion.&pagina=2', { token: TOKEN_ADMIN });
+        assert.equal(r.status, 200);
+        assert.deepEqual(filtrosAuditoria[0], { empresaId: 2, desde: null, hasta: null, accion: 'sesion.', pagina: 2 });
+        assert.equal(ultimo('auditoria.consultar').empresa_id, 2);
+    });
+
+    test('superadmin filtra por empresa y verifica la cadena; un gerente no puede', async () => {
+        await pedir('GET', '/api/plataforma/auditoria?empresa_id=3', { token: TOKEN_SUPERADMIN });
+        assert.equal(filtrosAuditoria[0].empresaId, 3);
+        const v = await pedir('GET', '/api/plataforma/auditoria/verificar', { token: TOKEN_SUPERADMIN });
+        assert.equal(v.json.integra, true);
+        assert.equal(ultimo('auditoria.verificar').actor_tipo, 'superadmin');
+        assert.equal((await pedir('GET', '/api/plataforma/auditoria/verificar', { token: TOKEN_ADMIN })).status, 403);
+    });
+
+    test('fechas inválidas en la bitácora → 400', async () => {
+        assert.equal((await pedir('GET', '/api/admin/auditoria?desde=2026-02-30', { token: TOKEN_ADMIN })).status, 400);
     });
 });

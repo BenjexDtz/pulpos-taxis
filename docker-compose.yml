@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # Radio Taxis Pulpos — Docker Compose
-# Levanta: PostgreSQL + Backend Node.js + Panel Web Admin
+# Levanta: PostgreSQL + PostgreSQL de auditoría + Backend Node.js + Panel Web Admin
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
@@ -27,6 +27,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Base de datos de auditoría (servidor separado) ──────────────────────────
+  auditoria:
+    image: postgres:16-alpine
+    container_name: pulpos_auditoria
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUDIT_ADMIN_USER:-auditoria_admin}
+      POSTGRES_PASSWORD: ${AUDIT_ADMIN_PASSWORD:-auditoria2026}
+      POSTGRES_DB: pulpos_auditoria
+      AUDIT_APP_PASSWORD: ${AUDIT_APP_PASSWORD:-auditor_app2026}
+    volumes:
+      - pulpos_auditoria_data:/var/lib/postgresql/data
+      - ./database/auditoria:/auditoria:ro
+      - ./database/auditoria/inicializar.sh:/docker-entrypoint-initdb.d/inicializar.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUDIT_ADMIN_USER:-auditoria_admin} -d pulpos_auditoria"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ── Backend Node.js ──────────────────────────────────────────────────────────
   backend:
     build:
@@ -36,6 +56,8 @@ services:
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      auditoria:
         condition: service_healthy
     environment:
       DB_USER: ${DB_USER:-pulpos}
@@ -48,6 +70,11 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulpos2026}
       PORT: 3000
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      AUDIT_DB_HOST: auditoria
+      AUDIT_DB_PORT: 5432
+      AUDIT_DB_NAME: pulpos_auditoria
+      AUDIT_DB_USER: auditor_app
+      AUDIT_DB_PASSWORD: ${AUDIT_APP_PASSWORD:-auditor_app2026}
     ports:
       - "3000:3000"
     healthcheck:
@@ -76,4 +103,6 @@ services:
 # ── Volúmenes persistentes ────────────────────────────────────────────────────
 volumes:
   pulpos_db_data:
+    driver: local
+  pulpos_auditoria_data:
     driver: local
