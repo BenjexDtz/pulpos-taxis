@@ -11,29 +11,29 @@ export default function Tablero({
   const [errorCsv, setErrorCsv] = useState(null);
   const m = empresa?.moneda_simbolo ?? 'Bs';
 
-const exportarCSV = () => {
-  const url = `${urlServidor}/api/admin/viajes/exportar${consultaFechas(fechaDesde, fechaHasta)}`;
-  setErrorCsv(null);
-  fetch(url, { headers: headers() })
-    .then(async r => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || '⚠️ No se pudo exportar el CSV.');
-      return r.blob();
-    })
-    .then(blob => {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `${empresa?.codigo ?? 'empresa'}_viajes_${new Date().toISOString().slice(0, 10)}.csv`;
-      link.click();
-    })
-    .catch(err => setErrorCsv(err.message));
-};
+  const exportarCSV = () => {
+    const url = `${urlServidor}/api/admin/viajes/exportar${consultaFechas(fechaDesde, fechaHasta)}`;
+    setErrorCsv(null);
+    fetch(url, { headers: headers() })
+      .then(async r => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || '⚠️ No se pudo exportar el CSV.');
+        return r.blob();
+      })
+      .then(blob => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${empresa?.codigo ?? 'empresa'}_viajes_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+      })
+      .catch(err => setErrorCsv(err.message));
+  };
 
-const viajesFiltrados = viajes.filter(v =>
-  v.chofer?.toLowerCase().includes(filtroChofer.toLowerCase()) ||
-  v.placa_vehiculo?.toLowerCase().includes(filtroChofer.toLowerCase())
-);
-const totalRecaudado = viajesFiltrados.reduce((s, v) => s + parseFloat(v.tarifa_total || 0), 0);
-const kmTotal = viajesFiltrados.reduce((s, v) => s + parseFloat(v.distancia_km || 0), 0);
+  const viajesFiltrados = viajes.filter(v =>
+    v.chofer?.toLowerCase().includes(filtroChofer.toLowerCase()) ||
+    v.placa_vehiculo?.toLowerCase().includes(filtroChofer.toLowerCase())
+  );
+  const totalRecaudado = viajesFiltrados.reduce((s, v) => s + parseFloat(v.tarifa_total || 0), 0);
+  const kmTotal = viajesFiltrados.reduce((s, v) => s + parseFloat(v.distancia_km || 0), 0);
   const { activosCount, conGPSVivo } = resumenFlota(choferes);
   const errorTabla = errorDashboard || errorCsv;
 

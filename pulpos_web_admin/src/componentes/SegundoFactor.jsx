@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { AlertCircle, ArrowLeft, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
+import { ArrowLeft, Check, Copy, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
 import CodigosRespaldo from './CodigosRespaldo.jsx';
+import Mensaje from './Mensaje.jsx';
 
 const estiloCodigo = 'w-full bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-xl font-radar text-center text-xl tracking-[0.4em] focus:outline-none focus:border-green-500 transition placeholder-gray-700';
 
@@ -17,6 +18,11 @@ export default function SegundoFactor({ urlServidor, pendiente, cuenta, onSesion
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [sesion, setSesion] = useState(null);
+  const [claveCopiada, setClaveCopiada] = useState(false);
+
+  const copiarClave = async () => {
+    try { await navigator.clipboard.writeText(qr.secreto); setClaveCopiada(true); } catch { setClaveCopiada(false); }
+  };
 
   // StrictMode monta dos veces: reutilizar la petición evita generar dos secretos.
   const peticionQr = useRef(null);
@@ -77,18 +83,25 @@ export default function SegundoFactor({ urlServidor, pendiente, cuenta, onSesion
         </div>
       </div>
 
-      {error && <div className="flex items-center space-x-2 bg-red-950 border border-red-800 text-red-400 p-3 rounded-lg font-radar text-sm"><AlertCircle className="w-4 h-4 flex-shrink-0" /><span>{error}</span></div>}
+      <Mensaje texto={error} />
 
       {etapa === 'configurar' && (
         <div className="flex flex-col items-center gap-3">
           {qr
-            ? <img src={qr.qr} alt="Código QR para la app autenticadora" className="w-48 h-48 rounded-lg bg-white p-2" />
-            : <div className="w-48 h-48 rounded-lg bg-gray-800 flex items-center justify-center"><RefreshCw className="w-6 h-6 text-gray-500 animate-spin" /></div>}
+            ? <img src={qr.qr} alt="Código QR para la app autenticadora" className="w-40 h-40 rounded-lg bg-white p-2" />
+            : <div className="w-40 h-40 rounded-lg bg-gray-800 flex items-center justify-center"><RefreshCw className="w-6 h-6 text-gray-500 animate-spin" /></div>}
           {qr && (
-            <details className="w-full text-center">
-              <summary className="font-radar text-xs text-gray-500 cursor-pointer hover:text-gray-300">¿No puedes escanear? Ingresa la clave a mano</summary>
-              <code className="block mt-2 font-radar text-xs text-yellow-300 break-all">{qr.secreto.match(/.{1,4}/g).join(' ')}</code>
-            </details>
+            <div className="w-full">
+              <p className="font-radar text-xs text-gray-500 text-center mb-1">¿No puedes escanear? Ingresa esta clave en la app:</p>
+              <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2">
+                <code className="flex-1 font-radar text-xs text-yellow-300 break-all">{qr.secreto.match(/.{1,4}/g).join(' ')}</code>
+                <button type="button" onClick={copiarClave}
+                  className="flex items-center gap-1 shrink-0 font-radar text-xs text-gray-400 hover:text-white transition">
+                  {claveCopiada ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {claveCopiada ? 'COPIADA' : 'COPIAR'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

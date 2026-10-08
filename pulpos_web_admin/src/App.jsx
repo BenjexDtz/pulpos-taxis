@@ -1,7 +1,7 @@
 import { useState, useEffect, useEffectEvent, useCallback } from 'react';
 import axios from 'axios';
 import {
-  AlertCircle, X, LayoutDashboard, Map, Users, Settings, Building2, ScrollText, ShieldCheck,
+  LayoutDashboard, Map, Users, Settings, Building2, ScrollText, ShieldCheck,
 } from 'lucide-react';
 import Login from './componentes/Login.jsx';
 import Navegacion from './componentes/Navegacion.jsx';
@@ -14,6 +14,7 @@ import Plataforma from './vistas/Plataforma.jsx';
 import Auditoria from './vistas/Auditoria.jsx';
 import Seguridad from './vistas/Seguridad.jsx';
 import { leerToken, consultaFechas } from './utilidades.js';
+import Mensaje from './componentes/Mensaje.jsx';
 
 const urlServidor = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 
@@ -50,7 +51,7 @@ export default function App() {
   const [params, setParams] = useState(null);
   const [formParams, setFormParams] = useState(null);
 
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
 
   const headers = useCallback(() => ({ Authorization: `Bearer ${token}` }), [token]);
   const sesion = leerToken(token ?? '');
@@ -62,7 +63,7 @@ export default function App() {
 
   const cerrarSesion = useCallback(() => {
     localStorage.removeItem('admin_token');
-    setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso('');
+    setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso(null);
     setEmpresa(null); setParams(null); setFormParams(null);
   }, []);
 
@@ -73,9 +74,11 @@ export default function App() {
 
   const entrar = (nuevoToken, avisoInicial) => {
     localStorage.setItem('admin_token', nuevoToken);
-    setAviso(avisoInicial);
+    setAviso(avisoInicial ? { tipo: 'aviso', texto: avisoInicial } : null);
     setToken(nuevoToken);
   };
+
+  const mostrarError = useCallback((texto) => setAviso({ tipo: 'error', texto }), []);
 
   const cargarReporte = useCallback(async () => {
     if (!token) return;
@@ -94,9 +97,9 @@ export default function App() {
       const res = await axios.get(`${urlServidor}/api/admin/choferes`, { headers: headers() });
       setChoferes(res.data);
     } catch (err) {
-      manejarErrorApi(err, setAviso);
+      manejarErrorApi(err, mostrarError);
     } finally { setCargandoChoferes(false); }
-  }, [headers, manejarErrorApi]);
+  }, [headers, manejarErrorApi, mostrarError]);
 
   const cargarConfig = useCallback(async () => {
     try {
@@ -105,9 +108,9 @@ export default function App() {
       setParams(res.data.parametros);
       setFormParams(res.data.parametros);
     } catch (err) {
-      manejarErrorApi(err, setAviso);
+      manejarErrorApi(err, mostrarError);
     }
-  }, [headers, manejarErrorApi]);
+  }, [headers, manejarErrorApi, mostrarError]);
 
   const cargarTodo = useEffectEvent(() => {
     if (esSuperadmin) return;
@@ -144,12 +147,7 @@ export default function App() {
         vista={vista} onIr={irA} onSalir={cerrarSesion} />
 
       <main className="max-w-screen-2xl mx-auto px-4 lg:px-8 py-6">
-        {aviso && (
-          <div className="mb-4 flex items-center justify-between gap-3 bg-red-950 border border-red-800 text-red-400 px-4 py-3 rounded-xl font-radar text-sm">
-            <span className="flex items-center gap-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{aviso}</span>
-            <button onClick={() => setAviso('')} className="text-red-500 hover:text-white"><X className="w-4 h-4" /></button>
-          </div>
-        )}
+        {aviso && <Mensaje tipo={aviso.tipo} texto={aviso.texto} onCerrar={() => setAviso(null)} className="mb-4" />}
 
         {vista === 'plataforma' && <Plataforma {...api} usuarioId={sesion?.id} />}
         {vista === 'seguridad' && <Seguridad {...api} cuenta={sesion?.nombre} />}

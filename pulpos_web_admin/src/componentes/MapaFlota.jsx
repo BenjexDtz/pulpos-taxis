@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { escaparHtml } from '../utilidades.js';
+import { escaparHtml, haceTiempo } from '../utilidades.js';
 
 // ─── LEAFLET ──────────────────────────────────────────────────────────────────
 function useLeaflet() {
@@ -79,7 +79,7 @@ export default function MapaFlota({ choferes, viajes, empresa }) {
             <hr style="border-color:#eee;margin:6px 0;"/>
             <div>Viajes: <b>${trips}</b></div>
             <div>Recaudado: <b style="color:#16a34a;">${escaparHtml(empresa?.moneda_simbolo ?? 'Bs')} ${total.toFixed(2)}</b></div>
-            ${minutos !== null ? `<div style="color:${enVivo ? '#16a34a' : '#d97706'};margin-top:4px;">⏱ Hace ${minutos} min</div>` : ''}
+            ${minutos !== null ? `<div style="color:${enVivo ? '#16a34a' : '#d97706'};margin-top:4px;">⏱ ${haceTiempo(minutos)}</div>` : ''}
             <div style="color:#999;font-size:10px;margin-top:4px;">📍 ${parseFloat(chofer.ultima_lat).toFixed(5)}, ${parseFloat(chofer.ultima_lng).toFixed(5)}</div>
           </div>
         `);
@@ -98,7 +98,7 @@ export default function MapaFlota({ choferes, viajes, empresa }) {
           </div>
         </div>
       )}
-      <div className="absolute top-3 left-3 bg-gray-900 bg-opacity-90 border border-gray-700 rounded-lg px-3 py-2 text-xs font-mono z-[1000] space-y-1">
+      <div className="absolute top-3 left-3 bg-gray-900/90 border border-gray-700 rounded-lg px-3 py-2 text-xs font-mono z-[1000] space-y-1">
         <div className="flex items-center space-x-2 text-green-400">
           <div className="w-3 h-3 rounded-full bg-green-500" style={{ boxShadow: '0 0 6px #10b981' }} />
           <span>GPS activo (últimos 5 min)</span>

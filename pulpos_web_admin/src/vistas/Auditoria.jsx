@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
   ScrollText, Search, ChevronLeft, ChevronRight, ShieldCheck, ShieldAlert, Fingerprint, RefreshCw,
@@ -69,10 +69,18 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
   const [verificacion, setVerificacion] = useState(null);
   const [verificando, setVerificando] = useState(false);
 
+  // StrictMode monta dos veces: sin esto cada apertura quedaría registrada dos veces en la bitácora.
+  const peticion = useRef(null);
   useEffect(() => {
     let vigente = true;
-    const q = new URLSearchParams(Object.entries(consulta).filter(([, v]) => v !== '' && v !== null));
-    axios.get(`${urlServidor}/api/${plataforma ? 'plataforma' : 'admin'}/auditoria?${q}`, { headers: headers() })
+    if (peticion.current?.consulta !== consulta) {
+      const q = new URLSearchParams(Object.entries(consulta).filter(([, v]) => v !== '' && v !== null));
+      peticion.current = {
+        consulta,
+        promesa: axios.get(`${urlServidor}/api/${plataforma ? 'plataforma' : 'admin'}/auditoria?${q}`, { headers: headers() }),
+      };
+    }
+    peticion.current.promesa
       .then(r => { if (vigente) { setEventos(r.data); setError(''); } })
       .catch(err => { if (vigente) manejarErrorApi(err, setError); })
       .finally(() => { if (vigente) setCargando(false); });

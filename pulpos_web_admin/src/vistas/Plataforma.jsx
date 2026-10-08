@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Building2, Plus, Pencil, RefreshCw, ToggleLeft, ToggleRight, X, ShieldCheck, ShieldOff, Users } from 'lucide-react';
 import FormEmpresa from '../componentes/FormEmpresa.jsx';
+import Mensaje from '../componentes/Mensaje.jsx';
 
 export default function Plataforma({ urlServidor, headers, manejarErrorApi, usuarioId }) {
   const [empresas, setEmpresas] = useState([]);
@@ -12,6 +13,7 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
   const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
   const [admins, setAdmins] = useState([]);
   const [confirmarReset, setConfirmarReset] = useState(null);
+  const [mensajeAdmins, setMensajeAdmins] = useState({ tipo: '', texto: '' });
 
   const pedirEmpresas = useCallback(
     () => axios.get(`${urlServidor}/api/plataforma/empresas`, { headers: headers() }),
@@ -80,9 +82,9 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
     setConfirmarReset(null);
     try {
       const res = await axios.post(`${urlServidor}/api/plataforma/administradores/${admin.id}/mfa/restablecer`, {}, { headers: headers() });
-      setMensaje({ tipo: 'exito', texto: res.data.mensaje });
+      setMensajeAdmins({ tipo: 'exito', texto: res.data.mensaje });
       recargar();
-    } catch (err) { manejarErrorApi(err, setAviso); }
+    } catch (err) { manejarErrorApi(err, texto => setMensajeAdmins({ tipo: 'error', texto })); }
   };
 
   if (edicion) return (
@@ -112,8 +114,8 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
 
   return (
     <div className="space-y-4">
-      {aviso && <div className="p-3 rounded-xl font-radar text-sm bg-red-950 text-red-400 border border-red-800">{aviso}</div>}
-      {mensaje.tipo === 'exito' && <div className="p-3 rounded-xl font-radar text-sm bg-green-950 text-green-400 border border-green-800">{mensaje.texto}</div>}
+      <Mensaje texto={aviso} onCerrar={() => setAviso('')} />
+      {mensaje.tipo === 'exito' && <Mensaje tipo="exito" texto={mensaje.texto} onCerrar={() => setMensaje({ tipo: '', texto: '' })} />}
 
       <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-800 flex flex-wrap items-center gap-3">
@@ -185,6 +187,11 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
             <p className="font-radar text-xs text-gray-600">Si alguien pierde su app autenticadora y sus códigos de respaldo, restablece su segundo factor: lo configurará de nuevo al entrar.</p>
           </div>
         </div>
+        {mensajeAdmins.texto && (
+          <div className="px-6 pt-4">
+            <Mensaje tipo={mensajeAdmins.tipo} texto={mensajeAdmins.texto} onCerrar={() => setMensajeAdmins({ tipo: '', texto: '' })} />
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
