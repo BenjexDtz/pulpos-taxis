@@ -10,8 +10,8 @@ Tres módulos + PostgreSQL:
 
 | Carpeta | Stack | Rol |
 |---|---|---|
-| `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST, un solo archivo `index.js` |
-| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (gerencia), `Plataforma.jsx` (superadmin), `FormEmpresa.jsx`, `Auditoria.jsx`, `Mfa.jsx` (segundo factor) |
+| `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST: `app.js` (Express y orden de rutas), `rutas/` (un router por área), `middlewares/`, `utilidades.js` (auditar, transacciones), `validacion.js`; `index.js` solo arranca |
+| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (sesión, carga de datos, menú), `vistas/` (una por pestaña), `componentes/` (Login, SegundoFactor, Navegacion, MapaFlota, FormEmpresa…), `utilidades.js` |
 | `pulpos_apk/` | Flutter (Dart SDK ^3.11) | Taxímetro Android offline-first |
 | `database/init.sql` | PostgreSQL 16 | **Esquema canónico** de la base principal + semillas de dos empresas. `migraciones/` lleva una BD existente a la versión actual. `pulpos_backend/database.sql` es obsoleto |
 | `database/auditoria/` | PostgreSQL 16 | Base de auditoría separada (`esquema.sql`, `rol_app.sql`; en Docker la inicializa `inicializar.sh`) |
@@ -46,7 +46,7 @@ psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
 
 CI (`.github/workflows/ci.yml`) corre en cada push: tests unitarios + integración (servicio PostgreSQL) + `npm audit` del backend, lint + build del panel, `flutter analyze` + `flutter test`.
 
-Tests del backend: `test/api.test.js` reemplaza `pool.query`/`pool.connect` y las funciones de `auditoria.js` antes de importar `index.js` (que exporta `{ app, filtroFechas, validarEmpresa, distanciaKm }` y solo hace `listen` si se ejecuta directamente). `test/mfa.test.js` cubre TOTP con los vectores de RFC 6238. `test/integracion.test.js` (su `loginAdmin` completa el segundo factor) crea dos bases temporales (principal y auditoría) con las credenciales del `.env`, carga `init.sql` y `auditoria/esquema.sql`, y las borra al terminar.
+Tests del backend: `test/api.test.js` reemplaza `pool.query`/`pool.connect` y las funciones de `auditoria.js` antes de importar `index.js` (que reexporta `{ app, filtroFechas, validarEmpresa, distanciaKm }` y solo hace `listen` si se ejecuta directamente). `test/mfa.test.js` cubre TOTP con los vectores de RFC 6238. `test/integracion.test.js` (su `loginAdmin` completa el segundo factor) crea dos bases temporales (principal y auditoría) con las credenciales del `.env`, carga `init.sql` y `auditoria/esquema.sql`, y las borra al terminar.
 
 Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CREATE SCHEMA` temporal + `SET LOCAL search_path` y terminar con `ROLLBACK`.
 
@@ -65,19 +65,20 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - En la base de auditoría, `id`, `hash_anterior` y `hash` (SHA-256 de `jsonb_build_array(...)`) los asigna el trigger `eventos_encadenar` bajo `pg_advisory_xact_lock`; UPDATE/DELETE/TRUNCATE los bloquea otro trigger. El backend escribe como `auditor_app` (solo INSERT/SELECT). Cada `AUDITORIA_ANCLA_CADA` eventos el hash se copia en `auditoria_anclas` (base principal); `verificar()` combina `auditoria_verificar()` con las anclas.
 - Si cambian las columnas de `eventos`, actualizar `auditoria_hash()` (y los eventos viejos dejarán de verificar: requiere migración de la cadena).
 
-### Autenticación y autorización (`pulpos_backend/index.js`)
+### Autenticación y autorización (`pulpos_backend/middlewares/`, `rutas/autenticacion.js`, `rutas/mfa.js`)
 - `/api/login` (choferes: `empresa` + placa + contraseña, token 30 días) y `/api/admin/login` (solo por email, token 8 h). Ambos con `limiteLogin` (10 fallos/15 min por IP).
 - JWT con `tipo: 'admin' | 'chofer'` y `empresa_id`. Middlewares tras `verificarToken`: `soloAdmin` (`/api/admin/*`), `soloSuperadmin` (`/api/plataforma/*`), `soloChofer` (`/api/posicion`, `/api/viajes/sincronizar`), `deEmpresa` (`/api/config`, admin o chofer). Todos consultan la BD en cada petición: desactivar un usuario o su empresa corta el acceso al instante.
 - En rutas de chofer, `chofer_id` y `empresa_id` salen del token.
 - No existe registro público de choferes.
 - **MFA (TOTP) obligatorio en el panel** (`mfa.js`, implementación propia con `node:crypto`; `qrcode` solo dibuja el QR). `/api/admin/login` no da sesión: devuelve `{mfa: 'configurar'|'verificar', token_mfa}` (JWT `tipo: 'mfa'`, 5 min) que solo aceptan `/api/admin/mfa/{configurar,activar,verificar}` vía `tokenMfa(etapa)`. El secreto va cifrado (AES-256-GCM, clave `MFA_CLAVE` o derivada de `JWT_SECRET`); códigos de respaldo en `mfa_codigos_respaldo` como SHA-256; `mfa_ultimo_paso` impide reutilizar un código; 5 fallos → `mfa_bloqueado_hasta`. `soloAdmin`/`soloSuperadmin` exigen `mfa_activo`: restablecerlo corta las sesiones. Los choferes no tienen MFA.
 - `trust proxy` = `TRUST_PROXY` o `'loopback'` (el backend se expone vía **ngrok** en la misma máquina). CORS limitado a `CORS_ORIGINS`.
-- Manejador de errores global al final que responde JSON genérico; no devolver stack traces.
+- Manejador de errores global al final de `app.js` que responde JSON genérico; no devolver stack traces.
+- Una ruta nueva va en el router de su área (`rutas/*.js`, con la ruta completa `/api/...`); un área nueva se registra en `app.js`. Los módulos llaman a `pool.query` y `auditoria.registrar` a través del objeto del módulo (no desestructurar): los tests los reemplazan.
 
 ### Fórmula tarifaria (v3) — está duplicada, mantener sincronizada
 `T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td`
 
-Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `App.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `index.js`, y la semilla de `init.sql`. Un cambio de fórmula toca los cuatro y los tests de `test/calculadora_test.dart`.
+Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js`, y la semilla de `init.sql`. Un cambio de fórmula toca los cuatro y los tests de `test/calculadora_test.dart`.
 
 Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y en los `min`/`max` de los inputs del panel: mantenerlos iguales. `pg` devuelve `NUMERIC` como **string**: parsear siempre. Las columnas conservan el sufijo `_bs` por compatibilidad, pero el símbolo mostrado es `empresas.moneda_simbolo`.
 
@@ -92,9 +93,10 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
 ### Panel web
+- `App.jsx` carga viajes, choferes y `/api/config` y los pasa a las vistas por props; cada vista guarda su propio estado de formularios y mensajes. Las vistas reciben `urlServidor`, `headers()` y `manejarErrorApi`.
 - Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve `Plataforma` y `Auditoria` (todas las empresas, verificación); los demás, las vistas de su empresa y su bitácora. 401/403 → cierra sesión.
 - Nombre, logo, color, moneda, centro del mapa y altitud vienen de `/api/config` (`empresa`).
-- Leaflet se carga en runtime desde unpkg (`useLeaflet`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
+- Leaflet se carga en runtime desde unpkg (`useLeaflet`, en `componentes/MapaFlota.jsx`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
 - `VITE_API_URL` define el backend (en Docker llega como build arg).
 
 ## Gotchas

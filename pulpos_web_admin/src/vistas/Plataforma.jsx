@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Building2, Plus, Pencil, RefreshCw, ToggleLeft, ToggleRight, X, ShieldCheck, ShieldOff, Users } from 'lucide-react';
-import FormEmpresa from './FormEmpresa.jsx';
+import FormEmpresa from '../componentes/FormEmpresa.jsx';
 
 export default function Plataforma({ urlServidor, headers, manejarErrorApi, usuarioId }) {
   const [empresas, setEmpresas] = useState([]);
