@@ -7,16 +7,16 @@ export default function Empresa({ empresa, setEmpresa, urlServidor, headers, man
   const [guardandoEmpresa, setGuardandoEmpresa] = useState(false);
   const [mensajeEmpresa, setMensajeEmpresa] = useState({ tipo: '', texto: '' });
 
-const guardarEmpresa = async (datos) => {
-  setGuardandoEmpresa(true); setMensajeEmpresa({ tipo: '', texto: '' });
-  try {
-    const res = await axios.put(`${urlServidor}/api/admin/empresa`, datos, { headers: headers() });
-    setEmpresa(res.data.empresa);
-    setMensajeEmpresa({ tipo: 'exito', texto: res.data.mensaje });
-  } catch (err) {
-    manejarErrorApi(err, texto => setMensajeEmpresa({ tipo: 'error', texto }));
-  } finally { setGuardandoEmpresa(false); }
-};
+  const guardarEmpresa = async (datos) => {
+    setGuardandoEmpresa(true); setMensajeEmpresa({ tipo: '', texto: '' });
+    try {
+      const res = await axios.put(`${urlServidor}/api/admin/empresa`, datos, { headers: headers() });
+      setEmpresa(res.data.empresa);
+      setMensajeEmpresa({ tipo: 'exito', texto: res.data.mensaje });
+    } catch (err) {
+      manejarErrorApi(err, texto => setMensajeEmpresa({ tipo: 'error', texto }));
+    } finally { setGuardandoEmpresa(false); }
+  };
 
   return (
     <div className="max-w-3xl bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">

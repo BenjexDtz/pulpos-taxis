@@ -19,6 +19,16 @@ const MINUTOS_GPS_VIVO = 5;
 
 export const minutosDesde = (fecha) => fecha ? Math.floor((new Date() - new Date(fecha)) / 60000) : null;
 
+export const haceTiempo = (minutos) => {
+  if (minutos === null) return '';
+  if (minutos < 1) return 'hace un momento';
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.floor(horas / 24);
+  return `hace ${dias} día${dias === 1 ? '' : 's'}`;
+};
+
 export const resumenFlota = (choferes) => {
   const activos = choferes.filter(c => c.estado_activo);
   const conGPSVivo = activos.filter(c => {

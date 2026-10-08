@@ -1,6 +1,6 @@
 import { Map, RefreshCw } from 'lucide-react';
 import MapaFlota from '../componentes/MapaFlota.jsx';
-import { resumenFlota } from '../utilidades.js';
+import { resumenFlota, haceTiempo } from '../utilidades.js';
 
 export default function Radar({ choferes, viajes, params, empresa, cargandoChoferes, cargarChoferes, cargarReporte }) {
   const m = empresa?.moneda_simbolo ?? 'Bs';
@@ -48,7 +48,7 @@ export default function Radar({ choferes, viajes, params, empresa, cargandoChofe
                       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${enVivo ? 'bg-green-500' : tieneGPS ? 'bg-yellow-500' : 'bg-gray-600'}`} style={enVivo ? { boxShadow: '0 0 6px #10b981' } : {}} />
                       <div className="flex-1 min-w-0">
                         <div className="text-white text-sm font-semibold truncate">{chofer.nombre_completo}</div>
-                        <div className="font-radar text-xs text-gray-600">{chofer.placa_vehiculo} · {enVivo ? <span className="text-green-500">GPS vivo</span> : tieneGPS ? <span className="text-yellow-600">hace {minutos}min</span> : <span className="text-gray-700">sin GPS aún</span>}</div>
+                        <div className="font-radar text-xs text-gray-600">{chofer.placa_vehiculo} · {enVivo ? <span className="text-green-500">GPS vivo</span> : tieneGPS ? <span className="text-yellow-600">{haceTiempo(minutos)}</span> : <span className="text-gray-700">sin GPS aún</span>}</div>
                       </div>
                     </div>
                   </div>

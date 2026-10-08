@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { KeyRound, RefreshCw, ShieldCheck } from 'lucide-react';
 import CodigosRespaldo from '../componentes/CodigosRespaldo.jsx';
+import Mensaje from '../componentes/Mensaje.jsx';
 
 // Vista "Seguridad": estado del segundo factor y regeneración de códigos.
 export default function Seguridad({ urlServidor, headers, manejarErrorApi, cuenta }) {
@@ -41,7 +42,7 @@ export default function Seguridad({ urlServidor, headers, manejarErrorApi, cuent
         </div>
       </div>
       <div className="p-6 space-y-6">
-        {mensaje.texto && <div className={`p-3 rounded-lg text-sm font-radar ${mensaje.tipo === 'exito' ? 'bg-green-950 text-green-400 border border-green-800' : 'bg-red-950 text-red-400 border border-red-800'}`}>{mensaje.texto}</div>}
+        <Mensaje tipo={mensaje.tipo} texto={mensaje.texto} />
 
         <dl className="grid grid-cols-2 gap-4">
           <div className="bg-gray-800 rounded-xl p-4">

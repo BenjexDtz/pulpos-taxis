@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RefreshCw, Save, Building2, MapPin, Coins, UserCog } from 'lucide-react';
+import Mensaje from './Mensaje.jsx';
 
 const VACIA = {
   codigo: '', nombre: '', nit: '', telefono: '', email: '', direccion: '',
@@ -58,11 +59,7 @@ export default function FormEmpresa({ inicial, crear = false, onGuardar, onCance
 
   return (
     <form onSubmit={enviar} className="space-y-6">
-      {mensaje?.texto && (
-        <div className={`p-4 rounded-xl font-radar text-sm border ${mensaje.tipo === 'exito' ? 'bg-green-950 text-green-400 border-green-800' : 'bg-red-950 text-red-400 border-red-800'}`}>
-          {mensaje.texto}
-        </div>
-      )}
+      <Mensaje tipo={mensaje?.tipo} texto={mensaje?.texto} />
 
       <Seccion icon={Building2} titulo="IDENTIDAD">
         {crear && (

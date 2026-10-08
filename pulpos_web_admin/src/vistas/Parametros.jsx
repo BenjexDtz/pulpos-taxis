@@ -1,49 +1,50 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { Fuel, MapPin, RefreshCw, Save, Settings } from 'lucide-react';
+import Mensaje from '../componentes/Mensaje.jsx';
 
 export default function Parametros({ params, setParams, formParams, setFormParams, empresa, urlServidor, headers }) {
   const [guardandoParams, setGuardandoParams] = useState(false);
   const [mensajeParams, setMensajeParams] = useState({ tipo: '', texto: '' });
   const m = empresa?.moneda_simbolo ?? 'Bs';
 
-const guardarParametros = async (e) => {
-  e.preventDefault(); setGuardandoParams(true); setMensajeParams({ tipo: '', texto: '' });
-  try {
-    const res = await axios.put(`${urlServidor}/api/admin/parametros`, formParams, { headers: headers() });
-    setMensajeParams({ tipo: 'exito', texto: res.data.mensaje });
-    setParams(res.data.parametros);
-    setTimeout(() => setMensajeParams({ tipo: '', texto: '' }), 5000);
-  } catch (err) {
-    setMensajeParams({ tipo: 'error', texto: err.response?.data?.error || 'Error al guardar.' });
-  } finally { setGuardandoParams(false); }
-};
+  const guardarParametros = async (e) => {
+    e.preventDefault(); setGuardandoParams(true); setMensajeParams({ tipo: '', texto: '' });
+    try {
+      const res = await axios.put(`${urlServidor}/api/admin/parametros`, formParams, { headers: headers() });
+      setMensajeParams({ tipo: 'exito', texto: res.data.mensaje });
+      setParams(res.data.parametros);
+      setTimeout(() => setMensajeParams({ tipo: '', texto: '' }), 5000);
+    } catch (err) {
+      setMensajeParams({ tipo: 'error', texto: err.response?.data?.error || 'Error al guardar.' });
+    } finally { setGuardandoParams(false); }
+  };
 
-// T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
-const previewTarifa = (fr) => {
-  if (!formParams) return '0.00';
-  const Cb = parseFloat(formParams.costo_base_km || 0);
-  const Cl = parseFloat(formParams.consumo_litros_km || 0);
-  const Pc = parseFloat(formParams.precio_combustible_bs || 0);
-  const FH = parseFloat(formParams.factor_altitud || 0);
-  const Ct = parseFloat(formParams.costo_minuto_detencion || 0);
-  return (5 * (Cb + Cl * Pc) * FH * fr + 10 * Ct).toFixed(2);
-};
+  // T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+  const previewTarifa = (fr) => {
+    if (!formParams) return '0.00';
+    const Cb = parseFloat(formParams.costo_base_km || 0);
+    const Cl = parseFloat(formParams.consumo_litros_km || 0);
+    const Pc = parseFloat(formParams.precio_combustible_bs || 0);
+    const FH = parseFloat(formParams.factor_altitud || 0);
+    const Ct = parseFloat(formParams.costo_minuto_detencion || 0);
+    return (5 * (Cb + Cl * Pc) * FH * fr + 10 * Ct).toFixed(2);
+  };
 
-const previewCostoCombustibleKm = () => {
-  if (!formParams) return '0.000';
-  const Cl = parseFloat(formParams.consumo_litros_km || 0);
-  const Pc = parseFloat(formParams.precio_combustible_bs || 0);
-  return (Cl * Pc).toFixed(3);
-};
+  const previewCostoCombustibleKm = () => {
+    if (!formParams) return '0.000';
+    const Cl = parseFloat(formParams.consumo_litros_km || 0);
+    const Pc = parseFloat(formParams.precio_combustible_bs || 0);
+    return (Cl * Pc).toFixed(3);
+  };
 
-const previewCostoVariableKm = () => {
-  if (!formParams) return '0.000';
-  const Cb = parseFloat(formParams.costo_base_km || 0);
-  const Cl = parseFloat(formParams.consumo_litros_km || 0);
-  const Pc = parseFloat(formParams.precio_combustible_bs || 0);
-  return (Cb + Cl * Pc).toFixed(3);
-};
+  const previewCostoVariableKm = () => {
+    if (!formParams) return '0.000';
+    const Cb = parseFloat(formParams.costo_base_km || 0);
+    const Cl = parseFloat(formParams.consumo_litros_km || 0);
+    const Pc = parseFloat(formParams.precio_combustible_bs || 0);
+    return (Cb + Cl * Pc).toFixed(3);
+  };
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -72,11 +73,7 @@ const previewCostoVariableKm = () => {
             </p>
           </div>
           <div className="p-6">
-            {mensajeParams.texto && (
-              <div className={`mb-6 p-4 rounded-xl font-radar text-sm border ${mensajeParams.tipo === 'exito' ? 'bg-green-950 text-green-400 border-green-800' : 'bg-red-950 text-red-400 border-red-800'}`}>
-                {mensajeParams.texto}
-              </div>
-            )}
+            <Mensaje tipo={mensajeParams.tipo} texto={mensajeParams.texto} className="mb-6" />
             <form onSubmit={guardarParametros} className="space-y-5">
 
               {/* Zona */}
