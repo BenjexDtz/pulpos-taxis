@@ -66,6 +66,7 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-pulpos_db}
       JWT_SECRET: ${JWT_SECRET:-cambia_esto_por_una_clave_segura}
+      MFA_CLAVE: ${MFA_CLAVE:-}
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-pulpos2026}
       PORT: 3000

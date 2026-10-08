@@ -15,7 +15,7 @@ let estadoAdmin, estadoChofer;
 const respuestaBase = (sql, params) => {
     if (/WHERE a\.id = \$1 AND a\.empresa_id = \$2/.test(sql)) return { rows: estadoAdmin ? [estadoAdmin] : [] };
     if (/WHERE c\.id = \$1 AND c\.empresa_id = \$2/.test(sql)) return { rows: estadoChofer ? [estadoChofer] : [] };
-    if (/WHERE id = \$1 AND rol = 'superadmin'/.test(sql)) return { rows: [{ activo: true }] };
+    if (/WHERE id = \$1 AND rol = 'superadmin'/.test(sql)) return { rows: [{ activo: true, mfa_activo: true }] };
     return responder(sql, params);
 };
 
@@ -58,7 +58,7 @@ beforeEach(() => {
     eventos = [];
     filtrosAuditoria = [];
     responder = () => ({ rows: [] });
-    estadoAdmin = { activo: true, empresa_activa: true, codigo: 'pulpos', moneda_simbolo: 'Bs' };
+    estadoAdmin = { activo: true, mfa_activo: true, empresa_activa: true, codigo: 'pulpos', moneda_simbolo: 'Bs' };
     estadoChofer = { estado_activo: true, empresa_activa: true, centro_lat: '-16.5', centro_lng: '-68.19', radio_operacion_km: '40' };
 });
 
@@ -91,6 +91,8 @@ const RUTAS_PLATAFORMA = [
     ['POST', '/api/plataforma/empresas'],
     ['PUT', '/api/plataforma/empresas/1'],
     ['PATCH', '/api/plataforma/empresas/1/estado'],
+    ['GET', '/api/plataforma/administradores'],
+    ['POST', '/api/plataforma/administradores/1/mfa/restablecer'],
 ];
 
 const conBody = (metodo) => metodo === 'GET' ? undefined : {};
@@ -436,12 +438,16 @@ describe('Login', () => {
         assert.equal((await pedir('POST', '/api/login', { headers: IP(2), body: { ...datos, password: 'password' } })).status, 403);
     });
 
-    test('admin entra por email sin distinguir mayúsculas; token con su empresa', async () => {
-        responder = () => ({ rows: [{ id: 1, nombre: 'G', rol: 'gerente', empresa_id: 2, empresa_activa: true, password_hash: hash }] });
+    test('admin entra por email sin distinguir mayúsculas; la contraseña sola no da sesión', async () => {
+        responder = () => ({ rows: [{ id: 1, nombre: 'G', rol: 'gerente', empresa_id: 2, empresa_activa: true, password_hash: hash, mfa_activo: true }] });
         const r = await pedir('POST', '/api/admin/login', { headers: IP(3), body: { usuario: 'Admin@Pulpos.bo', password: 'password' } });
         assert.equal(r.status, 200);
         assert.match(consultas.at(-1).sql, /lower\(a\.email\) = lower\(\$1\)/);
-        assert.equal(jwt.decode(r.json.token).empresa_id, 2);
+        assert.equal(r.json.token, undefined);
+        assert.equal(r.json.mfa, 'verificar');
+        const t = jwt.decode(r.json.token_mfa);
+        assert.deepEqual([t.tipo, t.etapa, t.id], ['mfa', 'verificar', 1]);
+        assert.ok(t.exp - t.iat <= 300);
     });
 
     test('admin de una empresa desactivada → 403', async () => {
@@ -449,11 +455,12 @@ describe('Login', () => {
         assert.equal((await pedir('POST', '/api/admin/login', { headers: IP(4), body: { usuario: 'a@b.bo', password: 'password' } })).status, 403);
     });
 
-    test('superadmin recibe token sin empresa', async () => {
-        responder = () => ({ rows: [{ id: 9, nombre: 'P', rol: 'superadmin', empresa_id: null, empresa_activa: null, password_hash: hash }] });
+    test('sin segundo factor activo, el login pide configurarlo', async () => {
+        responder = () => ({ rows: [{ id: 9, nombre: 'P', rol: 'superadmin', empresa_id: null, empresa_activa: null, password_hash: hash, mfa_activo: false }] });
         const r = await pedir('POST', '/api/admin/login', { headers: IP(5), body: { usuario: 'superadmin@plataforma.bo', password: 'password' } });
         assert.equal(r.status, 200);
-        assert.equal(jwt.decode(r.json.token).empresa_id, null);
+        assert.equal(r.json.mfa, 'configurar');
+        assert.equal(jwt.decode(r.json.token_mfa).etapa, 'configurar');
     });
 
     test('10 intentos fallidos por IP → el 11 recibe 429; otra IP sigue pudiendo', async () => {
@@ -550,5 +557,161 @@ describe('Auditoría', () => {
 
     test('fechas inválidas en la bitácora → 400', async () => {
         assert.equal((await pedir('GET', '/api/admin/auditoria?desde=2026-02-30', { token: TOKEN_ADMIN })).status, 400);
+    });
+});
+
+describe('Segundo factor (TOTP)', () => {
+    const mfa = require('../mfa');
+    const SECRETO = mfa.generarSecreto();
+    const RESPALDO = 'ABCD-EFGH';
+    const tokenMfa = (etapa) => firmar({ id: 1, tipo: 'mfa', etapa });
+    let IP, n = 0;
+    const ultimo = (accion) => eventos.filter(e => e.accion === accion).at(-1);
+    const codigoActual = () => mfa.codigoEnPaso(SECRETO, mfa.pasoActual());
+    const codigoMalo = () => {
+        const validos = [-1, 0, 1].map(d => mfa.codigoEnPaso(SECRETO, mfa.pasoActual() + d));
+        let c = 0; while (validos.includes(String(c).padStart(6, '0'))) c++;
+        return String(c).padStart(6, '0');
+    };
+    let admin, pasoUsado, respaldoUsado, bloqueo;
+
+    beforeEach(() => {
+        admin = {
+            id: 1, nombre: 'G', email: 'admin@pulpos.bo', rol: 'gerente', empresa_id: 2, activo: true, empresa_activa: true,
+            empresa_nombre: 'Radio Taxis Pulpos', mfa_activo: true, mfa_secreto: mfa.cifrar(SECRETO), mfa_bloqueado: false,
+        };
+        pasoUsado = null; respaldoUsado = false; bloqueo = false;
+        IP = { 'X-Forwarded-For': `201.0.0.${++n}` };
+        responder = (sql, params) => {
+            if (sql.includes('AS mfa_bloqueado')) return { rows: [admin] };
+            if (sql.includes('mfa_ultimo_paso < $2')) {
+                if (pasoUsado !== null && params[1] <= pasoUsado) return { rows: [] };
+                pasoUsado = params[1];
+                return { rows: [{ id: 1 }] };
+            }
+            if (sql.includes('mfa_fallos + 1')) return { rows: [{ bloqueado: bloqueo }] };
+            if (sql.includes('UPDATE mfa_codigos_respaldo')) {
+                if (respaldoUsado || params[1] !== mfa.hashRespaldo(RESPALDO)) return { rows: [] };
+                respaldoUsado = true;
+                return { rows: [{ id: 3 }] };
+            }
+            if (sql.includes('AS restantes')) return { rows: [{ restantes: 9 }] };
+            if (sql.includes('SELECT mfa_secreto FROM')) return { rows: [{ mfa_secreto: admin.mfa_secreto }] };
+            if (sql.includes('RETURNING mfa_activo, mfa_activado_en')) return { rows: [{ mfa_activo: true, mfa_activado_en: '2026-10-07T10:00:00' }] };
+            return { rows: [] };
+        };
+    });
+
+    test('el token del primer paso no abre ninguna ruta, y la sesión no sirve como primer paso', async () => {
+        for (const ruta of ['/api/admin/choferes', '/api/config', '/api/admin/mfa', '/api/plataforma/empresas'])
+            assert.equal((await pedir('GET', ruta, { token: tokenMfa('verificar') })).status, 403, ruta);
+        for (const token of [TOKEN_ADMIN, tokenMfa('configurar'), undefined])
+            assert.equal((await pedir('POST', '/api/admin/mfa/verificar', { token, headers: IP, body: { codigo: codigoActual() } })).status, 401);
+        assert.equal((await pedir('POST', '/api/admin/mfa/configurar', { token: tokenMfa('verificar') })).status, 401);
+    });
+
+    test('código correcto → sesión de 8 h con su empresa; el mismo código no sirve dos veces', async () => {
+        const codigo = codigoActual();
+        const r = await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo } });
+        assert.equal(r.status, 200);
+        const t = jwt.decode(r.json.token);
+        assert.deepEqual([t.tipo, t.id, t.empresa_id, t.exp - t.iat], ['admin', 1, 2, 8 * 3600]);
+        assert.match(ultimo('sesion.login_admin').detalle, /app autenticadora/);
+
+        const otra = await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo } });
+        assert.equal(otra.status, 401);
+        assert.equal(otra.json.token, undefined);
+        assert.equal(ultimo('sesion.mfa_fallido').resultado, 'rechazado');
+    });
+
+    test('código incorrecto suma un fallo; al quinto se bloquea la cuenta', async () => {
+        const fallo = await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo: codigoMalo() } });
+        assert.equal(fallo.status, 401);
+        assert.ok(consultas.some(c => c.sql.includes('mfa_fallos + 1') && c.params[0] === 1));
+
+        bloqueo = true;
+        const quinto = await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo: codigoMalo() } });
+        assert.equal(quinto.status, 429);
+        assert.match(ultimo('sesion.mfa_fallido').detalle, /bloqueada/);
+
+        admin.mfa_bloqueado = true;
+        const r = await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo: codigoActual() } });
+        assert.equal(r.status, 429);
+        assert.equal(pasoUsado, null);
+        assert.equal(ultimo('sesion.mfa_bloqueado').resultado, 'rechazado');
+    });
+
+    test('un código de respaldo entra una sola vez y avisa cuántos quedan', async () => {
+        const r = await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo: ' abcd efgh ' } });
+        assert.equal(r.status, 200);
+        assert.equal(r.json.respaldo_restantes, 9);
+        assert.match(ultimo('sesion.login_admin').detalle, /respaldo \(quedan 9\)/);
+        assert.equal((await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo: RESPALDO } })).status, 401);
+    });
+
+    test('configurar guarda el secreto cifrado y devuelve el QR', async () => {
+        admin = { ...admin, mfa_activo: false, mfa_secreto: null };
+        const r = await pedir('POST', '/api/admin/mfa/configurar', { token: tokenMfa('configurar') });
+        assert.equal(r.status, 200);
+        assert.match(r.json.qr, /^data:image\/png;base64,/);
+        assert.match(r.json.uri, /issuer=Radio\+Taxis\+Pulpos/);
+        const guardado = consultas.find(c => c.sql.includes('SET mfa_secreto = $1')).params[0];
+        assert.notEqual(guardado, r.json.secreto);
+        assert.equal(mfa.descifrar(guardado), r.json.secreto);
+        assert.doesNotMatch(JSON.stringify(eventos), new RegExp(r.json.secreto));
+    });
+
+    test('con el segundo factor ya activo no se puede volver a configurar', async () => {
+        assert.equal((await pedir('POST', '/api/admin/mfa/configurar', { token: tokenMfa('configurar') })).status, 409);
+    });
+
+    test('activar exige un código válido; entrega sesión y 10 códigos, y en la BD solo quedan sus hashes', async () => {
+        admin = { ...admin, mfa_activo: false };
+        const malo = await pedir('POST', '/api/admin/mfa/activar', { token: tokenMfa('configurar'), headers: IP, body: { codigo: codigoMalo() } });
+        assert.equal(malo.status, 401);
+        assert.equal(ultimo('mfa.activar').resultado, 'rechazado');
+
+        const r = await pedir('POST', '/api/admin/mfa/activar', { token: tokenMfa('configurar'), headers: IP, body: { codigo: codigoActual() } });
+        assert.equal(r.status, 200);
+        assert.equal(jwt.decode(r.json.token).tipo, 'admin');
+        assert.equal(r.json.codigos_respaldo.length, 10);
+        const hashes = consultas.find(c => c.sql.includes('INSERT INTO mfa_codigos_respaldo')).params[1];
+        assert.deepEqual(hashes, r.json.codigos_respaldo.map(mfa.hashRespaldo));
+        assert.equal(ultimo('mfa.activar').datos_despues.codigos_respaldo_generados, 10);
+        for (const c of r.json.codigos_respaldo) assert.doesNotMatch(JSON.stringify(eventos), new RegExp(c));
+    });
+
+    test('cuenta desactivada en el segundo paso → 403', async () => {
+        admin.activo = false;
+        assert.equal((await pedir('POST', '/api/admin/mfa/verificar', { token: tokenMfa('verificar'), headers: IP, body: { codigo: codigoActual() } })).status, 403);
+    });
+
+    test('si se restablece el segundo factor, la sesión abierta deja de servir', async () => {
+        estadoAdmin = { ...estadoAdmin, mfa_activo: false };
+        assert.equal((await pedir('GET', '/api/admin/choferes', { token: TOKEN_ADMIN })).status, 403);
+        assert.equal(consultasDeDatos().length, 0);
+    });
+
+    test('regenerar los códigos de respaldo exige un código de la app', async () => {
+        const malo = await pedir('POST', '/api/admin/mfa/respaldo', { token: TOKEN_ADMIN, headers: IP, body: { codigo: codigoMalo() } });
+        assert.equal(malo.status, 400);
+        const r = await pedir('POST', '/api/admin/mfa/respaldo', { token: TOKEN_ADMIN, headers: IP, body: { codigo: codigoActual() } });
+        assert.equal(r.status, 200);
+        assert.equal(r.json.codigos_respaldo.length, 10);
+        assert.ok(consultas.some(c => c.sql.includes('DELETE FROM mfa_codigos_respaldo')));
+        assert.equal(ultimo('mfa.respaldo_regenerar').resultado, 'exito');
+    });
+
+    test('superadmin restablece el segundo factor de otro administrador, nunca el propio', async () => {
+        responder = (sql) => sql.includes('WITH antes AS')
+            ? { rows: [{ id: 1, nombre: 'G', email: 'admin@pulpos.bo', rol: 'gerente', empresa_id: 2, mfa_activo: false,
+                _antes: { mfa_activo: true, mfa_activado_en: '2026-10-01' }, _despues: { mfa_activo: false, mfa_activado_en: null } }] }
+            : { rows: [] };
+        assert.equal((await pedir('POST', '/api/plataforma/administradores/9/mfa/restablecer', { token: TOKEN_SUPERADMIN })).status, 400);
+        const r = await pedir('POST', '/api/plataforma/administradores/1/mfa/restablecer', { token: TOKEN_SUPERADMIN });
+        assert.equal(r.status, 200);
+        assert.ok(consultas.some(c => c.sql.includes('DELETE FROM mfa_codigos_respaldo') && c.params[0] === '1'));
+        const e = ultimo('mfa.restablecer');
+        assert.deepEqual([e.empresa_id, e.actor_tipo, e.datos_antes.mfa_activo, e.datos_despues.mfa_activo], [2, 'superadmin', true, false]);
     });
 });

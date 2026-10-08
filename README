@@ -17,8 +17,9 @@
 7. [Credenciales de Prueba](#credenciales)
 8. [Endpoints de la API](#api)
 9. [Auditoría](#auditoria)
-10. [Modelo Matemático](#modelo)
-11. [Estructura de Carpetas](#estructura)
+10. [Autenticación Multifactor](#mfa)
+11. [Modelo Matemático](#modelo)
+12. [Estructura de Carpetas](#estructura)
 
 ---
 
@@ -147,6 +148,7 @@ psql -U postgres -d pulpos_db -f database/init.sql
 pg_dump -U postgres pulpos_db > respaldo_antes_de_migrar.sql
 psql -1 -U postgres -d pulpos_db -f database/migraciones/001_multiempresa.sql
 psql -1 -U postgres -d pulpos_db -f database/migraciones/002_auditoria.sql
+psql -1 -U postgres -d pulpos_db -f database/migraciones/003_mfa.sql
 ```
 
 ### Base de datos de auditoría
@@ -239,6 +241,8 @@ La base de datos de demostración trae dos empresas para mostrar el aislamiento 
 | Gerente Radio Taxis Pulpos | `admin@pulpos.bo` | `password` | Solo datos de Pulpos (El Alto) |
 | Gerente Radio Taxis Illimani | `admin@illimani.bo` | `password` | Solo datos de Illimani (La Paz) |
 
+El panel exige **segundo factor**: en el primer ingreso de cada cuenta se muestra un código QR para escanear con una app autenticadora (Google Authenticator, Microsoft Authenticator, Aegis…). Ver [Autenticación Multifactor](#mfa).
+
 **App móvil**
 
 | Código de empresa | Placa | Contraseña |
@@ -263,7 +267,15 @@ Base URL: `http://localhost:3000`
 | `GET` | `/` | Estado del servidor |
 | `GET` | `/api/empresas/:codigo` | Nombre, color y logo de una empresa activa |
 | `POST` | `/api/login` | Login de conductor: `{empresa, placa_vehiculo, password}` |
-| `POST` | `/api/admin/login` | Login del panel: `{usuario (correo), password}` |
+| `POST` | `/api/admin/login` | Paso 1 del panel: `{usuario (correo), password}` → `{mfa: 'configurar' \| 'verificar', token_mfa}` (5 min, no abre ninguna otra ruta) |
+
+### Segundo factor (requieren el `token_mfa` del paso 1)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/api/admin/mfa/configurar` | Genera el secreto TOTP: `{secreto, uri, qr}` (solo si aún no está activo) |
+| `POST` | `/api/admin/mfa/activar` | `{codigo}` de la app → activa el factor y devuelve `{token, codigos_respaldo}` |
+| `POST` | `/api/admin/mfa/verificar` | `{codigo}` de 6 dígitos o de respaldo (`XXXX-XXXX`) → `{token}` de sesión (8 h) |
 
 ### Panel Admin (requieren token Bearer de administrador; un token de chofer recibe 403)
 
@@ -282,6 +294,8 @@ Todas las rutas operan **solo sobre la empresa del token**; los datos de otras e
 | `PUT` | `/api/admin/empresa` | Editar los datos de la empresa (identidad, zona, moneda) |
 | `GET` | `/api/config` | Datos de la empresa y sus parámetros (también para choferes) |
 | `GET` | `/api/admin/auditoria?desde=&hasta=&accion=&pagina=` | Bitácora de auditoría de la empresa |
+| `GET` | `/api/admin/mfa` | Estado del segundo factor y códigos de respaldo restantes (también superadmin) |
+| `POST` | `/api/admin/mfa/respaldo` | `{codigo}` de la app → regenera los códigos de respaldo (también superadmin) |
 
 ### Plataforma (requieren token de superadmin)
 
@@ -293,6 +307,8 @@ Todas las rutas operan **solo sobre la empresa del token**; los datos de otras e
 | `PATCH` | `/api/plataforma/empresas/:id/estado` | Activar/desactivar empresa (corta el acceso al instante) |
 | `GET` | `/api/plataforma/auditoria?empresa_id=&desde=&hasta=&accion=&pagina=` | Bitácora de todas las empresas |
 | `GET` | `/api/plataforma/auditoria/verificar` | Verificar la integridad de la bitácora |
+| `GET` | `/api/plataforma/administradores` | Administradores de todas las empresas y estado de su segundo factor |
+| `POST` | `/api/plataforma/administradores/:id/mfa/restablecer` | Restablecer el segundo factor de otro administrador (cierra sus sesiones) |
 
 ### App Móvil (requieren token del conductor)
 
@@ -320,6 +336,45 @@ Cada acción relevante queda registrada en una **base de datos de auditoría sep
 | Cola `auditoria_pendiente` en la base principal | Perder eventos si la base de auditoría no está disponible (se reenvían cada 30 s) |
 
 **Verificar la integridad:** en el panel, como superadmin → **AUDITORÍA → VERIFICAR INTEGRIDAD**. Si un evento fue alterado o falta, indica desde cuál.
+
+---
+
+## 🔐 Autenticación Multifactor <a name="mfa"></a>
+
+El panel web exige dos factores: **algo que sabes** (contraseña) y **algo que tienes** (el teléfono con una app autenticadora TOTP, RFC 6238). Los choferes no usan segundo factor: la app es offline-first y la sesión la controla la central (desactivar al chofer corta su acceso).
+
+**Flujo:**
+
+1. Correo y contraseña correctos → el servidor no entrega la sesión, sino un `token_mfa` de 5 minutos que solo sirve para el segundo paso.
+2. **Primer ingreso:** el panel muestra un código QR; tras escanearlo e ingresar el primer código, el factor queda activo y se muestran **10 códigos de respaldo** una única vez (se pueden descargar o copiar).
+3. **Ingresos siguientes:** se pide el código de 6 dígitos de la app (o un código de respaldo).
+4. En **SEGURIDAD** cada administrador ve cuántos códigos de respaldo le quedan y puede regenerarlos confirmando con la app.
+5. Si alguien pierde el teléfono y los códigos, el superadmin lo **restablece** en **EMPRESAS → ADMINISTRADORES**; sus sesiones abiertas dejan de servir y configura el factor de nuevo al entrar.
+
+**Cómo se protege:**
+
+| Mecanismo | Protege contra |
+|---|---|
+| Secreto TOTP cifrado con AES-256-GCM (`MFA_CLAVE`) | Que una copia o lectura de la base revele los secretos |
+| Códigos de respaldo guardados solo como hash SHA-256, de un solo uso | Reutilizar un código o leerlos desde la base |
+| Último intervalo usado guardado por cuenta | Reutilizar un código interceptado dentro de sus 30 s (ataque de repetición) |
+| 5 códigos incorrectos → cuenta bloqueada 15 min, más el límite de 10 fallos por IP | Fuerza bruta del código de 6 dígitos |
+| `token_mfa` de 5 min que ninguna ruta acepta como sesión | Entrar al panel solo con la contraseña |
+| Cada petición comprueba que el factor siga activo | Que un factor restablecido deje sesiones vivas |
+
+Todo queda en la bitácora: contraseña correcta, configuración, activación, códigos incorrectos, bloqueos, regeneración y restablecimiento (sin secretos ni códigos).
+
+**Si el superadmin pierde su factor** (nadie puede restablecer el propio), otro superadmin lo restablece desde el panel o, en último caso, un DBA en pgAdmin:
+
+```sql
+BEGIN;
+UPDATE administradores SET mfa_activo = FALSE, mfa_secreto = NULL, mfa_ultimo_paso = NULL,
+       mfa_activado_en = NULL, mfa_fallos = 0, mfa_bloqueado_hasta = NULL
+WHERE email = 'superadmin@plataforma.bo';
+DELETE FROM mfa_codigos_respaldo
+WHERE administrador_id = (SELECT id FROM administradores WHERE email = 'superadmin@plataforma.bo');
+COMMIT;
+```
 
 ---
 
@@ -374,6 +429,8 @@ pulpos-taxis/
 │
 ├── 📁 pulpos_backend/          # API REST Node.js
 │   ├── index.js                # Servidor principal + todas las rutas
+│   ├── auditoria.js            # Bitácora en la base de auditoría
+│   ├── mfa.js                  # TOTP (RFC 6238), cifrado del secreto y códigos de respaldo
 │   ├── db.js                   # Conexión PostgreSQL (pool)
 │   ├── package.json
 │   └── Dockerfile
