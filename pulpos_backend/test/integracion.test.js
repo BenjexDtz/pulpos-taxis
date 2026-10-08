@@ -20,10 +20,10 @@ if (activo) {
 }
 
 describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !activo && 'definir PG_INTEGRACION=1' }, () => {
-    let pool, admin, auditoria, base, server;
+    let pool, admin, auditoria, base, server, mfa;
 
-    const pedir = async (metodo, ruta, { token, body } = {}) => {
-        const h = {};
+    const pedir = async (metodo, ruta, { token, body, headers = {} } = {}) => {
+        const h = { ...headers };
         if (token) h.Authorization = `Bearer ${token}`;
         if (body !== undefined) h['Content-Type'] = 'application/json';
         const r = await fetch(base + ruta, { method: metodo, headers: h, body: body && JSON.stringify(body) });
@@ -31,8 +31,18 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         let json; try { json = JSON.parse(texto); } catch { json = undefined; }
         return { status: r.status, json, texto };
     };
-    const loginAdmin = async (email) =>
-        (await pedir('POST', '/api/admin/login', { body: { usuario: email, password: 'password' } })).json.token;
+    const secretos = {};
+    const codigo = (email, desfase = 0) => mfa.codigoEnPaso(secretos[email], mfa.pasoActual() + desfase);
+    const loginAdmin = async (email, password = 'password') => {
+        const paso1 = (await pedir('POST', '/api/admin/login', { body: { usuario: email, password } })).json;
+        if (paso1.mfa === 'configurar') {
+            secretos[email] = (await pedir('POST', '/api/admin/mfa/configurar', { token: paso1.token_mfa })).json.secreto;
+            return (await pedir('POST', '/api/admin/mfa/activar', { token: paso1.token_mfa, body: { codigo: codigo(email) } })).json.token;
+        }
+        // Los tests entran varias veces dentro de la misma ventana de 30 s.
+        await pool.query(`UPDATE administradores SET mfa_ultimo_paso = NULL WHERE email = $1`, [email]);
+        return (await pedir('POST', '/api/admin/mfa/verificar', { token: paso1.token_mfa, body: { codigo: codigo(email) } })).json.token;
+    };
     const loginChofer = async (empresa, placa, password = '123') =>
         (await pedir('POST', '/api/login', { body: { empresa, placa_vehiculo: placa, password } })).json;
 
@@ -44,6 +54,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         pool = require('../db');
         await pool.query(fs.readFileSync(path.join(__dirname, '../../database/init.sql'), 'utf8'));
         auditoria = require('../auditoria');
+        mfa = require('../mfa');
         await auditoria.pool.query(fs.readFileSync(path.join(__dirname, '../../database/auditoria/esquema.sql'), 'utf8'));
         const { app } = require('../index');
         server = app.listen(0);
@@ -135,7 +146,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         } });
         assert.equal(r.status, 201, r.texto);
 
-        const g = (await pedir('POST', '/api/admin/login', { body: { usuario: 'lucia@taxissur.bo', password: 'segura123' } })).json.token;
+        const g = await loginAdmin('lucia@taxissur.bo', 'segura123');
         assert.deepEqual((await pedir('GET', '/api/admin/choferes', { token: g })).json, []);
         assert.deepEqual((await pedir('GET', '/api/admin/viajes', { token: g })).json, []);
         const cfg = (await pedir('GET', '/api/config', { token: g })).json;
@@ -173,6 +184,64 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -16.52, lng: -68.20 } })).status, 200);
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -17.39, lng: -66.16 } })).status, 400);
     });
+    test('segundo factor: QR, códigos de un solo uso, bloqueo y restablecimiento', async () => {
+        const email = 'supervisor@pulpos.bo';
+        const headers = { 'X-Forwarded-For': '203.0.113.7' };
+        await pool.query(
+            `INSERT INTO administradores (empresa_id, nombre, email, password_hash, rol)
+             SELECT id, 'Supervisor', $1, $2, 'supervisor' FROM empresas WHERE codigo = 'pulpos'`,
+            [email, require('bcryptjs').hashSync('password', 4)]
+        );
+        const entrar = async () => (await pedir('POST', '/api/admin/login', { headers, body: { usuario: email, password: 'password' } })).json;
+        const verificar = (token, codigoMfa) => pedir('POST', '/api/admin/mfa/verificar', { headers, token, body: { codigo: codigoMfa } });
+
+        let p1 = await entrar();
+        assert.equal(p1.mfa, 'configurar');
+        assert.equal((await pedir('GET', '/api/admin/choferes', { token: p1.token_mfa })).status, 403);
+        secretos[email] = (await pedir('POST', '/api/admin/mfa/configurar', { token: p1.token_mfa })).json.secreto;
+        const fila = (await pool.query(`SELECT mfa_secreto, mfa_activo FROM administradores WHERE email = $1`, [email])).rows[0];
+        assert.equal(fila.mfa_activo, false);
+        assert.ok(!fila.mfa_secreto.includes(secretos[email]), 'el secreto se guarda cifrado');
+
+        const codigoActivacion = codigo(email);
+        const act = (await pedir('POST', '/api/admin/mfa/activar', { headers, token: p1.token_mfa, body: { codigo: codigoActivacion } })).json;
+        assert.equal(act.codigos_respaldo.length, 10);
+        assert.equal((await pedir('GET', '/api/admin/choferes', { token: act.token })).status, 200);
+        assert.equal((await pedir('GET', '/api/admin/mfa', { token: act.token })).json.respaldo_restantes, 10);
+
+        p1 = await entrar();
+        assert.equal(p1.mfa, 'verificar');
+        assert.equal((await verificar(p1.token_mfa, codigoActivacion)).status, 401, 'un código ya usado no sirve');
+        const ok = await verificar(p1.token_mfa, codigo(email, 1));
+        assert.equal(ok.status, 200);
+
+        const respaldo = await verificar((await entrar()).token_mfa, act.codigos_respaldo[0].toLowerCase());
+        assert.equal(respaldo.json.respaldo_restantes, 9);
+        assert.equal((await verificar((await entrar()).token_mfa, act.codigos_respaldo[0])).status, 401);
+
+        p1 = await entrar();
+        const validos = [-1, 0, 1, 2].map(d => codigo(email, d));
+        const malo = ['000000', '111111', '222222'].find(c => !validos.includes(c));
+        const estados = [];
+        for (let i = 0; i < 4; i++) estados.push((await verificar(p1.token_mfa, malo)).status);
+        assert.deepEqual(estados, [401, 401, 401, 429], 'con los fallos previos llega a 5 y se bloquea');
+        assert.equal((await verificar(p1.token_mfa, codigo(email, 1))).status, 429);
+
+        const sa = await loginAdmin('superadmin@plataforma.bo');
+        const id = (await pool.query(`SELECT id FROM administradores WHERE email = $1`, [email])).rows[0].id;
+        assert.equal((await pedir('POST', `/api/plataforma/administradores/${id}/mfa/restablecer`, { token: sa })).status, 200);
+        assert.equal((await pedir('GET', '/api/admin/choferes', { token: respaldo.json.token })).status, 403);
+        assert.equal((await entrar()).mfa, 'configurar');
+        assert.equal((await pool.query(`SELECT count(*)::int n FROM mfa_codigos_respaldo WHERE administrador_id = $1`, [id])).rows[0].n, 0);
+
+        const bitacora = (await auditoria.pool.query(`SELECT accion, resultado, datos_antes, datos_despues FROM eventos WHERE entidad_id = $1 OR accion LIKE 'sesion.mfa%'`, [String(id)])).rows;
+        for (const accion of ['mfa.configurar', 'mfa.activar', 'sesion.mfa_fallido', 'sesion.mfa_bloqueado', 'mfa.restablecer'])
+            assert.ok(bitacora.some(e => e.accion === accion), accion);
+        const todo = JSON.stringify((await auditoria.pool.query('SELECT * FROM eventos')).rows);
+        assert.ok(!todo.includes(secretos[email]) && !todo.includes(fila.mfa_secreto));
+        for (const c of act.codigos_respaldo) assert.ok(!todo.includes(c));
+    });
+
     test('auditoría: cada acción queda en la bitácora, con la empresa correcta y sin secretos', async () => {
         const illimani = await loginAdmin('admin@illimani.bo');
         await pedir('POST', '/api/admin/choferes', { token: illimani,

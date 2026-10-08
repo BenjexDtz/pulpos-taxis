@@ -55,7 +55,24 @@ CREATE TABLE IF NOT EXISTS administradores (
                    CHECK (rol IN ('superadmin', 'gerente', 'supervisor')),
     activo         BOOLEAN   DEFAULT TRUE,
     fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT administradores_rol_empresa_check CHECK ((rol = 'superadmin') = (empresa_id IS NULL))
+    -- Segundo factor (TOTP). El secreto se guarda cifrado con AES-256-GCM.
+    mfa_activo          BOOLEAN NOT NULL DEFAULT FALSE,
+    mfa_secreto         TEXT,
+    mfa_ultimo_paso     BIGINT,
+    mfa_activado_en     TIMESTAMP,
+    mfa_fallos          INTEGER NOT NULL DEFAULT 0,
+    mfa_bloqueado_hasta TIMESTAMP,
+    CONSTRAINT administradores_rol_empresa_check CHECK ((rol = 'superadmin') = (empresa_id IS NULL)),
+    CONSTRAINT administradores_mfa_check CHECK (NOT mfa_activo OR mfa_secreto IS NOT NULL)
+);
+
+-- Códigos de un solo uso para entrar si se pierde la app autenticadora (solo el hash SHA-256).
+CREATE TABLE IF NOT EXISTS mfa_codigos_respaldo (
+    id               SERIAL PRIMARY KEY,
+    administrador_id INTEGER  NOT NULL REFERENCES administradores(id) ON DELETE CASCADE,
+    codigo_hash      CHAR(64) NOT NULL,
+    usado_en         TIMESTAMP,
+    CONSTRAINT mfa_codigos_respaldo_unico UNIQUE (administrador_id, codigo_hash)
 );
 
 -- ── 4. PARÁMETROS TOPOGRÁFICOS ────────────────────────────────────────────────

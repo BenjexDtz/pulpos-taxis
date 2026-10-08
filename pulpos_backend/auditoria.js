@@ -13,7 +13,7 @@ const pool = configurada ? new Pool({
 }) : null;
 
 const ANCLA_CADA = Number(process.env.AUDITORIA_ANCLA_CADA || 50);
-const CAMPOS_SECRETOS = new Set(['password', 'password_hash', 'nueva_password', 'token']);
+const CAMPOS_SECRETOS = new Set(['password', 'password_hash', 'nueva_password', 'token', 'mfa_secreto', 'codigos_respaldo']);
 
 const limpiar = (valor) => {
     if (Array.isArray(valor)) return valor.map(limpiar);
