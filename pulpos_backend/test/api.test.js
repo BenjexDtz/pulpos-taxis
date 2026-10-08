@@ -198,7 +198,26 @@ describe('Sincronización de viajes', () => {
         };
         await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: viaje });
         assert.deepEqual(insert().params.slice(5),
-            ['asfalto', '1.30', 1, '2.50', '0.60', '0.110', '7.50', viaje.fecha_hora_viaje]);
+            ['asfalto', '1.30', 1, '2.50', '0.60', '0.110', '7.50', viaje.fecha_hora_viaje, null]);
+    });
+
+    test('uuid con formato inválido → 400 sin insertar', async () => {
+        for (const uuid of ['abc', 123, '00000000-0000-0000-0000-00000000000g'])
+            assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...viaje, uuid } })).status, 400);
+        assert.equal(insert(), undefined);
+    });
+
+    test('reenviar un viaje ya recibido responde 200 con el mismo id y no audita', async () => {
+        const uuid = '3f1c2a9e-8b7d-4c6e-9a1b-2d3e4f5a6b7c';
+        responder = (sql) => sql.includes('SELECT id_servidor FROM viajes_historial') ? { rows: [{ id_servidor: 41 }] } : { rows: [] };
+        const previos = eventos.length;
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...viaje, uuid } });
+        assert.equal(r.status, 200);
+        assert.deepEqual(r.json, { success: true, id_servidor: 41, duplicado: true });
+        assert.match(insert().sql, /ON CONFLICT \(chofer_id, uuid\) DO NOTHING/);
+        assert.equal(insert().params.at(-1), uuid);
+        assert.deepEqual(consultasDeDatos().at(-1).params, [7, 2, uuid]);
+        assert.equal(eventos.length, previos);
     });
 });
 

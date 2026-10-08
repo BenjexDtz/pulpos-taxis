@@ -5,11 +5,15 @@ const { auditar } = require('../utilidades');
 const { distanciaKm } = require('../validacion');
 
 const router = express.Router();
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, res) => {
     const { distancia_km, tiempo_detencion_min, tarifa_cobrada, fecha_hora_viaje } = req.body;
     if (distancia_km === undefined)
         return res.status(400).json({ error: 'Faltan datos del viaje.' });
+    const uuid = req.body.uuid ?? null;
+    if (uuid !== null && !(typeof uuid === 'string' && UUID.test(uuid)))
+        return res.status(400).json({ error: 'Identificador de viaje inválido.' });
 
     const p = (await pool.query(
         'SELECT * FROM parametros_topograficos WHERE empresa_id = $1', [req.empresa.id]
@@ -22,8 +26,9 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
             tipo_superficie, factor_altitud_aplicado, factor_superficie_aplicado,
             costo_base_aplicado, costo_minuto_aplicado,
             consumo_litros_aplicado, precio_combustible_aplicado,
-            fecha_hora_viaje
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            fecha_hora_viaje, uuid
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT (chofer_id, uuid) DO NOTHING
          RETURNING *`,
         [
             req.empresa.id, req.usuario.id, distancia_km, tiempo_detencion_min, tarifa_cobrada,
@@ -34,10 +39,18 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
             b.costo_minuto_aplicado ?? p.costo_minuto_detencion,
             b.consumo_litros_aplicado ?? p.consumo_litros_km,
             b.precio_combustible_aplicado ?? p.precio_combustible_bs,
-            fecha_hora_viaje,
+            fecha_hora_viaje, uuid,
         ]
     );
     const viaje = r.rows[0];
+    // Reintento de un viaje ya recibido: se confirma sin volver a insertarlo
+    if (!viaje) {
+        const previo = (await pool.query(
+            'SELECT id_servidor FROM viajes_historial WHERE chofer_id = $1 AND empresa_id = $2 AND uuid = $3',
+            [req.usuario.id, req.empresa.id, uuid]
+        )).rows[0];
+        return res.json({ success: true, id_servidor: previo?.id_servidor, duplicado: true });
+    }
     await auditar(req, { accion: 'viaje.sincronizar', entidad: 'viajes_historial', entidad_id: viaje.id_servidor, datos_despues: viaje });
     res.status(201).json({ success: true, id_servidor: viaje.id_servidor });
 });

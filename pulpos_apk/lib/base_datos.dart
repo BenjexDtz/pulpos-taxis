@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
+import 'api_sync.dart';
+
 class BaseDatosLocal {
   // Patrón Singleton: Garantiza que solo haya una conexión abierta
   static final BaseDatosLocal instancia = BaseDatosLocal._init();
@@ -22,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -41,7 +43,8 @@ class BaseDatosLocal {
         tarifa_total REAL,
         estado_sincronizacion INTEGER,
         fecha_hora TEXT,
-        $_columnasV3
+        $_columnasV3,
+        uuid TEXT
       )
     ''');
   }
@@ -66,6 +69,13 @@ class BaseDatosLocal {
         await db.execute('ALTER TABLE viajes ADD COLUMN ${columna.trim()}');
       }
     }
+    if (oldVersion < 4) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN uuid TEXT');
+      for (final fila in await db.query('viajes', columns: ['id'])) {
+        await db.update('viajes', {'uuid': nuevoUuid()},
+            where: 'id = ?', whereArgs: [fila['id']]);
+      }
+    }
   }
 
   // Función para guardar un nuevo viaje en la "caja negra"
@@ -74,7 +84,7 @@ class BaseDatosLocal {
 
     int idGenerado = await db.insert(
       'viajes', // 🔥 NOMBRE UNIFICADO
-      viaje,
+      {...viaje, 'uuid': viaje['uuid'] ?? nuevoUuid()},
     );
 
     return idGenerado;

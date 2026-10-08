@@ -124,7 +124,9 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
 
     fecha_hora_viaje             TIMESTAMP NOT NULL,
     fecha_sincronizacion         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    uuid                         UUID,
 
+    CONSTRAINT viajes_chofer_uuid_key UNIQUE (chofer_id, uuid),
     CONSTRAINT viajes_chofer_misma_empresa_fk
         FOREIGN KEY (chofer_id, empresa_id) REFERENCES choferes(id, empresa_id)
 );

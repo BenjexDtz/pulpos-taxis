@@ -148,7 +148,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           },
           body: jsonEncode(viajeParaServidor(viaje)),
         );
-        if (response.statusCode == 201) {
+        // 200: el servidor ya tenía este viaje (reintento)
+        if (response.statusCode == 201 || response.statusCode == 200) {
           await db.update(
             'viajes',
             {'estado_sincronizacion': 1},
