@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { ShieldCheck, KeyRound, RefreshCw, Download, Copy, ArrowLeft, AlertCircle, Smartphone } from 'lucide-react';
 
@@ -47,10 +47,16 @@ export function SegundoFactor({ urlServidor, pendiente, cuenta, onSesion, onCanc
   const [enviando, setEnviando] = useState(false);
   const [sesion, setSesion] = useState(null);
 
+  // StrictMode monta dos veces: reutilizar la petición evita generar dos secretos.
+  const peticionQr = useRef(null);
   useEffect(() => {
     if (etapa !== 'configurar') return;
     let vigente = true;
-    axios.post(`${urlServidor}/api/admin/mfa/configurar`, {}, { headers: { Authorization: `Bearer ${token_mfa}` } })
+    if (peticionQr.current?.token !== token_mfa) peticionQr.current = {
+      token: token_mfa,
+      promesa: axios.post(`${urlServidor}/api/admin/mfa/configurar`, {}, { headers: { Authorization: `Bearer ${token_mfa}` } }),
+    };
+    peticionQr.current.promesa
       .then(r => { if (vigente) setQr(r.data); })
       .catch(err => { if (vigente) setError(errorDe(err)); });
     return () => { vigente = false; };
