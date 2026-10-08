@@ -179,6 +179,30 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal((await pedir('GET', '/api/admin/choferes', { token: gerente })).status, 200);
     });
 
+    test('estadísticas: cuadran con los viajes de la base y no mezclan empresas', async () => {
+        const [pulpos, illimani] = await Promise.all([loginAdmin('admin@pulpos.bo'), loginAdmin('admin@illimani.bo')]);
+        const e = (await pedir('GET', '/api/admin/estadisticas', { token: pulpos })).json;
+        const real = (await pool.query(
+            `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total
+             FROM viajes_historial v JOIN empresas em ON em.id = v.empresa_id
+             WHERE em.codigo = 'pulpos' AND fecha_hora_viaje >= CURRENT_DATE - 29 AND fecha_hora_viaje < CURRENT_DATE + 1`)).rows[0];
+        assert.ok(real.n >= 5);
+        assert.equal(e.resumen.viajes, real.n);
+        assert.equal(Number(e.resumen.recaudado), real.total);
+        assert.equal(e.por_dia.length, 30);
+        assert.equal(e.por_dia.reduce((s, d) => s + d.viajes, 0), real.n);
+        assert.equal(e.horas.reduce((s, h) => s + h.viajes, 0), real.n);
+        assert.equal(e.superficie.reduce((s, x) => s + x.viajes, 0), real.n);
+        assert.ok(e.superficie.every(x => ['asfalto', 'tierra'].includes(x.tipo)));
+        assert.ok(e.choferes.every(c => c.placa !== '5678-ILL'));
+
+        const i = (await pedir('GET', '/api/admin/estadisticas', { token: illimani })).json;
+        assert.deepEqual(i.choferes.map(c => c.placa), ['5678-ILL']);
+
+        const vacio = (await pedir('GET', '/api/admin/estadisticas?desde=2020-01-01&hasta=2020-01-01', { token: pulpos })).json;
+        assert.deepEqual([vacio.desde, vacio.hasta, vacio.resumen.viajes, vacio.por_dia.length, vacio.choferes.length], ['2020-01-01', '2020-01-01', 0, 1, 0]);
+    });
+
     test('la posición se valida contra el radio de operación de cada empresa', async () => {
         const { token } = await loginChofer('pulpos', '1234-KKK');
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -16.52, lng: -68.20 } })).status, 200);

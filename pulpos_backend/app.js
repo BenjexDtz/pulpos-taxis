@@ -23,6 +23,7 @@ app.use(require('./rutas/mfa'));
 app.use(require('./rutas/empresa'));
 app.use(require('./rutas/movil'));
 app.use(require('./rutas/viajes'));
+app.use(require('./rutas/estadisticas'));
 app.use(require('./rutas/choferes'));
 app.use(require('./rutas/auditoria'));
 app.use(require('./rutas/plataforma'));

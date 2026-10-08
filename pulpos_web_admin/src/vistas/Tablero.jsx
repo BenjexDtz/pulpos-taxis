@@ -1,20 +1,50 @@
-import { useState } from 'react';
-import { Activity, Car, Clock, DollarSign, Download, RefreshCw, Search, TrendingUp } from 'lucide-react';
-import TarjetaDato from '../componentes/TarjetaDato.jsx';
-import { consultaFechas, resumenFlota } from '../utilidades.js';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { Activity, Car, Clock, Coins, Download, Flame, Layers, RefreshCw, Route, Search, Trophy, TrendingUp } from 'lucide-react';
+import Tarjeta from '../componentes/ui/Tarjeta.jsx';
+import Insignia from '../componentes/ui/Insignia.jsx';
+import Mensaje from '../componentes/Mensaje.jsx';
+import TarjetaMetrica from '../componentes/tablero/TarjetaMetrica.jsx';
+import GraficoRecaudacion from '../componentes/tablero/GraficoRecaudacion.jsx';
+import GraficoSuperficie from '../componentes/tablero/GraficoSuperficie.jsx';
+import RankingChoferes from '../componentes/tablero/RankingChoferes.jsx';
+import MapaCalorHoras from '../componentes/tablero/MapaCalorHoras.jsx';
+import { botonSecundario, campo, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
+import { consultaFechas, fechaLocal, formatoMoneda, formatoNumero, resumenFlota, variacion } from '../utilidades.js';
+
+const PERIODOS = [[7, '7 días'], [30, '30 días'], [90, '90 días'], [365, '1 año']];
+const COLOR_TIERRA = '#f79009';
+
+const haceDias = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return fechaLocal(d); };
 
 export default function Tablero({
-  viajes, choferes, empresa, cargando, errorDashboard, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta,
-  cargarReporte, urlServidor, headers,
+  viajes, choferes, empresa, params, cargando, errorDashboard, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta,
+  cargarReporte, cargarChoferes, urlServidor, headers, manejarErrorApi,
 }) {
   const [filtroChofer, setFiltroChofer] = useState('');
   const [errorCsv, setErrorCsv] = useState(null);
+  const [estadisticas, setEstadisticas] = useState(null);
+  const [errorEstadisticas, setErrorEstadisticas] = useState('');
   const m = empresa?.moneda_simbolo ?? 'Bs';
+  const color = empresa?.color_primario ?? '#465fff';
+
+  useEffect(() => {
+    let vigente = true;
+    axios.get(`${urlServidor}/api/admin/estadisticas${consultaFechas(fechaDesde, fechaHasta)}`, { headers: headers() })
+      .then(r => { if (vigente) { setEstadisticas(r.data); setErrorEstadisticas(''); } })
+      .catch(err => { if (vigente) manejarErrorApi(err, setErrorEstadisticas); });
+    return () => { vigente = false; };
+  }, [urlServidor, headers, manejarErrorApi, fechaDesde, fechaHasta]);
+
+  useEffect(() => { cargarReporte(); }, [cargarReporte]);
+  useEffect(() => { cargarChoferes(); }, [cargarChoferes]);
+
+  const elegirPeriodo = (dias) => { setFechaDesde(haceDias(dias - 1)); setFechaHasta(haceDias(0)); };
+  const periodoActivo = PERIODOS.find(([dias]) => fechaDesde === haceDias(dias - 1) && fechaHasta === haceDias(0))?.[0];
 
   const exportarCSV = () => {
-    const url = `${urlServidor}/api/admin/viajes/exportar${consultaFechas(fechaDesde, fechaHasta)}`;
     setErrorCsv(null);
-    fetch(url, { headers: headers() })
+    fetch(`${urlServidor}/api/admin/viajes/exportar${consultaFechas(fechaDesde, fechaHasta)}`, { headers: headers() })
       .then(async r => {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || '⚠️ No se pudo exportar el CSV.');
         return r.blob();
@@ -22,75 +52,123 @@ export default function Tablero({
       .then(blob => {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `${empresa?.codigo ?? 'empresa'}_viajes_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.download = `${empresa?.codigo ?? 'empresa'}_viajes_${fechaLocal()}.csv`;
         link.click();
+        URL.revokeObjectURL(link.href);
       })
       .catch(err => setErrorCsv(err.message));
   };
 
+  const texto = filtroChofer.toLowerCase();
   const viajesFiltrados = viajes.filter(v =>
-    v.chofer?.toLowerCase().includes(filtroChofer.toLowerCase()) ||
-    v.placa_vehiculo?.toLowerCase().includes(filtroChofer.toLowerCase())
-  );
-  const totalRecaudado = viajesFiltrados.reduce((s, v) => s + parseFloat(v.tarifa_total || 0), 0);
-  const kmTotal = viajesFiltrados.reduce((s, v) => s + parseFloat(v.distancia_km || 0), 0);
+    v.chofer?.toLowerCase().includes(texto) || v.placa_vehiculo?.toLowerCase().includes(texto));
   const { activosCount, conGPSVivo } = resumenFlota(choferes);
-  const errorTabla = errorDashboard || errorCsv;
+  const r = estadisticas?.resumen;
+  const a = estadisticas?.anterior;
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <TarjetaDato icon={DollarSign} label="RECAUDACIÓN" value={`${m} ${totalRecaudado.toFixed(2)}`} sub="viajes filtrados" color="green" />
-        <TarjetaDato icon={Activity} label="VIAJES" value={viajesFiltrados.length} sub={`de ${viajes.length} total`} color="blue" />
-        <TarjetaDato icon={Car} label="FLOTA ACTIVA" value={activosCount} sub={`${conGPSVivo} con GPS en vivo`} color="yellow" pulse />
-        <TarjetaDato icon={TrendingUp} label="KM RECORRIDOS" value={kmTotal.toFixed(1)} sub="kilómetros acumulados" color="purple" />
+      {/* Período */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900" role="group" aria-label="Período">
+          {PERIODOS.map(([dias, nombre]) => (
+            <button key={dias} onClick={() => elegirPeriodo(dias)} aria-pressed={periodoActivo === dias}
+              className={`rounded-md px-3 py-2 text-theme-sm font-medium transition ${periodoActivo === dias
+                ? 'bg-white text-gray-900 shadow-theme-xs dark:bg-gray-800 dark:text-white'
+                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'}`}>
+              {nombre}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="date" aria-label="Desde" value={fechaDesde} max={fechaHasta} onChange={e => setFechaDesde(e.target.value)} className={campoEnLinea} />
+          <span className="text-gray-400">→</span>
+          <input type="date" aria-label="Hasta" value={fechaHasta} min={fechaDesde} onChange={e => setFechaHasta(e.target.value)} className={campoEnLinea} />
+        </div>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-800 flex flex-wrap items-center gap-3 bg-gray-900">
-          <div className="flex items-center space-x-2 mr-auto">
-            <Clock className="w-4 h-4 text-gray-500" />
-            <h2 className="font-bold text-gray-200 tracking-wider">HISTORIAL DE VIAJES</h2>
-          </div>
-          <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg font-radar text-xs focus:outline-none focus:border-blue-500" />
-          <span className="text-gray-600 font-radar text-xs">→</span>
-          <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg font-radar text-xs focus:outline-none focus:border-blue-500" />
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-600" />
-            <input type="text" placeholder="Conductor o placa..."
-              className="bg-gray-800 border border-gray-700 text-white pl-9 pr-4 py-2 rounded-lg font-radar text-xs focus:outline-none focus:border-blue-500 transition w-44 placeholder-gray-700"
-              value={filtroChofer} onChange={e => setFiltroChofer(e.target.value)} />
-          </div>
-          <button onClick={exportarCSV}
-            className="flex items-center gap-2 bg-green-950 hover:bg-green-900 border border-green-800 text-green-400 px-3 py-2 rounded-lg transition font-radar text-xs">
-            <Download className="w-3.5 h-3.5" />CSV
-          </button>
-          <button onClick={cargarReporte} disabled={cargando}
-            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg transition font-radar text-xs disabled:opacity-50">
-            <RefreshCw className={`w-3.5 h-3.5 ${cargando ? 'animate-spin' : ''}`} />SYNC
-          </button>
-        </div>
-        <div className="overflow-x-auto">
+      <Mensaje texto={errorEstadisticas} />
+
+      {/* Indicadores */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-6">
+        <TarjetaMetrica icono={Coins} etiqueta="Recaudación" valor={formatoMoneda(r?.recaudado, m)}
+          cambio={r && variacion(r.recaudado, a?.recaudado)}
+          detalle={a?.viajes ? `Período anterior: ${formatoMoneda(a.recaudado, m)}` : 'Sin viajes en el período anterior'} />
+        <TarjetaMetrica icono={Activity} etiqueta="Viajes" valor={formatoNumero(r?.viajes)}
+          cambio={r && variacion(r.viajes, a?.viajes)}
+          detalle={r?.viajes ? `Tarifa promedio ${formatoMoneda(r.recaudado / r.viajes, m)}` : null} />
+        <TarjetaMetrica icono={Route} etiqueta="Kilómetros recorridos" valor={formatoNumero(r?.km, 1)}
+          cambio={r && variacion(r.km, a?.km)} detalle={r ? `${formatoNumero(r.espera_min)} min de espera cobrados` : null} />
+        <TarjetaMetrica icono={Car} etiqueta="Flota activa" valor={activosCount}
+          detalle={`${conGPSVivo} con GPS en vivo · ${choferes.length} registrados`} />
+      </div>
+
+      {/* Gráficos */}
+      <div className="grid grid-cols-12 gap-4 md:gap-6">
+        <Tarjeta className="col-span-12 xl:col-span-8" icono={TrendingUp} titulo="Recaudación"
+          subtitulo={estadisticas
+            ? `${estadisticas.por_dia.length > 92 ? 'Por mes' : 'Por día'} · total ${formatoMoneda(r?.recaudado, m)}`
+            : 'Cargando...'}>
+          <GraficoRecaudacion datos={estadisticas?.por_dia ?? []} color={color} moneda={m} />
+        </Tarjeta>
+        <Tarjeta className="col-span-12 xl:col-span-4" icono={Layers} titulo="Asfalto vs tierra" subtitulo="Viajes por tipo de superficie">
+          <GraficoSuperficie datos={estadisticas?.superficie ?? []} colores={{ asfalto: color, tierra: COLOR_TIERRA }}
+            moneda={m} factorTierra={params?.factor_superficie} />
+        </Tarjeta>
+        <Tarjeta className="col-span-12 xl:col-span-5" icono={Trophy} titulo="Ranking de choferes" subtitulo="Los que más recaudaron en el período">
+          <RankingChoferes choferes={estadisticas?.choferes ?? []} moneda={m} />
+        </Tarjeta>
+        <Tarjeta className="col-span-12 xl:col-span-7" icono={Flame} titulo="Horas pico" subtitulo="Viajes por día de la semana y hora">
+          <MapaCalorHoras horas={estadisticas?.horas ?? []} />
+        </Tarjeta>
+      </div>
+
+      {/* Historial */}
+      <Tarjeta icono={Clock} titulo="Historial de viajes" subtitulo={`${viajesFiltrados.length} de ${viajes.length} viajes del período`} cuerpo=""
+        acciones={
+          <>
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input type="search" placeholder="Conductor o placa..." aria-label="Buscar conductor o placa"
+                value={filtroChofer} onChange={e => setFiltroChofer(e.target.value)} className={`${campo} w-56 pl-9`} />
+            </div>
+            <button onClick={exportarCSV} className={botonSecundario}><Download className="h-4 w-4" />CSV</button>
+            <button onClick={cargarReporte} disabled={cargando} className={botonSecundario}>
+              <RefreshCw className={`h-4 w-4 ${cargando ? 'animate-spin' : ''}`} />Actualizar
+            </button>
+          </>
+        }>
+        {(errorDashboard || errorCsv) && <div className="px-5 pt-4 sm:px-6"><Mensaje texto={errorDashboard || errorCsv} /></div>}
+        <div className="custom-scrollbar max-h-[480px] overflow-auto">
           <table className="w-full">
-            <thead><tr className="border-b border-gray-800">{['CONDUCTOR / UNIDAD', 'DISTANCIA', 'ESPERA', 'TARIFA', 'FECHA'].map(h => <th key={h} className="px-5 py-3 text-left font-radar text-xs text-gray-600 tracking-widest">{h}</th>)}</tr></thead>
+            <thead className="sticky top-0 bg-white dark:bg-gray-900">
+              <tr className="border-b border-gray-100 dark:border-gray-800">
+                {['Conductor / unidad', 'Distancia', 'Espera', 'Superficie', 'Tarifa', 'Fecha'].map(h => <th key={h} className={th}>{h}</th>)}
+              </tr>
+            </thead>
             <tbody>
-              {errorTabla && <tr><td colSpan={5} className="text-center py-10 text-red-500 font-radar text-sm">{errorTabla}</td></tr>}
-              {!errorTabla && viajesFiltrados.length === 0 && !cargando && <tr><td colSpan={5} className="text-center py-10 text-gray-700 font-radar text-sm">SIN REGISTROS</td></tr>}
-              {viajesFiltrados.map(viaje => (
-                <tr key={viaje.id} className="border-b border-gray-800 hover:bg-gray-800 transition">
-                  <td className="px-5 py-4"><div className="font-semibold text-white">{viaje.chofer}</div><div className="font-radar text-xs text-green-500 mt-0.5">{viaje.placa_vehiculo}</div></td>
-                  <td className="px-5 py-4 font-radar text-blue-400">{parseFloat(viaje.distancia_km).toFixed(2)} km</td>
-                  <td className="px-5 py-4 font-radar text-yellow-500">{Math.floor(viaje.tiempo_detencion_min)} min</td>
-                  <td className="px-5 py-4 font-radar text-green-400 font-bold text-base">{m} {parseFloat(viaje.tarifa_total).toFixed(2)}</td>
-                  <td className="px-5 py-4 font-radar text-xs text-gray-600">{new Date(viaje.fecha_hora).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+              {!cargando && viajesFiltrados.length === 0 && (
+                <tr><td colSpan={6} className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">Sin viajes en el período.</td></tr>
+              )}
+              {viajesFiltrados.map(v => (
+                <tr key={v.id} className={filaTabla}>
+                  <td className={td}>
+                    <p className="font-medium text-gray-800 dark:text-white/90">{v.chofer}</p>
+                    <p className="text-theme-xs text-gray-500 dark:text-gray-400">{v.placa_vehiculo}</p>
+                  </td>
+                  <td className={td}>{formatoNumero(v.distancia_km, 2)} km</td>
+                  <td className={td}>{Math.floor(v.tiempo_detencion_min)} min</td>
+                  <td className={td}>
+                    <Insignia color={v.tipo_superficie === 'tierra' ? 'aviso' : 'neutro'}>{v.tipo_superficie === 'tierra' ? 'Tierra' : 'Asfalto'}</Insignia>
+                  </td>
+                  <td className={`${td} font-semibold text-gray-800 dark:text-white/90`}>{formatoMoneda(v.tarifa_total, m)}</td>
+                  <td className={td}>{new Date(v.fecha_hora).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </Tarjeta>
     </div>
   );
 }

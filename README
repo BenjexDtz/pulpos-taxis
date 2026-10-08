@@ -286,6 +286,7 @@ Todas las rutas operan **solo sobre la empresa del token**; los datos de otras e
 | `GET` | `/api/admin/viajes` | Historial de viajes |
 | `GET` | `/api/admin/viajes?desde=YYYY-MM-DD&hasta=YYYY-MM-DD` | Filtrado por fecha |
 | `GET` | `/api/admin/viajes/exportar` | Descargar CSV con auditoría completa |
+| `GET` | `/api/admin/estadisticas?desde=&hasta=` | Datos del tablero: resumen y período anterior, recaudación por día, ranking de choferes, viajes por día y hora, asfalto vs tierra (por defecto, últimos 30 días; máx. 366) |
 | `GET` | `/api/admin/choferes` | Lista de conductores con GPS |
 | `POST` | `/api/admin/choferes` | Registrar conductor |
 | `PATCH` | `/api/admin/choferes/:id/password` | Resetear contraseña |
@@ -443,10 +444,12 @@ pulpos-taxis/
 │
 ├── 📁 pulpos_web_admin/        # Panel de gerencia React
 │   ├── src/
-│   │   ├── App.jsx             # Sesión, carga de datos, menú y vista activa
+│   │   ├── App.jsx             # Sesión, rutas (react-router) y carga de datos
 │   │   ├── vistas/             # Tablero, Radar, Flota, Parametros, Empresa, Auditoria,
-│   │   │                       #   Seguridad, Plataforma
-│   │   ├── componentes/        # Login, SegundoFactor, Navegacion, MapaFlota, FormEmpresa…
+│   │   │                       #   Seguridad, Plataforma (una por ruta)
+│   │   ├── componentes/        # layout/ (menú lateral y cabecera), tablero/ (gráficos),
+│   │   │                       #   ui/ (estilos, Tarjeta, Insignia), Login, SegundoFactor…
+│   │   ├── contexto/           # Tema claro/oscuro y estado del menú lateral
 │   │   ├── utilidades.js       # Token, fechas, escapar HTML, resumen de la flota
 │   │   ├── main.jsx
 │   │   └── index.css

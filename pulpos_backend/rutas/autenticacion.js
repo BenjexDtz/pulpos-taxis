@@ -6,6 +6,10 @@ const { firmar, actorDe, auditar } = require('../utilidades');
 
 const router = express.Router();
 
+// Si la cuenta no existe se compara contra este hash: así la respuesta tarda lo mismo
+// y el tiempo no revela qué correos o placas están registrados.
+const HASH_FALSO = bcrypt.hashSync(require('node:crypto').randomBytes(16).toString('hex'), 10);
+
 router.post('/api/login', limiteLogin, async (req, res) => {
     const { empresa, placa_vehiculo, password } = req.body;
     if ([empresa, placa_vehiculo, password].some(x => typeof x !== 'string' || !x.trim()))
@@ -24,7 +28,8 @@ router.post('/api/login', limiteLogin, async (req, res) => {
     const actor = chofer
         ? { empresa_id: chofer.empresa_id, actor_tipo: 'chofer', actor_id: chofer.id, actor_nombre: placa }
         : { actor_nombre: placa };
-    if (!chofer || !chofer.password_hash || !await bcrypt.compare(password, chofer.password_hash)) {
+    const coincide = await bcrypt.compare(password, chofer?.password_hash || HASH_FALSO);
+    if (!chofer?.password_hash || !coincide) {
         await auditar(req, { ...actor, accion: 'sesion.login_chofer', resultado: 'rechazado', detalle: `Credenciales incorrectas (empresa ${codigo})` });
         return res.status(401).json({ error: '❌ Empresa, placa o contraseña incorrecta.' });
     }
@@ -62,7 +67,8 @@ router.post('/api/admin/login', limiteLogin, async (req, res) => {
     const actor = admin
         ? { empresa_id: admin.empresa_id, ...actorDe({ ...admin, tipo: 'admin' }) }
         : { actor_nombre: usuario.trim() };
-    if (!admin || !await bcrypt.compare(password, admin.password_hash)) {
+    const coincide = await bcrypt.compare(password, admin?.password_hash || HASH_FALSO);
+    if (!admin || !coincide) {
         await auditar(req, { ...actor, accion: 'sesion.login_admin', resultado: 'rechazado', detalle: 'Credenciales incorrectas' });
         return res.status(401).json({ error: '❌ Usuario o contraseña incorrecta.' });
     }

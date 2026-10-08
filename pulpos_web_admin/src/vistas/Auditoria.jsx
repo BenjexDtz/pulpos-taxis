@@ -3,6 +3,10 @@ import axios from 'axios';
 import {
   ScrollText, Search, ChevronLeft, ChevronRight, ShieldCheck, ShieldAlert, Fingerprint, RefreshCw,
 } from 'lucide-react';
+import Mensaje from '../componentes/Mensaje.jsx';
+import Tarjeta from '../componentes/ui/Tarjeta.jsx';
+import Insignia from '../componentes/ui/Insignia.jsx';
+import { botonPrimario, botonSecundario, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
 
 const ACCIONES = {
   'sesion.login_admin': 'Inicio de sesión (panel)',
@@ -37,21 +41,16 @@ const GRUPOS = [
   ['viaje', 'Viajes y exportaciones'], ['posicion.', 'Posiciones GPS'], ['auditoria.', 'Auditoría'],
 ];
 
-const COLOR_RESULTADO = {
-  exito: 'bg-green-950 text-green-400 border-green-800',
-  rechazado: 'bg-yellow-950 text-yellow-400 border-yellow-800',
-  error: 'bg-red-950 text-red-400 border-red-800',
-};
+const COLOR_RESULTADO = { exito: 'exito', rechazado: 'aviso', error: 'error' };
+const RESULTADOS = { exito: 'Éxito', rechazado: 'Rechazado', error: 'Error' };
 
 const ACTOR = { superadmin: 'Plataforma', admin: 'Admin', chofer: 'Chofer', anonimo: 'Anónimo', sistema: 'Sistema' };
 
-const estiloCampo = 'bg-gray-800 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg font-radar text-xs focus:outline-none focus:border-blue-500';
-
 function Json({ titulo, datos }) {
   return (
-    <div className="flex-1 min-w-0">
-      <p className="font-radar text-xs text-gray-500 mb-1">{titulo}</p>
-      <pre className="bg-gray-950 border border-gray-800 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto max-h-64">
+    <div className="min-w-0 flex-1">
+      <p className="mb-1 text-theme-xs font-medium text-gray-500 dark:text-gray-400">{titulo}</p>
+      <pre className="custom-scrollbar max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white p-3 text-theme-xs text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
         {datos ? JSON.stringify(datos, null, 2) : '—'}
       </pre>
     </div>
@@ -119,95 +118,99 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
   const nombreEmpresa = (id) => empresas.find(e => e.id === id)?.nombre ?? (id ? `#${id}` : 'Plataforma');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {plataforma && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-wrap items-center gap-4">
-          <Fingerprint className="w-6 h-6 text-yellow-400" />
-          <div className="mr-auto">
-            <h3 className="font-bold text-white tracking-wider">INTEGRIDAD DE LA BITÁCORA</h3>
-            <p className="font-radar text-xs text-gray-600">Recalcula la cadena SHA-256 y la compara con las anclas de la base principal.</p>
-          </div>
-          {verificacion && (
-            verificacion.integra
-              ? <div className="flex items-center gap-2 font-radar text-sm text-green-400"><ShieldCheck className="w-5 h-5" />ÍNTEGRA · {verificacion.total_eventos} eventos · {verificacion.anclas.total} anclas{verificacion.pendientes_de_envio ? ` · ${verificacion.pendientes_de_envio} en cola` : ''}</div>
-              : <div className="flex items-center gap-2 font-radar text-sm text-red-400"><ShieldAlert className="w-5 h-5" />
-                  ALTERADA
+        <Tarjeta icono={Fingerprint} titulo="Integridad de la bitácora"
+          subtitulo="Recalcula la cadena SHA-256 y la compara con las anclas guardadas en la base principal."
+          acciones={
+            <button onClick={verificar} disabled={verificando} className={botonPrimario}>
+              <RefreshCw className={`h-4 w-4 ${verificando ? 'animate-spin' : ''}`} />Verificar integridad
+            </button>
+          }>
+          {!verificacion && <p className="text-theme-sm text-gray-500 dark:text-gray-400">Todavía no se verificó en esta sesión.</p>}
+          {verificacion && (verificacion.integra
+            ? (
+              <div className="flex items-center gap-3 text-success-600 dark:text-success-500">
+                <ShieldCheck className="h-6 w-6" />
+                <p className="text-theme-sm">
+                  <span className="font-semibold">Íntegra.</span> {verificacion.total_eventos} evento{verificacion.total_eventos === 1 ? '' : 's'} y {verificacion.anclas.total} ancla{verificacion.anclas.total === 1 ? '' : 's'} verificados
+                  {verificacion.pendientes_de_envio ? `; ${verificacion.pendientes_de_envio} eventos en cola de envío.` : '.'}
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 text-error-600 dark:text-error-400">
+                <ShieldAlert className="h-6 w-6 shrink-0" />
+                <p className="text-theme-sm">
+                  <span className="font-semibold">Alterada</span>
                   {verificacion.primer_evento_invalido && ` desde el evento #${verificacion.primer_evento_invalido}`}
                   {verificacion.anclas.faltantes.length > 0 && ` · faltan eventos anclados: ${verificacion.anclas.faltantes.join(', ')}`}
                   {verificacion.anclas.alteradas.length > 0 && ` · anclas que no coinciden: ${verificacion.anclas.alteradas.join(', ')}`}
-                </div>
-          )}
-          <button onClick={verificar} disabled={verificando} className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-60 text-white px-4 py-2 rounded-lg transition font-radar text-xs font-bold">
-            <RefreshCw className={`w-3.5 h-3.5 ${verificando ? 'animate-spin' : ''}`} />VERIFICAR INTEGRIDAD
-          </button>
-        </div>
+                </p>
+              </div>
+            ))}
+        </Tarjeta>
       )}
 
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <form onSubmit={buscar} className="px-6 py-4 border-b border-gray-800 flex flex-wrap items-center gap-3">
-          <div className="flex items-center space-x-2 mr-auto">
-            <ScrollText className="w-5 h-5 text-purple-400" />
-            <h2 className="font-bold text-gray-200 tracking-wider">BITÁCORA DE AUDITORÍA</h2>
-          </div>
+      <Tarjeta icono={ScrollText} titulo="Bitácora de auditoría" subtitulo="Haz clic en un evento para ver el estado antes y después." cuerpo="">
+        <form onSubmit={buscar} className="flex flex-wrap items-end gap-3 border-b border-gray-100 px-5 py-4 sm:px-6 dark:border-gray-800">
           {plataforma && (
-            <select className={estiloCampo} value={filtros.empresa_id} onChange={e => setFiltros({ ...filtros, empresa_id: e.target.value })}>
+            <select aria-label="Empresa" className={campoEnLinea} value={filtros.empresa_id} onChange={e => setFiltros({ ...filtros, empresa_id: e.target.value })}>
               <option value="">Todas las empresas</option>
               {empresas.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
             </select>
           )}
-          <select className={estiloCampo} value={filtros.accion} onChange={e => setFiltros({ ...filtros, accion: e.target.value })}>
+          <select aria-label="Tipo de acción" className={campoEnLinea} value={filtros.accion} onChange={e => setFiltros({ ...filtros, accion: e.target.value })}>
             {GRUPOS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
           </select>
-          <input type="date" className={estiloCampo} value={filtros.desde} onChange={e => setFiltros({ ...filtros, desde: e.target.value })} />
-          <span className="text-gray-600 font-radar text-xs">→</span>
-          <input type="date" className={estiloCampo} value={filtros.hasta} onChange={e => setFiltros({ ...filtros, hasta: e.target.value })} />
-          <button type="submit" className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 px-3 py-2 rounded-lg transition font-radar text-xs">
-            <Search className="w-3.5 h-3.5" />BUSCAR
-          </button>
+          <input type="date" aria-label="Desde" className={campoEnLinea} value={filtros.desde} onChange={e => setFiltros({ ...filtros, desde: e.target.value })} />
+          <span className="self-center text-gray-400">→</span>
+          <input type="date" aria-label="Hasta" className={campoEnLinea} value={filtros.hasta} onChange={e => setFiltros({ ...filtros, hasta: e.target.value })} />
+          <button type="submit" className={botonSecundario}><Search className="h-4 w-4" />Buscar</button>
         </form>
 
-        <div className="overflow-x-auto">
+        {error && <div className="px-5 pt-4 sm:px-6"><Mensaje texto={error} /></div>}
+
+        <div className="custom-scrollbar overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-800">
-                {['#', 'FECHA', ...(plataforma ? ['EMPRESA'] : []), 'ACTOR', 'ACCIÓN', 'OBJETO', 'RESULTADO', 'IP'].map(h =>
-                  <th key={h} className="px-4 py-3 text-left font-radar text-xs text-gray-600 tracking-widest">{h}</th>)}
+              <tr className="border-b border-gray-100 dark:border-gray-800">
+                {['#', 'Fecha', ...(plataforma ? ['Empresa'] : []), 'Actor', 'Acción', 'Objeto', 'Resultado', 'IP'].map(h =>
+                  <th key={h} className={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {error && <tr><td colSpan={8} className="text-center py-10 text-red-500 font-radar text-sm">{error}</td></tr>}
-              {!error && !cargando && eventos.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-gray-700 font-radar text-sm">SIN EVENTOS</td></tr>}
+              {!error && !cargando && eventos.length === 0 && (
+                <tr><td colSpan={8} className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">Sin eventos.</td></tr>
+              )}
               {eventos.map(ev => (
                 <Fragment key={ev.id}>
-                  <tr onClick={() => setAbierto(abierto === ev.id ? null : ev.id)}
-                    className="border-b border-gray-800 hover:bg-gray-800 transition cursor-pointer">
-                    <td className="px-4 py-3 font-radar text-xs text-gray-600">{ev.id}</td>
-                    <td className="px-4 py-3 font-radar text-xs text-gray-400 whitespace-nowrap">
+                  <tr onClick={() => setAbierto(abierto === ev.id ? null : ev.id)} aria-expanded={abierto === ev.id}
+                    className={`${filaTabla} cursor-pointer transition hover:bg-gray-50 dark:hover:bg-white/[0.02]`}>
+                    <td className={`${td} text-theme-xs`}>{ev.id}</td>
+                    <td className={`${td} whitespace-nowrap text-theme-xs`}>
                       {new Date(ev.ocurrido_en).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </td>
-                    {plataforma && <td className="px-4 py-3 text-xs text-gray-300">{nombreEmpresa(ev.empresa_id)}</td>}
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-white">{ev.actor_nombre ?? '—'}</div>
-                      <div className="font-radar text-xs text-gray-600">{ACTOR[ev.actor_tipo] ?? ev.actor_tipo}{ev.actor_rol && ev.actor_tipo !== 'superadmin' ? ` · ${ev.actor_rol}` : ''}</div>
+                    {plataforma && <td className={td}>{nombreEmpresa(ev.empresa_id)}</td>}
+                    <td className={td}>
+                      <p className="font-medium text-gray-800 dark:text-white/90">{ev.actor_nombre ?? '—'}</p>
+                      <p className="text-theme-xs">{ACTOR[ev.actor_tipo] ?? ev.actor_tipo}{ev.actor_rol && ev.actor_tipo !== 'superadmin' ? ` · ${ev.actor_rol}` : ''}</p>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm text-gray-200">{ACCIONES[ev.accion] ?? ev.accion}</div>
-                      {ev.detalle && <div className="font-radar text-xs text-gray-600 truncate max-w-xs">{ev.detalle}</div>}
+                    <td className={td}>
+                      <p className="text-gray-800 dark:text-white/90">{ACCIONES[ev.accion] ?? ev.accion}</p>
+                      {ev.detalle && <p className="max-w-xs truncate text-theme-xs">{ev.detalle}</p>}
                     </td>
-                    <td className="px-4 py-3 font-radar text-xs text-gray-500">{ev.entidad ? `${ev.entidad}${ev.entidad_id ? ` #${ev.entidad_id}` : ''}` : '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`font-radar text-xs px-2 py-0.5 rounded border ${COLOR_RESULTADO[ev.resultado] ?? ''}`}>{ev.resultado.toUpperCase()}</span>
-                    </td>
-                    <td className="px-4 py-3 font-radar text-xs text-gray-600">{ev.ip ?? '—'}</td>
+                    <td className={`${td} text-theme-xs`}>{ev.entidad ? `${ev.entidad}${ev.entidad_id ? ` #${ev.entidad_id}` : ''}` : '—'}</td>
+                    <td className={td}><Insignia color={COLOR_RESULTADO[ev.resultado] ?? 'neutro'}>{RESULTADOS[ev.resultado] ?? ev.resultado}</Insignia></td>
+                    <td className={`${td} font-mono text-theme-xs`}>{ev.ip ?? '—'}</td>
                   </tr>
                   {abierto === ev.id && (
-                    <tr className="border-b border-gray-800 bg-gray-900">
-                      <td colSpan={8} className="px-6 py-4 space-y-3">
-                        <div className="flex flex-col lg:flex-row gap-4">
-                          <Json titulo="ANTES" datos={ev.datos_antes} />
-                          <Json titulo="DESPUÉS" datos={ev.datos_despues} />
+                    <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-white/[0.02]">
+                      <td colSpan={8} className="space-y-3 px-6 py-4">
+                        <div className="flex flex-col gap-4 lg:flex-row">
+                          <Json titulo="Antes" datos={ev.datos_antes} />
+                          <Json titulo="Después" datos={ev.datos_despues} />
                         </div>
-                        <p className="font-radar text-xs text-gray-600 break-all">SHA-256: {ev.hash}</p>
+                        <p className="break-all font-mono text-theme-xs text-gray-500 dark:text-gray-400">SHA-256: {ev.hash}</p>
                       </td>
                     </tr>
                   )}
@@ -217,20 +220,18 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
           </table>
         </div>
 
-        <div className="px-6 py-3 border-t border-gray-800 flex items-center justify-between font-radar text-xs text-gray-500">
+        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-theme-sm text-gray-500 sm:px-6 dark:border-gray-800 dark:text-gray-400">
           <span>Página {consulta.pagina}{cargando ? ' · cargando...' : ''}</span>
           <div className="flex gap-2">
-            <button disabled={consulta.pagina === 1 || cargando} onClick={() => irPagina(consulta.pagina - 1)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 disabled:opacity-40">
-              <ChevronLeft className="w-3.5 h-3.5" />ANTERIOR
+            <button disabled={consulta.pagina === 1 || cargando} onClick={() => irPagina(consulta.pagina - 1)} className={`${botonSecundario} px-3 py-2`}>
+              <ChevronLeft className="h-4 w-4" />Anterior
             </button>
-            <button disabled={eventos.length < 100 || cargando} onClick={() => irPagina(consulta.pagina + 1)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 disabled:opacity-40">
-              SIGUIENTE<ChevronRight className="w-3.5 h-3.5" />
+            <button disabled={eventos.length < 100 || cargando} onClick={() => irPagina(consulta.pagina + 1)} className={`${botonSecundario} px-3 py-2`}>
+              Siguiente<ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>
-      </div>
+      </Tarjeta>
     </div>
   );
 }
