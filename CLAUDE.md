@@ -45,6 +45,8 @@ psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
 # (luego 002, 003 y 004 en orden; 004 añade viajes_historial.uuid)
 ```
 
+Versiones: SemVer única para todo el sistema. Al publicar, subir `version` en `pulpos_backend/package.json`, `pulpos_web_admin/package.json` (`npm version X.Y.Z --no-git-tag-version`) y `pulpos_apk/pubspec.yaml` (el `+N` sube en cada APK), anotar en `CHANGELOG.md` y crear la etiqueta anotada `vX.Y.Z`.
+
 CI (`.github/workflows/ci.yml`) corre en cada push: tests unitarios + integración (servicio PostgreSQL) + `npm audit` del backend, lint + build del panel, `flutter analyze` + `flutter test`.
 
 Tests del backend: `test/api.test.js` reemplaza `pool.query`/`pool.connect` y las funciones de `auditoria.js` antes de importar `index.js` (que reexporta `{ app, filtroFechas, validarEmpresa, distanciaKm }` y solo hace `listen` si se ejecuta directamente). `test/mfa.test.js` cubre TOTP con los vectores de RFC 6238. `test/integracion.test.js` (su `loginAdmin` completa el segundo factor) crea dos bases temporales (principal y auditoría) con las credenciales del `.env`, carga `init.sql` y `auditoria/esquema.sql`, y las borra al terminar.
