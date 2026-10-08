@@ -18,3 +18,5 @@ Thumbs.db
 .vscode/
 *.suo
 *.user
+# Plantilla de referencia (TailAdmin): no se versiona
+plantilla/
