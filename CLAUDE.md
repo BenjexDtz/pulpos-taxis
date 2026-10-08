@@ -42,6 +42,7 @@ flutter analyze
 
 # Migrar una BD sin empresas (v3) a multiempresa
 psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
+# (luego 002, 003 y 004 en orden; 004 añade viajes_historial.uuid)
 ```
 
 CI (`.github/workflows/ci.yml`) corre en cada push: tests unitarios + integración (servicio PostgreSQL) + `npm audit` del backend, lint + build del panel, `flutter analyze` + `flutter test`.
@@ -87,8 +88,9 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 2. `ParametrosService.obtener()` pide `/api/config` con el token y cachea por empresa (`parametros_<codigo>`); sin red usa la caché y, en último caso, `porDefecto`.
 3. Durante el viaje: `MotorGPS.obtenerFlujoUbicacion()` (distanceFilter 10 m) acumula distancia y envía `/api/posicion` cada 10 posiciones.
 4. Espera (`Td`): `lib/detector_detencion.dart`. Detenido si velocidad < 0.5 m/s **o** 10 s sin posición nueva. No volver a leer `Position.speed` directamente.
-5. El viaje se guarda en SQLite (`viajes`) con todos los parámetros aplicados y `estado_sincronizacion = 0`.
+5. El viaje se guarda en SQLite (`viajes`) con todos los parámetros aplicados, `estado_sincronizacion = 0` y un `uuid` v4 (`nuevoUuid()`, lo asigna `insertarViaje`).
 6. "SINC. NUBE" envía solo `viajesPendientes(choferId)` del chofer con sesión; `viajeParaServidor()` mapea columnas locales → campos `*_aplicado` y omite nulos. El historial también filtra por chofer.
+7. Sincronización idempotente: el servidor guarda el `uuid` con `UNIQUE (chofer_id, uuid)` e `INSERT ... ON CONFLICT DO NOTHING`; un reenvío responde **200** `{duplicado: true}` con el mismo `id_servidor` (sin auditar) y la app lo marca sincronizado igual que un 201. Sin `uuid` (apps viejas) se inserta como antes.
 
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 

@@ -135,6 +135,16 @@ void main() {
     });
   });
 
+  group('nuevoUuid', () {
+    test('genera UUID v4 distintos con el formato que valida el servidor', () {
+      final formato = RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+      final generados = List.generate(1000, (_) => nuevoUuid());
+      expect(generados.every(formato.hasMatch), isTrue);
+      expect(generados.toSet().length, 1000);
+    });
+  });
+
   group('viajeParaServidor', () {
     test('viaje v3 en tierra envía todos los parámetros aplicados', () {
       final body = viajeParaServidor({
@@ -152,8 +162,10 @@ void main() {
         'costo_minuto_detencion': 0.5,
         'consumo_litros_km': 0.1,
         'precio_combustible_bs': 6.96,
+        'uuid': '3f1c2a9e-8b7d-4c6e-9a1b-2d3e4f5a6b7c',
       });
       expect(body, {
+        'uuid': '3f1c2a9e-8b7d-4c6e-9a1b-2d3e4f5a6b7c',
         'distancia_km': 3.5,
         'tiempo_detencion_min': 8.5,
         'tarifa_cobrada': 37.27,

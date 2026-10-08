@@ -125,6 +125,21 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.ok(!ids.includes(r.json.id_servidor));
     });
 
+    test('reenviar el mismo viaje (también en paralelo) no lo duplica', async () => {
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const body = { distancia_km: 1, tiempo_detencion_min: 0, tarifa_cobrada: 5, fecha_hora_viaje: '2026-10-08T08:00:00',
+            uuid: '9b2e4c1a-7d3f-4e8b-a6c5-1f0d2e3b4a59' };
+        const primero = await pedir('POST', '/api/viajes/sincronizar', { token, body });
+        assert.equal(primero.status, 201);
+        const reintentos = await Promise.all([1, 2, 3].map(() => pedir('POST', '/api/viajes/sincronizar', { token, body })));
+        for (const r of reintentos) {
+            assert.equal(r.status, 200);
+            assert.equal(r.json.id_servidor, primero.json.id_servidor);
+        }
+        const { rows } = await pool.query('SELECT count(*)::int AS n FROM viajes_historial WHERE uuid = $1', [body.uuid]);
+        assert.equal(rows[0].n, 1);
+    });
+
     test('los parámetros de una empresa no afectan a otra', async () => {
         const pulpos = await loginAdmin('admin@pulpos.bo');
         const r = await pedir('PUT', '/api/admin/parametros', { token: pulpos, body: {
