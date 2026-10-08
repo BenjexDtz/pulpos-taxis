@@ -1,0 +1,12 @@
+# No copiar a la imagen: dependencias compiladas en el host ni secretos
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+dockerfile
+Dockerfile
+.dockerignore
+test

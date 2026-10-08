@@ -22,7 +22,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 2, // 🔥 SUBIMOS A VERSION 2 PARA FORZAR LA MIGRACION
+      version: 3,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -40,16 +40,32 @@ class BaseDatosLocal {
         factor_superficie REAL,
         tarifa_total REAL,
         estado_sincronizacion INTEGER,
-        fecha_hora TEXT
+        fecha_hora TEXT,
+        $_columnasV3
       )
     ''');
   }
 
-  // 🔥 MIGRACIÓN: Si el teléfono tiene la DB vieja (v1), la borra y recrea
+  static const _columnasV3 = '''
+        tipo_superficie TEXT,
+        costo_base_km REAL,
+        costo_minuto_detencion REAL,
+        consumo_litros_km REAL,
+        precio_combustible_bs REAL''';
+
   Future _actualizarDB(Database db, int oldVersion, int newVersion) async {
-    await db.execute('DROP TABLE IF EXISTS viajes_offline');
-    await db.execute('DROP TABLE IF EXISTS viajes');
-    await _crearDB(db, newVersion);
+    if (oldVersion < 2) {
+      await db.execute('DROP TABLE IF EXISTS viajes_offline');
+      await db.execute('DROP TABLE IF EXISTS viajes');
+      await _crearDB(db, newVersion);
+      return;
+    }
+    // Sin DROP: puede haber viajes pendientes de sincronizar
+    if (oldVersion < 3) {
+      for (final columna in _columnasV3.split(',')) {
+        await db.execute('ALTER TABLE viajes ADD COLUMN ${columna.trim()}');
+      }
+    }
   }
 
   // Función para guardar un nuevo viaje en la "caja negra"
@@ -62,6 +78,15 @@ class BaseDatosLocal {
     );
 
     return idGenerado;
+  }
+
+  Future<List<Map<String, dynamic>>> viajesPendientes(int choferId) async {
+    final db = await instancia.database;
+    return await db.query(
+      'viajes',
+      where: 'estado_sincronizacion = ? AND chofer_id = ?',
+      whereArgs: [0, choferId],
+    );
   }
 
   // Esta función saca todo lo que hay en la tabla

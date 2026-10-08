@@ -4,12 +4,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'config.dart';
 
 class MotorGPS {
   // ─── Configuración ────────────────────────────────────────────────────────
-  // ⚠️ Cambia esta IP por la de tu servidor cuando lo subas a la nube.
-  static const String _urlBase = 'https://handclap-powwow-union.ngrok-free.dev';
-
   // Cada cuántas posiciones GPS enviar al servidor (10 = cada ~10 segundos)
   static const int _intervaloEnvio = 10;
   static int _contadorPosiciones = 0;
@@ -27,7 +25,7 @@ class MotorGPS {
     if (permiso == LocationPermission.deniedForever) return null;
 
     return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
   }
 
@@ -77,7 +75,7 @@ class MotorGPS {
       if (token == null) return; // No hay sesión activa
 
       await http.post(
-        Uri.parse('$_urlBase/api/posicion'),
+        Uri.parse('$urlServidor/api/posicion'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

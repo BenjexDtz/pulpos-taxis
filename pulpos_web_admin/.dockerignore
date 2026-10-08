@@ -1,0 +1,12 @@
+# No copiar a la imagen: dependencias compiladas en el host, builds previos ni .env
+# (VITE_API_URL llega como ARG desde docker-compose)
+node_modules
+dist
+npm-debug.log*
+.env
+.env.*
+.git
+.gitignore
+dockerfile
+Dockerfile
+.dockerignore

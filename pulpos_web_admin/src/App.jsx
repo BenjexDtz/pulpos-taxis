@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useEffectEvent, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
   Activity, Car, DollarSign, RefreshCw, Lock, User, Users,
@@ -10,9 +10,9 @@ import {
 
 // ─── LEAFLET ──────────────────────────────────────────────────────────────────
 function useLeaflet() {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => Boolean(window.L));
   useEffect(() => {
-    if (window.L) { setReady(true); return; }
+    if (window.L) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
@@ -27,6 +27,18 @@ function useLeaflet() {
 
 const EL_ALTO_CENTER = [-16.5, -68.19];
 
+const consultaFechas = (desde, hasta) => {
+  const q = new URLSearchParams();
+  if (desde) q.set('desde', desde);
+  if (hasta) q.set('hasta', hasta);
+  const s = q.toString();
+  return s ? `?${s}` : '';
+};
+
+const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[c]));
+
 // ─── FLEET MAP ────────────────────────────────────────────────────────────────
 function FleetMap({ choferes, viajes }) {
   const mapRef = useRef(null);
@@ -39,8 +51,10 @@ function FleetMap({ choferes, viajes }) {
     const L = window.L;
     const map = L.map(mapRef.current, { zoomControl: false }).setView(EL_ALTO_CENTER, 14);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '©OpenStreetMap ©CARTO', maxZoom: 19
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+      className: 'mapa-oscuro',
     }).addTo(map);
     mapInstanceRef.current = map;
     return () => { if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; } };
@@ -75,8 +89,8 @@ function FleetMap({ choferes, viajes }) {
 
         const marker = L.marker(pos, { icon }).addTo(map).bindPopup(`
           <div style="font-family:monospace;min-width:200px;font-size:12px;">
-            <div style="font-weight:bold;color:${color};margin-bottom:4px;">${chofer.nombre_completo}</div>
-            <div style="color:#888;">🚗 ${chofer.placa_vehiculo}</div>
+            <div style="font-weight:bold;color:${color};margin-bottom:4px;">${escaparHtml(chofer.nombre_completo)}</div>
+            <div style="color:#888;">🚗 ${escaparHtml(chofer.placa_vehiculo)}</div>
             <hr style="border-color:#eee;margin:6px 0;"/>
             <div>Viajes: <b>${trips}</b></div>
             <div>Recaudado: <b style="color:#16a34a;">Bs ${total.toFixed(2)}</b></div>
@@ -169,6 +183,7 @@ export default function App() {
   const [mensajeParams, setMensajeParams] = useState({ tipo: '', texto: '' });
 
   const [conexion, setConexion] = useState(navigator.onLine);
+  const [aviso, setAviso] = useState('');
 
   useEffect(() => {
     const on = () => setConexion(true), off = () => setConexion(false);
@@ -178,10 +193,15 @@ export default function App() {
 
   const headers = useCallback(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
-  const cerrarSesion = () => {
+  const cerrarSesion = useCallback(() => {
     localStorage.removeItem('admin_token');
-    setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard');
-  };
+    setToken(null); setViajes([]); setChoferes([]); setVistaActiva('dashboard'); setAviso('');
+  }, []);
+
+  const manejarErrorApi = useCallback((err, mostrar) => {
+    if (err.response?.status === 401 || err.response?.status === 403) cerrarSesion();
+    else mostrar(err.response?.data?.error || '⚠️ Error conectando al servidor.');
+  }, [cerrarSesion]);
 
   const iniciarSesion = async (e) => {
     e.preventDefault(); setErrorLogin(''); setLoginLoading(true);
@@ -197,43 +217,46 @@ export default function App() {
     if (!token) return;
     setCargando(true); setErrorDashboard(null);
     try {
-      const params_q = fechaDesde && fechaHasta ? `?desde=${fechaDesde}&hasta=${fechaHasta}` : '';
-      const res = await axios.get(`${urlServidor}/api/admin/viajes${params_q}`, { headers: headers() });
+      const res = await axios.get(`${urlServidor}/api/admin/viajes${consultaFechas(fechaDesde, fechaHasta)}`, { headers: headers() });
       setViajes(res.data);
     } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) cerrarSesion();
-      else setErrorDashboard('⚠️ Error conectando al servidor.');
+      manejarErrorApi(err, setErrorDashboard);
     } finally { setCargando(false); }
-  }, [token, urlServidor, headers, fechaDesde, fechaHasta]);
+  }, [token, urlServidor, headers, fechaDesde, fechaHasta, manejarErrorApi]);
 
   const cargarChoferes = useCallback(async () => {
     setCargandoChoferes(true);
     try {
       const res = await axios.get(`${urlServidor}/api/admin/choferes`, { headers: headers() });
       setChoferes(res.data);
-    } catch { } finally { setCargandoChoferes(false); }
-  }, [token, urlServidor, headers]);
+    } catch (err) {
+      manejarErrorApi(err, setAviso);
+    } finally { setCargandoChoferes(false); }
+  }, [urlServidor, headers, manejarErrorApi]);
 
   const cargarParametros = useCallback(async () => {
     try {
       const res = await axios.get(`${urlServidor}/api/parametros`);
       setParams(res.data);
       setFormParams(res.data);
-    } catch { }
-  }, [urlServidor]);
+    } catch (err) {
+      manejarErrorApi(err, setAviso);
+    }
+  }, [urlServidor, manejarErrorApi]);
 
-  useEffect(() => {
-    if (!token) return;
+  const cargarTodo = useEffectEvent(() => {
     cargarReporte(); cargarChoferes(); cargarParametros();
+  });
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (token) cargarTodo();
   }, [token]);
 
-  useEffect(() => {
-    if (!token) return;
-    if (vistaActiva === 'dashboard') cargarReporte();
-    if (vistaActiva === 'mapa') { cargarReporte(); cargarChoferes(); }
-    if (vistaActiva === 'conductores') { cargarReporte(); cargarChoferes(); }
-    if (vistaActiva === 'parametros') cargarParametros();
-  }, [vistaActiva]);
+  const irA = (vista) => {
+    setVistaActiva(vista);
+    if (vista === 'parametros') { cargarParametros(); return; }
+    cargarReporte(); cargarChoferes();
+  };
 
   useEffect(() => {
     if (vistaActiva !== 'mapa' || !token) return;
@@ -242,16 +265,20 @@ export default function App() {
   }, [vistaActiva, token, cargarChoferes]);
 
   const exportarCSV = () => {
-    const params_q = fechaDesde && fechaHasta ? `?desde=${fechaDesde}&hasta=${fechaHasta}` : '';
-    const url = `${urlServidor}/api/admin/viajes/exportar${params_q}`;
+    const url = `${urlServidor}/api/admin/viajes/exportar${consultaFechas(fechaDesde, fechaHasta)}`;
+    setErrorDashboard(null);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.blob())
+      .then(async r => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || '⚠️ No se pudo exportar el CSV.');
+        return r.blob();
+      })
       .then(blob => {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = `pulpos_viajes_${new Date().toISOString().slice(0, 10)}.csv`;
         link.click();
-      });
+      })
+      .catch(err => setErrorDashboard(err.message));
   };
 
   const registrarNuevoChofer = async (e) => {
@@ -274,7 +301,9 @@ export default function App() {
       await axios.patch(`${urlServidor}/api/admin/choferes/${chofer.id}/estado`,
         { estado_activo: !chofer.estado_activo }, { headers: headers() });
       cargarChoferes();
-    } catch { }
+    } catch (err) {
+      manejarErrorApi(err, texto => setMensajeChofer({ tipo: 'error', texto }));
+    }
   };
 
   const resetearPassword = async (e) => {
@@ -424,7 +453,7 @@ export default function App() {
           </div>
           <div className="flex items-center space-x-1 bg-gray-800 p-1 rounded-xl">
             {navItems.map(item => (
-              <button key={item.id} onClick={() => setVistaActiva(item.id)}
+              <button key={item.id} onClick={() => irA(item.id)}
                 className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold tracking-widest transition ${vistaActiva === item.id ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
                 <item.icon className="w-4 h-4" /><span className="hidden md:inline">{item.label}</span>
               </button>
@@ -441,6 +470,13 @@ export default function App() {
       </nav>
 
       <main className="max-w-screen-2xl mx-auto px-4 lg:px-8 py-6">
+
+        {aviso && (
+          <div className="mb-4 flex items-center justify-between gap-3 bg-red-950 border border-red-800 text-red-400 px-4 py-3 rounded-xl font-radar text-sm">
+            <span className="flex items-center gap-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{aviso}</span>
+            <button onClick={() => setAviso('')} className="text-red-500 hover:text-white"><X className="w-4 h-4" /></button>
+          </div>
+        )}
 
         {/* ── DASHBOARD ── */}
         {vistaActiva === 'dashboard' && (

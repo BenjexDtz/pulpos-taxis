@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'sesion.dart';
 import 'main.dart'; // Para poder saltar a tu taxímetro
+import 'config.dart';
 
 class PantallaLogin extends StatefulWidget {
   const PantallaLogin({super.key});
@@ -27,12 +28,9 @@ class _PantallaLoginState extends State<PantallaLogin> {
       _isLoading = true;
     });
 
-    // ⚠️ La IP exacta de tu computadora donde corre Node.js
-    const String url = 'https://handclap-powwow-union.ngrok-free.dev/api/login';
-
     try {
       final response = await http.post(
-        Uri.parse(url),
+        Uri.parse('$urlServidor/api/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'placa_vehiculo': _placaController.text.trim(),
@@ -47,11 +45,11 @@ class _PantallaLoginState extends State<PantallaLogin> {
         final int choferId = data['chofer']['id'];
         final String nombreChofer = data['chofer']['nombre_completo'];
 
-        // 2. Guardamos todo en el disco duro del celular (SharedPreferences)
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('jwt_token', token);
-        await prefs.setInt('chofer_id', choferId);
-        await prefs.setString('nombre_chofer', nombreChofer);
+        await Sesion.guardar(
+          token: token,
+          choferId: choferId,
+          nombre: nombreChofer,
+        );
 
         // 3. ¡Abrimos la puerta! Saltamos al taxímetro y destruimos la pantalla de login atrás
         if (mounted) {

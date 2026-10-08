@@ -67,7 +67,7 @@ Sistema informático compuesto por **tres módulos** que resuelven el problema d
 - 2 GB de RAM libre
 
 ### Para desarrollo manual
-- Node.js ≥ 20
+- Node.js ≥ 22
 - PostgreSQL ≥ 15
 - Flutter SDK ≥ 3.11 (solo para la app móvil)
 
@@ -100,7 +100,7 @@ docker compose up --build
 
 Esperar hasta ver:
 ```
-pulpos_backend  | 🚀 Servidor corriendo en http://localhost:3000
+pulpos_backend  | 🚀 Servidor corriendo en puerto 3000
 pulpos_web_admin | /docker-entrypoint.sh: Configuration complete
 ```
 
@@ -172,23 +172,14 @@ La app móvil no se incluye en Docker porque requiere un dispositivo Android fí
 - Android Studio o VS Code con extensión Flutter
 - Dispositivo Android o emulador con API ≥ 23
 
-### Configurar IP del servidor
+### Configurar la URL del servidor
 
-Antes de compilar, editar **tres archivos** con la IP de tu máquina:
+La URL del backend se define en un solo lugar: **`lib/config.dart`** (por defecto, el túnel de ngrok).
+Para usar otra sin editar código, pasarla al compilar o ejecutar:
 
-**`lib/calculadora.dart`** — constante `_urlBase`:
-```dart
-static const String _urlBase = 'http://TU_IP_AQUI:3000';
-```
-
-**`lib/motor_gps.dart`** — constante `_urlBase`:
-```dart
-static const String _urlBase = 'http://TU_IP_AQUI:3000';
-```
-
-**`lib/main.dart`** — constante `urlBase`:
-```dart
-const String urlBase = 'http://TU_IP_AQUI:3000';
+```bash
+flutter run --dart-define=API_URL=http://TU_IP_AQUI:3000
+flutter build apk --dart-define=API_URL=https://tu-tunel.ngrok-free.dev
 ```
 
 > **¿Cuál es mi IP?**  
@@ -196,53 +187,36 @@ const String urlBase = 'http://TU_IP_AQUI:3000';
 > Linux/Mac: `ip addr` o `ifconfig`  
 > Ejemplo típico: `192.168.1.15`  
 > ⚠️ La IP `127.0.0.1` **no funciona** en dispositivos Android — siempre usar la IP real de la red local.
+> ⚠️ Android 9+ bloquea `http://` sin cifrar: con una IP local la conexión fallará. Usar el túnel **https** de ngrok (opción por defecto).
 
 ### Ejecutar la app
 
 ```bash
 cd pulpos_apk
 flutter pub get
-flutter run
+flutter run   # añadir --dart-define=API_URL=... si no usas la URL por defecto
 ```
 
 ### Ejecutar pruebas unitarias del modelo matemático
 
-<<<<<<< HEAD
 ```bash
 cd pulpos_apk
-flutter test test/calculadora_test.dart
-=======
-```
-Placa: 1234-KKK
-Contraseña: 123
->>>>>>> ef55731b7f5a4c3d5df2808445867fea9da7f791
+flutter test                                    # todas las pruebas
+flutter test test/calculadora_test.dart         # solo la fórmula tarifaria
+flutter test test/detector_detencion_test.dart  # solo el tiempo de espera
 ```
 
 ---
 
 ## 🔑 Credenciales de Prueba <a name="credenciales"></a>
 
-<<<<<<< HEAD
-Las credenciales de acceso se definen en el archivo `.env` de la raíz del proyecto.  
-El archivo `.env.example` contiene los valores de referencia.
-
-USUARIO: pulpos@admin.bo y contraseña es password
-
-| Módulo | Usuario / Placa | Contraseña |
-|---|---|---|
-| Panel Admin (web) | `admin` | la definida en `ADMIN_PASSWORD` de tu `.env` |
-| App Móvil (Flutter) | `1234-PUL` | `demo1234` |
-| PostgreSQL (Docker) | el valor de `DB_USER` | el valor de `DB_PASSWORD` |
-
-> ⚠️ **Importante:** Cambia todas las contraseñas antes de un despliegue en producción.
-=======
-
 | Módulo | Usuario/Placa | Contraseña |
 |---|---|---|
 | Panel Admin (web) | `admin@pulpos.bo` | `password` |
 | App Móvil (Flutter) | `1234-KKK` | `123` |
 | PostgreSQL (Docker) | `pulpos` | `pulpos2026` |
->>>>>>> ef55731b7f5a4c3d5df2808445867fea9da7f791
+
+> ⚠️ **Importante:** Cambia todas las contraseñas antes de un despliegue en producción.
 
 ---
 
@@ -257,9 +231,8 @@ Base URL: `http://localhost:3000`
 | `GET` | `/` | Estado del servidor |
 | `GET` | `/api/parametros` | Parámetros topográficos activos |
 | `POST` | `/api/login` | Login de conductor (app móvil) |
-| `POST` | `/api/viajes/sincronizar` | Subir viaje desde la app |
 
-### Panel Admin (requieren token Bearer)
+### Panel Admin (requieren token Bearer de administrador; un token de chofer recibe 403)
 
 Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"TU_PASSWORD"}`
 
@@ -279,6 +252,7 @@ Obtener token: `POST /api/admin/login` con `{"usuario":"admin","password":"TU_PA
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/api/posicion` | Enviar GPS en tiempo real |
+| `POST` | `/api/viajes/sincronizar` | Subir viaje (el chofer se toma del token) |
 
 ---
 
@@ -423,9 +397,5 @@ docker compose up --build
 ## 👤 Autor
 
 **Boris Benjamín Barboza Lima**  
-<<<<<<< HEAD
-Taller de Grado I · Ingeniería de Sistemas 
-=======
 Taller de Grado I · Ingeniería de Sistemas  
->>>>>>> ef55731b7f5a4c3d5df2808445867fea9da7f791
 Universidad Salesiana de Bolivia · El Alto - La Paz, Bolivia · 2026

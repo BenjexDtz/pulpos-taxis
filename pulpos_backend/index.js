@@ -4,10 +4,21 @@ const pool = require('./db');
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
 
 const app = express();
-app.use(cors());
+
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
+
+app.use(helmet());
+
+const origenesPermitidos = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:8080')
+    .split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors({ origin: origenesPermitidos }));
+
 app.use(express.json());
+app.use((req, res, next) => { req.body ??= {}; next(); });
 
 // ── MIDDLEWARE JWT ─────────────────────────────────────────────────────────────
 const verificarToken = (req, res, next) => {
@@ -22,11 +33,54 @@ const verificarToken = (req, res, next) => {
     }
 };
 
+const esDiaValido = (s) =>
+    typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
+    !isNaN(Date.parse(s)) && new Date(s).toISOString().startsWith(s);
+
+const filtroFechas = ({ desde, hasta }) => {
+    for (const dia of [desde, hasta])
+        if (dia !== undefined && dia !== '' && !esDiaValido(dia))
+            return { error: '⚠️ Fecha inválida: usa el formato YYYY-MM-DD.' };
+    if (desde && hasta && desde > hasta)
+        return { error: '⚠️ La fecha "desde" es posterior a "hasta".' };
+
+    const condiciones = [], params = [];
+    if (desde) { params.push(desde); condiciones.push(`v.fecha_hora_viaje >= $${params.length}::date`); }
+    if (hasta) { params.push(hasta); condiciones.push(`v.fecha_hora_viaje < $${params.length}::date + 1`); }
+    return { where: condiciones.length ? ` WHERE ${condiciones.join(' AND ')}` : '', params };
+};
+
+const limiteLogin = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    skipSuccessfulRequests: true,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: '⏳ Demasiados intentos fallidos. Espera 15 minutos.' },
+});
+
+const soloAdmin = (req, res, next) => {
+    if (req.usuario?.tipo !== 'admin')
+        return res.status(403).json({ error: '🚫 Requiere permisos de administrador.' });
+    next();
+};
+
+const soloChofer = async (req, res, next) => {
+    if (req.usuario?.tipo !== 'chofer')
+        return res.status(403).json({ error: '🚫 Solo para conductores.' });
+    try {
+        const r = await pool.query('SELECT estado_activo FROM choferes WHERE id=$1', [req.usuario.id]);
+        if (!r.rows.length || !r.rows[0].estado_activo)
+            return res.status(403).json({ error: '🚫 Cuenta desactivada. Contacta a la central.' });
+        next();
+    } catch {
+        return res.status(500).json({ error: 'Error interno.' });
+    }
+};
+
 app.get('/', (req, res) => res.json({ mensaje: '📡 Central de Radio Taxis Pulpos en línea' }));
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // PARÁMETROS TOPOGRÁFICOS (incluye combustible)
-// ═══════════════════════════════════════════════════════════════════════════════
 
 // Público — Flutter lo descarga al iniciar
 app.get('/api/parametros', async (req, res) => {
@@ -52,22 +106,36 @@ app.get('/api/parametros', async (req, res) => {
     }
 });
 
-// Admin — editar parámetros (incluyendo precio combustible)
-app.put('/api/admin/parametros/:id', verificarToken, async (req, res) => {
-    const { id } = req.params;
-    const {
-        zona_ciudad,
-        costo_base_km,
-        consumo_litros_km,
-        precio_combustible_bs,
-        factor_altitud,
-        factor_superficie,
-        costo_minuto_detencion
-    } = req.body;
+// Mismos límites que los inputs del panel
+const RANGOS_PARAMETROS = {
+    costo_base_km:          [0.5, 10],
+    consumo_litros_km:      [0.05, 0.5],
+    precio_combustible_bs:  [1, 30],
+    factor_altitud:         [1, 3],
+    factor_superficie:      [1, 5],
+    costo_minuto_detencion: [0.1, 5],
+};
 
-    if (!costo_base_km || !factor_altitud || !factor_superficie ||
-        !costo_minuto_detencion || !consumo_litros_km || !precio_combustible_bs)
-        return res.status(400).json({ error: '⚠️ Todos los campos son obligatorios.' });
+// Admin — editar parámetros (incluyendo precio combustible)
+app.put('/api/admin/parametros/:id', verificarToken, soloAdmin, async (req, res) => {
+    const { id } = req.params;
+    if (!/^\d+$/.test(id)) return res.status(404).json({ error: 'No encontrado.' });
+
+    const zona_ciudad = typeof req.body.zona_ciudad === 'string' ? req.body.zona_ciudad.trim() : '';
+    if (!zona_ciudad || zona_ciudad.length > 100)
+        return res.status(400).json({ error: '⚠️ La zona es obligatoria (máx. 100 caracteres).' });
+
+    const valores = {};
+    for (const [campo, [min, max]] of Object.entries(RANGOS_PARAMETROS)) {
+        const crudo = req.body[campo];
+        const n = (typeof crudo === 'number' || (typeof crudo === 'string' && crudo.trim() !== ''))
+            ? Number(crudo) : NaN;
+        if (!Number.isFinite(n) || n < min || n > max)
+            return res.status(400).json({ error: `⚠️ ${campo} debe ser un número entre ${min} y ${max}.` });
+        valores[campo] = n;
+    }
+    const { costo_base_km, consumo_litros_km, precio_combustible_bs,
+            factor_altitud, factor_superficie, costo_minuto_detencion } = valores;
 
     try {
         const r = await pool.query(
@@ -103,9 +171,9 @@ app.put('/api/admin/parametros/:id', verificarToken, async (req, res) => {
 // APP MÓVIL — SINCRONIZACIÓN
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.post('/api/viajes/sincronizar', async (req, res) => {
+app.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, res) => {
+    const chofer_id = req.usuario.id;
     const {
-        chofer_id,
         distancia_km,
         tiempo_detencion_min,
         tarifa_cobrada,
@@ -119,7 +187,7 @@ app.post('/api/viajes/sincronizar', async (req, res) => {
         precio_combustible_aplicado = 6.96,
     } = req.body;
 
-    if (!chofer_id || distancia_km === undefined)
+    if (distancia_km === undefined)
         return res.status(400).json({ error: 'Faltan datos del viaje.' });
 
     try {
@@ -155,10 +223,10 @@ app.post('/api/viajes/sincronizar', async (req, res) => {
 });
 
 // GPS en tiempo real
-app.post('/api/posicion', verificarToken, async (req, res) => {
+app.post('/api/posicion', verificarToken, soloChofer, async (req, res) => {
     const { lat, lng } = req.body;
-    if (lat === undefined || lng === undefined)
-        return res.status(400).json({ error: 'Se requieren lat y lng.' });
+    if (!Number.isFinite(lat) || !Number.isFinite(lng))
+        return res.status(400).json({ error: 'Se requieren lat y lng numéricos.' });
     if (lat < -23 || lat > -9 || lng < -70 || lng > -57)
         return res.status(400).json({ error: 'Fuera de Bolivia.' });
     try {
@@ -177,8 +245,10 @@ app.post('/api/posicion', verificarToken, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Login app móvil (choferes)
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', limiteLogin, async (req, res) => {
     const { placa_vehiculo, password } = req.body;
+    if (typeof placa_vehiculo !== 'string' || typeof password !== 'string' || !placa_vehiculo || !password)
+        return res.status(400).json({ error: '⚠️ Placa y contraseña son obligatorias.' });
     try {
         const r = await pool.query('SELECT * FROM choferes WHERE placa_vehiculo = $1', [placa_vehiculo]);
         if (!r.rows.length)
@@ -189,7 +259,7 @@ app.post('/api/login', async (req, res) => {
         if (!chofer.password_hash || !await bcrypt.compare(password, chofer.password_hash))
             return res.status(401).json({ error: '❌ Placa o contraseña incorrecta.' });
         const token = jwt.sign(
-            { id: chofer.id, placa: chofer.placa_vehiculo },
+            { id: chofer.id, placa: chofer.placa_vehiculo, tipo: 'chofer' },
             process.env.JWT_SECRET, { expiresIn: '30d' }
         );
         res.json({ mensaje: '🔓 Login exitoso', token,
@@ -202,8 +272,10 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Login panel admin (tabla administradores)
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', limiteLogin, async (req, res) => {
     const { usuario, password } = req.body;
+    if (typeof usuario !== 'string' || typeof password !== 'string' || !usuario || !password)
+        return res.status(400).json({ error: '⚠️ Usuario y contraseña son obligatorios.' });
     try {
         const r = await pool.query(
             `SELECT * FROM administradores WHERE (email=$1 OR nombre=$1) AND activo=TRUE LIMIT 1`,
@@ -215,7 +287,7 @@ app.post('/api/admin/login', async (req, res) => {
         if (!await bcrypt.compare(password, admin.password_hash))
             return res.status(401).json({ error: '❌ Usuario o contraseña incorrecta.' });
         const token = jwt.sign(
-            { id: admin.id, rol: admin.rol, nombre: admin.nombre },
+            { id: admin.id, rol: admin.rol, nombre: admin.nombre, tipo: 'admin' },
             process.env.JWT_SECRET, { expiresIn: '8h' }
         );
         console.log(`🔑 Admin login: ${admin.nombre} (${admin.rol})`);
@@ -226,27 +298,13 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
-app.post('/api/choferes/registro', async (req, res) => {
-    const { nombre_completo, placa_vehiculo, password } = req.body;
-    try {
-        const hash = await bcrypt.hash(password, 10);
-        const r = await pool.query(
-            `INSERT INTO choferes (nombre_completo, placa_vehiculo, password_hash)
-             VALUES ($1,$2,$3) RETURNING id, nombre_completo, placa_vehiculo`,
-            [nombre_completo, placa_vehiculo, hash]
-        );
-        res.status(201).json({ mensaje: '✅ Chofer registrado', chofer: r.rows[0] });
-    } catch { res.status(500).json({ error: 'Error.' }); }
-});
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PANEL ADMIN — ENDPOINTS PROTEGIDOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Viajes con auditoría completa incluyendo combustible
-app.get('/api/admin/viajes', verificarToken, async (req, res) => {
+app.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
     try {
-        const { desde, hasta } = req.query;
         let query = `
             SELECT
                 v.id_servidor                AS id,
@@ -271,8 +329,10 @@ app.get('/api/admin/viajes', verificarToken, async (req, res) => {
             FROM viajes_historial v
             JOIN choferes c ON v.chofer_id = c.id
         `;
-        const params = [];
-        if (desde && hasta) { query += ` WHERE v.fecha_hora_viaje BETWEEN $1 AND $2`; params.push(desde, hasta); }
+        const filtro = filtroFechas(req.query);
+        if (filtro.error) return res.status(400).json({ error: filtro.error });
+        const params = filtro.params;
+        query += filtro.where;
         query += ` ORDER BY v.fecha_hora_viaje DESC`;
         const r = await pool.query(query, params);
         res.json(r.rows);
@@ -283,9 +343,8 @@ app.get('/api/admin/viajes', verificarToken, async (req, res) => {
 });
 
 // CSV con auditoría completa
-app.get('/api/admin/viajes/exportar', verificarToken, async (req, res) => {
+app.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, res) => {
     try {
-        const { desde, hasta } = req.query;
         let query = `
             SELECT
                 v.id_servidor                                     AS "ID",
@@ -307,8 +366,10 @@ app.get('/api/admin/viajes/exportar', verificarToken, async (req, res) => {
                 TO_CHAR(v.fecha_hora_viaje,'DD/MM/YYYY HH24:MI') AS "Fecha"
             FROM viajes_historial v JOIN choferes c ON v.chofer_id = c.id
         `;
-        const params = [];
-        if (desde && hasta) { query += ` WHERE v.fecha_hora_viaje BETWEEN $1 AND $2`; params.push(desde, hasta); }
+        const filtro = filtroFechas(req.query);
+        if (filtro.error) return res.status(400).json({ error: filtro.error });
+        const params = filtro.params;
+        query += filtro.where;
         query += ` ORDER BY v.fecha_hora_viaje DESC`;
 
         const r = await pool.query(query, params);
@@ -330,7 +391,7 @@ app.get('/api/admin/viajes/exportar', verificarToken, async (req, res) => {
 });
 
 // Choferes
-app.get('/api/admin/choferes', verificarToken, async (req, res) => {
+app.get('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) => {
     try {
         const r = await pool.query(`
             SELECT id, nombre_completo, placa_vehiculo, estado_activo,
@@ -341,7 +402,7 @@ app.get('/api/admin/choferes', verificarToken, async (req, res) => {
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
 
-app.post('/api/admin/choferes', verificarToken, async (req, res) => {
+app.post('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) => {
     const { nombre_completo, placa_vehiculo, password } = req.body;
     if (!nombre_completo || !placa_vehiculo || !password)
         return res.status(400).json({ error: '⚠️ Faltan datos.' });
@@ -359,7 +420,7 @@ app.post('/api/admin/choferes', verificarToken, async (req, res) => {
     }
 });
 
-app.patch('/api/admin/choferes/:id/password', verificarToken, async (req, res) => {
+app.patch('/api/admin/choferes/:id/password', verificarToken, soloAdmin, async (req, res) => {
     const { nueva_password } = req.body;
     if (!nueva_password || nueva_password.length < 4)
         return res.status(400).json({ error: '⚠️ Mínimo 4 caracteres.' });
@@ -374,7 +435,7 @@ app.patch('/api/admin/choferes/:id/password', verificarToken, async (req, res) =
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
 
-app.patch('/api/admin/choferes/:id/estado', verificarToken, async (req, res) => {
+app.patch('/api/admin/choferes/:id/estado', verificarToken, soloAdmin, async (req, res) => {
     const { estado_activo } = req.body;
     try {
         const r = await pool.query(
@@ -387,8 +448,26 @@ app.patch('/api/admin/choferes/:id/estado', verificarToken, async (req, res) => 
     } catch { res.status(500).json({ error: 'Error.' }); }
 });
 
-const PORT = process.env.PORT || 3000;
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 
-app.listen(PORT, '0.0.0.0', () =>
-  console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
-);
+app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
+
+app.use((err, req, res, next) => {
+    if (err.type === 'entity.parse.failed')
+        return res.status(400).json({ error: 'JSON inválido.' });
+    if (err.status >= 400 && err.status < 500)
+        return res.status(err.status).json({ error: 'Petición inválida.' });
+
+    console.error('❌ Error no controlado:', err);
+    res.status(500).json({ error: 'Error interno.' });
+});
+
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, '0.0.0.0', () =>
+        console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
+    );
+}
+
+module.exports = { app, filtroFechas };

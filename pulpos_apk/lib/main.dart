@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'api_sync.dart';
+import 'detector_detencion.dart';
 import 'motor_gps.dart';
 import 'calculadora.dart';
 import 'base_datos.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_login.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'config.dart';
+import 'sesion.dart';
 
 void main() {
   runApp(const AplicacionPulpos());
@@ -23,9 +26,40 @@ class AplicacionPulpos extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Radio Taxis Pulpos',
       theme: ThemeData(primarySwatch: Colors.blue, fontFamily: 'Roboto'),
-      home: const PantallaLogin(),
+      home: const PantallaInicio(),
     );
   }
+}
+
+class PantallaInicio extends StatelessWidget {
+  const PantallaInicio({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: Sesion.tokenValido(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return snapshot.data != null
+            ? const PantallaPrueba()
+            : const PantallaLogin();
+      },
+    );
+  }
+}
+
+Future<void> irAlLogin(BuildContext context) async {
+  await Sesion.cerrar();
+  if (!context.mounted) return;
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const PantallaLogin()),
+    (_) => false,
+  );
 }
 
 class PantallaPrueba extends StatefulWidget {
@@ -41,7 +75,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   Position? posicionAnterior;
   bool enViaje = false;
   StreamSubscription<Position>? suscripcionGPS;
-  int segundosDetencion = 0;
+  DetectorDetencion? _detector;
+  double get minutosDetencion => _detector?.minutosDetenido ?? 0;
   Timer? relojDetencion;
   bool estaDetenido = false;
 
@@ -76,15 +111,14 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       ),
     );
 
-    const String urlBase =
-        'https://handclap-powwow-union.ngrok-free.dev'; // ⚠️ Cambia tu IP
-
     final db = await BaseDatosLocal.instancia.database;
-    final pendientes = await db.query(
-      'viajes',
-      where: 'estado_sincronizacion = ?',
-      whereArgs: [0],
-    );
+    final token = await Sesion.tokenValido();
+    final choferId = await Sesion.choferId();
+    if (token == null || choferId == null) {
+      if (mounted) await irAlLogin(context);
+      return;
+    }
+    final pendientes = await BaseDatosLocal.instancia.viajesPendientes(choferId);
 
     if (pendientes.isEmpty) {
       if (mounted) {
@@ -98,18 +132,16 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     }
 
     int enviados = 0;
+    bool sesionRechazada = false;
     for (var viaje in pendientes) {
       try {
         final response = await http.post(
-          Uri.parse('$urlBase/api/viajes/sincronizar'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'chofer_id': viaje['chofer_id'],
-            'distancia_km': viaje['distancia_km'],
-            'tiempo_detencion_min': viaje['tiempo_detencion_min'],
-            'tarifa_cobrada': viaje['tarifa_total'],
-            'fecha_hora_viaje': viaje['fecha_hora'],
-          }),
+          Uri.parse('$urlServidor/api/viajes/sincronizar'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(viajeParaServidor(viaje)),
         );
         if (response.statusCode == 201) {
           await db.update(
@@ -119,10 +151,26 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
             whereArgs: [viaje['id']],
           );
           enviados++;
+        } else if (response.statusCode == 401 || response.statusCode == 403) {
+          sesionRechazada = true;
+          break;
         }
       } catch (e) {
-        print("Error de red: $e");
+        debugPrint("Error de red: $e");
       }
+    }
+
+    if (mounted && sesionRechazada) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            '🔒 Sesión no válida o cuenta desactivada. Vuelve a iniciar sesión.',
+          ),
+          backgroundColor: Colors.red[800],
+        ),
+      );
+      await irAlLogin(context);
+      return;
     }
 
     if (mounted && enviados > 0) {
@@ -135,20 +183,48 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     }
   }
 
+  Future<void> _confirmarCierreSesion() async {
+    final choferId = await Sesion.choferId();
+    final pendientes = choferId == null
+        ? 0
+        : (await BaseDatosLocal.instancia.viajesPendientes(choferId)).length;
+    if (!mounted) return;
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cerrar sesión'),
+        content: Text(
+          pendientes == 0
+              ? '¿Seguro que quieres salir?'
+              : 'Tienes $pendientes viaje(s) sin sincronizar. Quedarán guardados '
+                    'en el teléfono y se subirán cuando vuelvas a iniciar sesión '
+                    'con tu placa. Te conviene sincronizar antes de salir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCELAR'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              pendientes == 0 ? 'SALIR' : 'SALIR DE TODOS MODOS',
+              style: TextStyle(color: Colors.red[700]),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmado == true && mounted) await irAlLogin(context);
+  }
+
   // ── Control del viaje ──────────────────────────────────────────────────────
   void _iniciarRelojDetencion() {
     relojDetencion = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (enViaje && posicionAnterior != null) {
-        if (posicionAnterior!.speed < 0.5) {
-          setState(() {
-            segundosDetencion++;
-            estaDetenido = true;
-          });
-        } else {
-          setState(() {
-            estaDetenido = false;
-          });
-        }
+      if (enViaje && _detector != null) {
+        final detenido = _detector!.tick(DateTime.now());
+        setState(() => estaDetenido = detenido);
       }
     });
   }
@@ -160,7 +236,10 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     MotorGPS.resetContador();
     setState(() {
       distanciaTotalKm = 0.0;
-      segundosDetencion = 0;
+      _detector = DetectorDetencion(
+        inicio: DateTime.now(),
+        velocidadInicial: posInicial.speed,
+      );
       posicionAnterior = posInicial;
       enViaje = true;
     });
@@ -178,6 +257,11 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           nuevaPosicion.latitude,
           nuevaPosicion.longitude,
         );
+        _detector?.registrarPosicion(
+          DateTime.now(),
+          velocidadReportada: nuevaPosicion.speed,
+          metros: metros,
+        );
         setState(() {
           distanciaTotalKm += (metros / 1000);
         });
@@ -189,6 +273,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   void detenerRastreo() async {
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
+    _detector?.tick(DateTime.now());
 
     // Enviar última posición al servidor
     if (posicionAnterior != null) {
@@ -205,22 +290,26 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       precioCombustibleBs: params.precioCombustibleBs, // ← agregar
       factorAltitud: params.factorAltitud,
       factorSuperficie: fSuperficie,
-      tiempoDetencionMin: (segundosDetencion / 60),
+      tiempoDetencionMin: minutosDetencion,
       costoMinutoDetencion: params.costoMinutoDetencion,
     );
 
-    final prefs = await SharedPreferences.getInstance();
-    int idChofer = prefs.getInt('chofer_id') ?? 1;
+    final idChofer = await Sesion.choferId();
 
     await BaseDatosLocal.instancia.insertarViaje({
       'chofer_id': idChofer,
       'distancia_km': distanciaTotalKm,
-      'tiempo_detencion_min': (segundosDetencion / 60),
+      'tiempo_detencion_min': minutosDetencion,
       'factor_altitud': params.factorAltitud,
       'factor_superficie': fSuperficie,
       'tarifa_total': tarifaFinal,
       'estado_sincronizacion': 0,
       'fecha_hora': DateTime.now().toIso8601String(),
+      'tipo_superficie': fSuperficie == 1.0 ? 'asfalto' : 'tierra',
+      'costo_base_km': params.costoBaseKm,
+      'costo_minuto_detencion': params.costoMinutoDetencion,
+      'consumo_litros_km': params.consumoLitrosKm,
+      'precio_combustible_bs': params.precioCombustibleBs,
     });
 
     setState(() {
@@ -259,7 +348,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       precioCombustibleBs: params.precioCombustibleBs, // ← agregar
       factorAltitud: params.factorAltitud,
       factorSuperficie: fSuperficie,
-      tiempoDetencionMin: (segundosDetencion / 60),
+      tiempoDetencionMin: minutosDetencion,
       costoMinutoDetencion: params.costoMinutoDetencion,
     );
 
@@ -300,6 +389,11 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                           ),
                         ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'Cerrar sesión',
+                  onPressed: _confirmarCierreSesion,
+                ),
               ],
             ),
       body: SafeArea(
@@ -318,7 +412,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                         ? []
                         : [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 10,
                               offset: const Offset(0, 5),
                             ),
@@ -521,10 +615,11 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                   ),
                 ),
                 onPressed: () {
-                  if (enViaje)
+                  if (enViaje) {
                     detenerRastreo();
-                  else
+                  } else {
                     iniciarRastreo();
+                  }
                 },
               ),
             ],

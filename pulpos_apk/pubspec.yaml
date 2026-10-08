@@ -39,6 +39,7 @@ dependencies:
   geolocator: ^14.0.2
   http: ^1.6.0
   shared_preferences: ^2.5.5
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:
