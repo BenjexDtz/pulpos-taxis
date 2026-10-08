@@ -1,14 +1,34 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { Lock, Radio, RefreshCw, User } from 'lucide-react';
+import { Eye, EyeOff, Moon, Radio, RefreshCw, Sun } from 'lucide-react';
 import SegundoFactor from './SegundoFactor.jsx';
 import Mensaje from './Mensaje.jsx';
+import { botonPrimario, campo, etiqueta } from './ui/estilos.js';
+import { useTema } from '../contexto/contextos.js';
 
-const estiloCampo = 'w-full bg-gray-800 border border-gray-700 text-white pl-11 pr-4 py-3 rounded-xl font-radar text-sm focus:outline-none focus:border-green-500 transition placeholder-gray-700';
+function PanelMarca() {
+  return (
+    <div className="relative hidden w-full items-center overflow-hidden bg-brand-950 lg:grid lg:min-h-screen lg:w-1/2 dark:bg-white/5">
+      <img src="/imagenes/cuadricula.svg" alt="" className="absolute top-0 right-0 w-full max-w-[250px] xl:max-w-[450px]" />
+      <img src="/imagenes/cuadricula.svg" alt="" className="absolute bottom-0 left-0 w-full max-w-[250px] rotate-180 xl:max-w-[450px]" />
+      <div className="relative flex flex-col items-center px-10 text-center">
+        <span className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-500 text-white shadow-theme-lg">
+          <Radio className="h-8 w-8" />
+        </span>
+        <h2 className="mb-3 text-title-sm font-semibold text-white">Central de operaciones</h2>
+        <p className="max-w-xs text-gray-400 dark:text-white/60">
+          Tarificación de radio taxis con parámetros topográficos, flota en tiempo real y auditoría.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function Login({ urlServidor, onSesion }) {
+  const { tema, alternar } = useTema();
   const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
+  const [verPassword, setVerPassword] = useState(false);
   const [errorLogin, setErrorLogin] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [mfaPendiente, setMfaPendiente] = useState(null);
@@ -23,53 +43,61 @@ export default function Login({ urlServidor, onSesion }) {
     finally { setLoginLoading(false); }
   };
 
-  // Durante el segundo factor la cabecera se achica para que el QR quepa sin desplazarse.
-  const compacto = Boolean(mfaPendiente);
-
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4" style={{ fontFamily: 'Rajdhani, sans-serif' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap'); body{background:#030712;} .font-radar{font-family:'Share Tech Mono',monospace;}`}</style>
-      <div className="w-full max-w-md">
-        <div className={`text-center ${compacto ? 'mb-4' : 'mb-10'}`}>
-          <div className={`inline-flex items-center justify-center rounded-full border-2 border-green-500 relative ${compacto ? 'w-12 h-12 mb-2' : 'w-20 h-20 mb-4'}`} style={{ boxShadow: '0 0 30px #10b98140' }}>
-            <Radio className={`text-green-400 ${compacto ? 'w-6 h-6' : 'w-9 h-9'}`} />
-            <span className="absolute top-0 right-0 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" /></span>
+    <div className="relative bg-white dark:bg-gray-900">
+      <div className="flex min-h-screen w-full flex-col lg:flex-row">
+        <div className="flex flex-1 flex-col justify-center px-6 py-10 sm:px-10">
+          <div className="mx-auto w-full max-w-md">
+            {mfaPendiente ? (
+              <SegundoFactor urlServidor={urlServidor} pendiente={mfaPendiente} cuenta={usuario}
+                onSesion={onSesion} onCancelar={() => { setMfaPendiente(null); setErrorLogin(''); }} />
+            ) : (
+              <>
+                <div className="mb-8">
+                  <span className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-500 text-white lg:hidden">
+                    <Radio className="h-6 w-6" />
+                  </span>
+                  <h1 className="mb-2 text-title-sm font-semibold text-gray-800 sm:text-title-md dark:text-white/90">Iniciar sesión</h1>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Ingresa con el correo y la contraseña de tu cuenta del panel.</p>
+                </div>
+                <Mensaje texto={errorLogin} className="mb-6" />
+                <form onSubmit={iniciarSesion} className="space-y-6">
+                  <div>
+                    <label htmlFor="correo" className={etiqueta}>Correo <span className="text-error-500">*</span></label>
+                    <input id="correo" type="email" required autoComplete="username" value={usuario}
+                      onChange={e => setUsuario(e.target.value)} className={campo} placeholder="gerencia@empresa.bo" />
+                  </div>
+                  <div>
+                    <label htmlFor="contrasena" className={etiqueta}>Contraseña <span className="text-error-500">*</span></label>
+                    <div className="relative">
+                      <input id="contrasena" type={verPassword ? 'text' : 'password'} required autoComplete="current-password"
+                        value={password} onChange={e => setPassword(e.target.value)} className={`${campo} pr-12`} placeholder="••••••••" />
+                      <button type="button" onClick={() => setVerPassword(!verPassword)}
+                        aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        className="absolute top-1/2 right-4 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
+                        {verPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loginLoading} className={`${botonPrimario} w-full py-3`}>
+                    {loginLoading && <RefreshCw className="h-4 w-4 animate-spin" />}
+                    {loginLoading ? 'Verificando...' : 'Ingresar'}
+                  </button>
+                </form>
+                <p className="mt-6 text-theme-xs text-gray-500 dark:text-gray-400">
+                  Después de la contraseña se pide el código de tu app autenticadora (segundo factor).
+                </p>
+              </>
+            )}
           </div>
-          <h1 className={`font-bold text-white tracking-widest ${compacto ? 'text-2xl' : 'text-4xl'}`}>RADIO TAXIS</h1>
-          <p className="font-radar text-green-500 text-xs tracking-[0.4em] mt-1">CENTRAL DE OPERACIONES</p>
-          {!compacto && <p className="text-gray-600 text-xs mt-2 font-radar">Plataforma de tarificación</p>}
         </div>
-        <div className={`bg-gray-900 border border-gray-800 rounded-2xl ${compacto ? 'p-6' : 'p-8'}`} style={{ boxShadow: '0 0 60px #10b98108' }}>
-          {mfaPendiente ? (
-            <SegundoFactor urlServidor={urlServidor} pendiente={mfaPendiente} cuenta={usuario}
-              onSesion={onSesion} onCancelar={() => { setMfaPendiente(null); setErrorLogin(''); }} />
-          ) : (
-            <>
-              <Mensaje texto={errorLogin} className="mb-6" />
-              <form onSubmit={iniciarSesion} className="space-y-5">
-                <div>
-                  <label htmlFor="correo" className="font-radar text-xs text-gray-500 tracking-widest block mb-2">CORREO</label>
-                  <div className="relative">
-                    <User className="w-4 h-4 absolute left-4 top-3.5 text-gray-600" />
-                    <input id="correo" type="email" autoComplete="username" value={usuario} onChange={e => setUsuario(e.target.value)} className={estiloCampo} placeholder="gerencia@empresa.bo" />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="contrasena" className="font-radar text-xs text-gray-500 tracking-widest block mb-2">CONTRASEÑA</label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-4 top-3.5 text-gray-600" />
-                    <input id="contrasena" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className={estiloCampo} placeholder="••••••••" />
-                  </div>
-                </div>
-                <button type="submit" disabled={loginLoading} className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition tracking-widest text-sm flex items-center justify-center space-x-2" style={{ boxShadow: loginLoading ? 'none' : '0 0 20px #10b98140' }}>
-                  {loginLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  <span>{loginLoading ? 'VERIFICANDO...' : 'ACCEDER AL SISTEMA'}</span>
-                </button>
-              </form>
-            </>
-          )}
-        </div>
+        <PanelMarca />
       </div>
+
+      <button onClick={alternar} aria-label={tema === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        className="fixed right-6 bottom-6 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-brand-500 text-white shadow-theme-lg transition hover:bg-brand-600">
+        {tema === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+      </button>
     </div>
   );
 }

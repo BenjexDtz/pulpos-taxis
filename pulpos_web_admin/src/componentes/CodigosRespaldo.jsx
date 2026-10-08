@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Copy, Download } from 'lucide-react';
+import { Check, Copy, Download } from 'lucide-react';
+import { botonSecundario } from './ui/estilos.js';
 
 export default function CodigosRespaldo({ codigos, cuenta }) {
   const [copiado, setCopiado] = useState(false);
@@ -16,15 +17,15 @@ export default function CodigosRespaldo({ codigos, cuenta }) {
   };
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 bg-gray-950 border border-gray-800 rounded-xl p-4">
-        {codigos.map(c => <code key={c} className="font-radar text-sm text-yellow-300 text-center">{c}</code>)}
+      <div className="grid grid-cols-2 gap-2 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+        {codigos.map(c => <code key={c} className="text-center font-mono text-sm font-medium text-gray-800 dark:text-white/90">{c}</code>)}
       </div>
       <div className="flex gap-2">
-        <button type="button" onClick={descargar} className="flex-1 flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 py-2 rounded-lg font-radar text-xs transition">
-          <Download className="w-3.5 h-3.5" />DESCARGAR .TXT
+        <button type="button" onClick={descargar} className={`${botonSecundario} flex-1`}>
+          <Download className="h-4 w-4" />Descargar .txt
         </button>
-        <button type="button" onClick={copiar} className="flex-1 flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 py-2 rounded-lg font-radar text-xs transition">
-          <Copy className="w-3.5 h-3.5" />{copiado ? 'COPIADOS' : 'COPIAR'}
+        <button type="button" onClick={copiar} className={`${botonSecundario} flex-1`}>
+          {copiado ? <Check className="h-4 w-4 text-success-500" /> : <Copy className="h-4 w-4" />}{copiado ? 'Copiados' : 'Copiar'}
         </button>
       </div>
     </div>

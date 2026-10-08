@@ -3,6 +3,9 @@ import axios from 'axios';
 import { Building2, Plus, Pencil, RefreshCw, ToggleLeft, ToggleRight, X, ShieldCheck, ShieldOff, Users } from 'lucide-react';
 import FormEmpresa from '../componentes/FormEmpresa.jsx';
 import Mensaje from '../componentes/Mensaje.jsx';
+import Tarjeta from '../componentes/ui/Tarjeta.jsx';
+import Insignia from '../componentes/ui/Insignia.jsx';
+import { botonIcono, botonPeligro, botonPrimario, botonSecundario, filaTabla, td, th } from '../componentes/ui/estilos.js';
 
 export default function Plataforma({ urlServidor, headers, manejarErrorApi, usuarioId }) {
   const [empresas, setEmpresas] = useState([]);
@@ -88,87 +91,73 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
   };
 
   if (edicion) return (
-    <div className="max-w-3xl bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <Building2 className="w-5 h-5 text-yellow-400" />
-          <h2 className="font-bold text-white tracking-wider">
-            {edicion === 'nueva' ? 'NUEVA EMPRESA' : `EDITAR · ${edicion.nombre.toUpperCase()}`}
-          </h2>
-        </div>
-        <button onClick={() => setEdicion(null)} className="text-gray-600 hover:text-white"><X className="w-5 h-5" /></button>
-      </div>
-      <div className="p-6">
-        <FormEmpresa
-          key={edicion === 'nueva' ? 'nueva' : edicion.id}
-          inicial={edicion === 'nueva' ? {} : edicion}
-          crear={edicion === 'nueva'}
-          onGuardar={guardar}
-          onCancelar={() => setEdicion(null)}
-          guardando={guardando}
-          mensaje={mensaje}
-        />
-      </div>
-    </div>
+    <Tarjeta icono={Building2} className="max-w-4xl"
+      titulo={edicion === 'nueva' ? 'Nueva empresa' : `Editar · ${edicion.nombre}`}
+      subtitulo={edicion === 'nueva' ? 'Se crea con sus parámetros iniciales y su gerente.' : `Código: ${edicion.codigo}`}
+      acciones={<button aria-label="Cerrar" onClick={() => setEdicion(null)} className={botonIcono}><X className="h-4 w-4" /></button>}>
+      <FormEmpresa
+        key={edicion === 'nueva' ? 'nueva' : edicion.id}
+        inicial={edicion === 'nueva' ? {} : edicion}
+        crear={edicion === 'nueva'}
+        onGuardar={guardar}
+        onCancelar={() => setEdicion(null)}
+        guardando={guardando}
+        mensaje={mensaje}
+      />
+    </Tarjeta>
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Mensaje texto={aviso} onCerrar={() => setAviso('')} />
       {mensaje.tipo === 'exito' && <Mensaje tipo="exito" texto={mensaje.texto} onCerrar={() => setMensaje({ tipo: '', texto: '' })} />}
 
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-800 flex flex-wrap items-center gap-3">
-          <div className="flex items-center space-x-3 mr-auto">
-            <Building2 className="w-5 h-5 text-yellow-400" />
-            <div>
-              <h2 className="font-bold text-white tracking-wider">EMPRESAS DE LA PLATAFORMA</h2>
-              <p className="font-radar text-xs text-gray-600">{empresas.length} empresa{empresas.length !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-          <button onClick={recargar} disabled={cargando} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 px-3 py-2 rounded-lg transition font-radar text-xs">
-            <RefreshCw className={`w-3.5 h-3.5 ${cargando ? 'animate-spin' : ''}`} />RECARGAR
-          </button>
-          <button onClick={() => abrir('nueva')} className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg transition font-radar text-xs font-bold">
-            <Plus className="w-3.5 h-3.5" />NUEVA EMPRESA
-          </button>
-        </div>
-        <div className="overflow-x-auto">
+      <Tarjeta icono={Building2} titulo="Empresas" cuerpo=""
+        subtitulo={`${empresas.length} empresa${empresas.length !== 1 ? 's' : ''} · ${empresas.filter(e => e.activo).length} activas`}
+        acciones={
+          <>
+            <button onClick={recargar} disabled={cargando} className={botonSecundario}>
+              <RefreshCw className={`h-4 w-4 ${cargando ? 'animate-spin' : ''}`} />Recargar
+            </button>
+            <button onClick={() => abrir('nueva')} className={botonPrimario}><Plus className="h-4 w-4" />Nueva empresa</button>
+          </>
+        }>
+        <div className="custom-scrollbar overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-800">
-                {['EMPRESA', 'CIUDAD', 'MONEDA', 'CHOFERES', 'VIAJES', 'ESTADO', 'ACCIONES'].map(h =>
-                  <th key={h} className="px-5 py-3 text-left font-radar text-xs text-gray-600 tracking-widest">{h}</th>)}
+              <tr className="border-b border-gray-100 dark:border-gray-800">
+                {['Empresa', 'Ciudad', 'Moneda', 'Choferes', 'Viajes', 'Estado', 'Acciones'].map(h => <th key={h} className={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {!cargando && empresas.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-gray-700 font-radar text-sm">SIN EMPRESAS</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">Sin empresas.</td></tr>
               )}
               {empresas.map(e => (
-                <tr key={e.id} className={`border-b border-gray-800 hover:bg-gray-800 transition ${!e.activo ? 'opacity-40' : ''}`}>
-                  <td className="px-5 py-4">
+                <tr key={e.id} className={`${filaTabla} ${!e.activo ? 'opacity-50' : ''}`}>
+                  <td className={td}>
                     <div className="flex items-center gap-3">
-                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: e.color_primario }} />
+                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: e.color_primario }} />
                       <div>
-                        <div className="font-semibold text-white">{e.nombre}</div>
-                        <div className="font-radar text-xs text-gray-500">{e.codigo}</div>
+                        <p className="font-medium text-gray-800 dark:text-white/90">{e.nombre}</p>
+                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">{e.codigo}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-gray-300 text-sm">{e.ciudad}, {e.pais}</td>
-                  <td className="px-5 py-4 font-radar text-xs text-gray-400">{e.moneda_codigo} ({e.moneda_simbolo})</td>
-                  <td className="px-5 py-4 font-radar text-blue-400">{e.total_choferes}</td>
-                  <td className="px-5 py-4 font-radar text-green-400">{e.total_viajes}</td>
-                  <td className="px-5 py-4 font-radar text-xs">{e.activo ? <span className="text-green-400">ACTIVA</span> : <span className="text-gray-500">INACTIVA</span>}</td>
-                  <td className="px-5 py-4">
+                  <td className={td}>{e.ciudad}, {e.pais}</td>
+                  <td className={td}>{e.moneda_codigo} ({e.moneda_simbolo})</td>
+                  <td className={td}>{e.total_choferes}</td>
+                  <td className={td}>{e.total_viajes}</td>
+                  <td className={td}>{e.activo ? <Insignia color="exito">Activa</Insignia> : <Insignia>Inactiva</Insignia>}</td>
+                  <td className={td}>
                     <div className="flex items-center gap-2">
-                      <button title="Editar" onClick={() => abrir(e)} className="p-2 rounded-lg bg-yellow-950 text-yellow-500 hover:bg-yellow-900 border border-yellow-800 transition">
-                        <Pencil className="w-3.5 h-3.5" />
+                      <button title="Editar" aria-label={`Editar ${e.nombre}`} onClick={() => abrir(e)} className={botonIcono}>
+                        <Pencil className="h-4 w-4" />
                       </button>
-                      <button title={e.activo ? 'Desactivar' : 'Activar'} onClick={() => cambiarEstado(e)}
-                        className={`p-2 rounded-lg border transition ${e.activo ? 'bg-red-950 text-red-500 hover:bg-red-900 border-red-800' : 'bg-green-950 text-green-500 hover:bg-green-900 border-green-800'}`}>
-                        {e.activo ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
+                      <button title={e.activo ? 'Desactivar' : 'Activar'} aria-label={`${e.activo ? 'Desactivar' : 'Activar'} ${e.nombre}`}
+                        onClick={() => cambiarEstado(e)}
+                        className={`${botonIcono} ${e.activo ? 'hover:border-error-300 hover:text-error-500' : 'hover:border-success-300 hover:text-success-600'}`}>
+                        {e.activo ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
                       </button>
                     </div>
                   </td>
@@ -177,48 +166,41 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
             </tbody>
           </table>
         </div>
-      </div>
+      </Tarjeta>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center space-x-3">
-          <Users className="w-5 h-5 text-blue-400" />
-          <div>
-            <h2 className="font-bold text-white tracking-wider">ADMINISTRADORES</h2>
-            <p className="font-radar text-xs text-gray-600">Si alguien pierde su app autenticadora y sus códigos de respaldo, restablece su segundo factor: lo configurará de nuevo al entrar.</p>
-          </div>
-        </div>
+      <Tarjeta icono={Users} titulo="Administradores" cuerpo=""
+        subtitulo="Si alguien pierde su app autenticadora y sus códigos de respaldo, restablece su segundo factor: lo configurará de nuevo al entrar.">
         {mensajeAdmins.texto && (
-          <div className="px-6 pt-4">
+          <div className="px-5 pt-4 sm:px-6">
             <Mensaje tipo={mensajeAdmins.tipo} texto={mensajeAdmins.texto} onCerrar={() => setMensajeAdmins({ tipo: '', texto: '' })} />
           </div>
         )}
-        <div className="overflow-x-auto">
+        <div className="custom-scrollbar overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-800">
-                {['NOMBRE', 'EMPRESA', 'ROL', 'SEGUNDO FACTOR', 'ACCIONES'].map(h =>
-                  <th key={h} className="px-5 py-3 text-left font-radar text-xs text-gray-600 tracking-widest">{h}</th>)}
+              <tr className="border-b border-gray-100 dark:border-gray-800">
+                {['Nombre', 'Empresa', 'Rol', 'Segundo factor', 'Acciones'].map(h => <th key={h} className={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {admins.map(a => (
-                <tr key={a.id} className={`border-b border-gray-800 ${!a.activo ? 'opacity-40' : ''}`}>
-                  <td className="px-5 py-3">
-                    <div className="font-semibold text-white">{a.nombre}</div>
-                    <div className="font-radar text-xs text-gray-500">{a.email}</div>
+                <tr key={a.id} className={`${filaTabla} ${!a.activo ? 'opacity-50' : ''}`}>
+                  <td className={td}>
+                    <p className="font-medium text-gray-800 dark:text-white/90">{a.nombre}</p>
+                    <p className="text-theme-xs text-gray-500 dark:text-gray-400">{a.email}</p>
                   </td>
-                  <td className="px-5 py-3 text-gray-300 text-sm">{a.empresa_nombre ?? 'Plataforma'}</td>
-                  <td className="px-5 py-3 font-radar text-xs text-gray-400 uppercase">{a.rol}</td>
-                  <td className="px-5 py-3 font-radar text-xs">
+                  <td className={td}>{a.empresa_nombre ?? 'Plataforma'}</td>
+                  <td className={`${td} capitalize`}>{a.rol}</td>
+                  <td className={td}>
                     {a.mfa_activo
-                      ? <span className="flex items-center gap-1 text-green-400"><ShieldCheck className="w-3.5 h-3.5" />ACTIVO</span>
-                      : <span className="text-gray-500">PENDIENTE DE CONFIGURAR</span>}
+                      ? <Insignia color="exito"><ShieldCheck className="h-3 w-3" />Activo</Insignia>
+                      : <Insignia color="aviso">Pendiente de configurar</Insignia>}
                   </td>
-                  <td className="px-5 py-3">
+                  <td className={td}>
                     {a.mfa_activo && a.id !== usuarioId && (
                       <button onClick={() => restablecerMfa(a)} onBlur={() => setConfirmarReset(null)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-950 text-red-400 hover:bg-red-900 border border-red-800 transition font-radar text-xs">
-                        <ShieldOff className="w-3.5 h-3.5" />{confirmarReset === a.id ? '¿CONFIRMAR?' : 'RESTABLECER'}
+                        className={confirmarReset === a.id ? `${botonPeligro} px-3 py-2` : `${botonSecundario} px-3 py-2`}>
+                        <ShieldOff className="h-4 w-4" />{confirmarReset === a.id ? '¿Confirmar?' : 'Restablecer'}
                       </button>
                     )}
                   </td>
@@ -227,7 +209,7 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
             </tbody>
           </table>
         </div>
-      </div>
+      </Tarjeta>
     </div>
   );
 }

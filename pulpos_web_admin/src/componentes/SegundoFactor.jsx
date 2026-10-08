@@ -3,8 +3,9 @@ import axios from 'axios';
 import { ArrowLeft, Check, Copy, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
 import CodigosRespaldo from './CodigosRespaldo.jsx';
 import Mensaje from './Mensaje.jsx';
+import { botonPrimario, campo, etiqueta } from './ui/estilos.js';
 
-const estiloCodigo = 'w-full bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-xl font-radar text-center text-xl tracking-[0.4em] focus:outline-none focus:border-green-500 transition placeholder-gray-700';
+const estiloCodigo = `${campo} h-12 text-center font-mono text-xl tracking-[0.4em]`;
 
 const errorDe = (err) => err.response?.data?.error || '⚠️ Error conectando al servidor.';
 
@@ -53,34 +54,37 @@ export default function SegundoFactor({ urlServidor, pendiente, cuenta, onSesion
   };
 
   if (sesion) return (
-    <div className="space-y-5">
-      <div className="flex items-start gap-3">
-        <ShieldCheck className="w-6 h-6 text-green-400 flex-shrink-0" />
-        <div>
-          <h2 className="text-white font-bold text-lg">Segundo factor activado</h2>
-          <p className="text-gray-400 text-sm">Guarda estos códigos en un lugar seguro. Te permiten entrar si pierdes el teléfono. <b className="text-yellow-400">No se volverán a mostrar.</b></p>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-500">
+          <ShieldCheck className="h-6 w-6" />
+        </span>
+        <h1 className="mb-2 text-title-sm font-semibold text-gray-800 dark:text-white/90">Segundo factor activado</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Guarda estos códigos en un lugar seguro: te permiten entrar si pierdes el teléfono.
+          <span className="font-medium text-warning-600 dark:text-orange-400"> No se volverán a mostrar.</span>
+        </p>
       </div>
       <CodigosRespaldo codigos={sesion.codigos_respaldo} cuenta={cuenta} />
-      <button onClick={() => onSesion(sesion.token, '')} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 rounded-xl transition tracking-widest text-sm" style={{ fontFamily: 'Rajdhani' }}>
-        YA LOS GUARDÉ · ENTRAR
-      </button>
+      <button onClick={() => onSesion(sesion.token, '')} className={`${botonPrimario} w-full py-3`}>Ya los guardé · Entrar</button>
     </div>
   );
 
   const placeholder = usarRespaldo ? 'XXXX-XXXX' : '000000';
   return (
-    <form onSubmit={enviar} className="space-y-5">
-      <div className="flex items-start gap-3">
-        <Smartphone className="w-6 h-6 text-green-400 flex-shrink-0" />
-        <div>
-          <h2 className="text-white font-bold text-lg">{etapa === 'configurar' ? 'Configura tu segundo factor' : 'Verificación en dos pasos'}</h2>
-          <p className="text-gray-400 text-sm">
-            {etapa === 'configurar'
-              ? 'Escanea el código con Google Authenticator, Microsoft Authenticator u otra app TOTP e ingresa el código de 6 dígitos.'
-              : usarRespaldo ? 'Ingresa uno de tus códigos de respaldo. Cada uno sirve una sola vez.' : 'Ingresa el código de 6 dígitos de tu app autenticadora.'}
-          </p>
-        </div>
+    <form onSubmit={enviar} className="space-y-6">
+      <div>
+        <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+          <Smartphone className="h-6 w-6" />
+        </span>
+        <h1 className="mb-2 text-title-sm font-semibold text-gray-800 dark:text-white/90">
+          {etapa === 'configurar' ? 'Configura tu segundo factor' : 'Verificación en dos pasos'}
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {etapa === 'configurar'
+            ? 'Escanea el código con Google Authenticator, Microsoft Authenticator u otra app TOTP e ingresa el código de 6 dígitos.'
+            : usarRespaldo ? 'Ingresa uno de tus códigos de respaldo. Cada uno sirve una sola vez.' : 'Ingresa el código de 6 dígitos de tu app autenticadora.'}
+        </p>
       </div>
 
       <Mensaje texto={error} />
@@ -88,17 +92,17 @@ export default function SegundoFactor({ urlServidor, pendiente, cuenta, onSesion
       {etapa === 'configurar' && (
         <div className="flex flex-col items-center gap-3">
           {qr
-            ? <img src={qr.qr} alt="Código QR para la app autenticadora" className="w-40 h-40 rounded-lg bg-white p-2" />
-            : <div className="w-40 h-40 rounded-lg bg-gray-800 flex items-center justify-center"><RefreshCw className="w-6 h-6 text-gray-500 animate-spin" /></div>}
+            ? <img src={qr.qr} alt="Código QR para la app autenticadora" className="h-44 w-44 rounded-xl border border-gray-200 bg-white p-2 dark:border-gray-700" />
+            : <div className="flex h-44 w-44 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800"><RefreshCw className="h-6 w-6 animate-spin text-gray-400" /></div>}
           {qr && (
             <div className="w-full">
-              <p className="font-radar text-xs text-gray-500 text-center mb-1">¿No puedes escanear? Ingresa esta clave en la app:</p>
-              <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2">
-                <code className="flex-1 font-radar text-xs text-yellow-300 break-all">{qr.secreto.match(/.{1,4}/g).join(' ')}</code>
+              <p className="mb-1.5 text-center text-theme-xs text-gray-500 dark:text-gray-400">¿No puedes escanear? Ingresa esta clave en la app:</p>
+              <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-white/[0.03]">
+                <code className="flex-1 break-all font-mono text-theme-xs text-gray-800 dark:text-white/90">{qr.secreto.match(/.{1,4}/g).join(' ')}</code>
                 <button type="button" onClick={copiarClave}
-                  className="flex items-center gap-1 shrink-0 font-radar text-xs text-gray-400 hover:text-white transition">
-                  {claveCopiada ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  {claveCopiada ? 'COPIADA' : 'COPIAR'}
+                  className="flex shrink-0 items-center gap-1 text-theme-xs font-medium text-brand-600 transition hover:text-brand-700 dark:text-brand-400">
+                  {claveCopiada ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {claveCopiada ? 'Copiada' : 'Copiar'}
                 </button>
               </div>
             </div>
@@ -106,23 +110,27 @@ export default function SegundoFactor({ urlServidor, pendiente, cuenta, onSesion
         </div>
       )}
 
-      <input autoFocus required value={codigo} onChange={e => setCodigo(e.target.value)}
-        inputMode={usarRespaldo ? 'text' : 'numeric'} autoComplete="one-time-code"
-        maxLength={usarRespaldo ? 9 : 6} pattern={usarRespaldo ? '[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}' : '\\d{6}'}
-        className={estiloCodigo} placeholder={placeholder} />
+      <div>
+        <label htmlFor="codigo-mfa" className={etiqueta}>{usarRespaldo ? 'Código de respaldo' : 'Código de la app'}</label>
+        <input id="codigo-mfa" autoFocus required value={codigo} onChange={e => setCodigo(e.target.value)}
+          inputMode={usarRespaldo ? 'text' : 'numeric'} autoComplete="one-time-code"
+          maxLength={usarRespaldo ? 9 : 6} pattern={usarRespaldo ? '[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}' : '\\d{6}'}
+          className={estiloCodigo} placeholder={placeholder} />
+      </div>
 
-      <button type="submit" disabled={enviando || (etapa === 'configurar' && !qr)} className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition tracking-widest text-sm flex items-center justify-center space-x-2" style={{ fontFamily: 'Rajdhani' }}>
-        {enviando && <RefreshCw className="w-4 h-4 animate-spin" />}
-        <span>{etapa === 'configurar' ? 'ACTIVAR Y ENTRAR' : 'VERIFICAR'}</span>
+      <button type="submit" disabled={enviando || (etapa === 'configurar' && !qr)} className={`${botonPrimario} w-full py-3`}>
+        {enviando && <RefreshCw className="h-4 w-4 animate-spin" />}
+        {etapa === 'configurar' ? 'Activar y entrar' : 'Verificar'}
       </button>
 
-      <div className="flex justify-between">
-        <button type="button" onClick={onCancelar} className="flex items-center gap-1 font-radar text-xs text-gray-500 hover:text-gray-300">
-          <ArrowLeft className="w-3.5 h-3.5" />VOLVER
+      <div className="flex justify-between text-sm">
+        <button type="button" onClick={onCancelar} className="flex items-center gap-1 text-gray-500 transition hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
+          <ArrowLeft className="h-4 w-4" />Volver
         </button>
         {etapa === 'verificar' && (
-          <button type="button" onClick={() => { setUsarRespaldo(!usarRespaldo); setCodigo(''); setError(''); }} className="font-radar text-xs text-gray-500 hover:text-gray-300">
-            {usarRespaldo ? 'USAR LA APP' : 'USAR CÓDIGO DE RESPALDO'}
+          <button type="button" onClick={() => { setUsarRespaldo(!usarRespaldo); setCodigo(''); setError(''); }}
+            className="text-brand-600 transition hover:text-brand-700 dark:text-brand-400">
+            {usarRespaldo ? 'Usar la app' : 'Usar un código de respaldo'}
           </button>
         )}
       </div>

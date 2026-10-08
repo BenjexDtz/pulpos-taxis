@@ -3,6 +3,9 @@ import axios from 'axios';
 import { KeyRound, RefreshCw, ShieldCheck } from 'lucide-react';
 import CodigosRespaldo from '../componentes/CodigosRespaldo.jsx';
 import Mensaje from '../componentes/Mensaje.jsx';
+import Tarjeta from '../componentes/ui/Tarjeta.jsx';
+import Insignia from '../componentes/ui/Insignia.jsx';
+import { botonPrimario, botonSecundario, campo, etiqueta } from '../componentes/ui/estilos.js';
 
 // Vista "Seguridad": estado del segundo factor y regeneración de códigos.
 export default function Seguridad({ urlServidor, headers, manejarErrorApi, cuenta }) {
@@ -33,50 +36,55 @@ export default function Seguridad({ urlServidor, headers, manejarErrorApi, cuent
 
   const pocos = estado?.respaldo_restantes !== undefined && estado.respaldo_restantes <= 3;
   return (
-    <div className="max-w-xl bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-800 flex items-center space-x-3">
-        <ShieldCheck className="w-5 h-5 text-green-400" />
-        <div>
-          <h2 className="font-bold text-white tracking-wider">SEGURIDAD DE LA CUENTA</h2>
-          <p className="font-radar text-xs text-gray-600">{cuenta}</p>
-        </div>
-      </div>
-      <div className="p-6 space-y-6">
-        <Mensaje tipo={mensaje.tipo} texto={mensaje.texto} />
-
+    <div className="grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
+      <Tarjeta icono={ShieldCheck} titulo="Segundo factor" subtitulo={cuenta}>
+        <Mensaje tipo={mensaje.tipo} texto={mensaje.texto} className="mb-5" />
         <dl className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-800 rounded-xl p-4">
-            <dt className="font-radar text-xs text-gray-500">SEGUNDO FACTOR</dt>
-            <dd className="text-green-400 font-bold mt-1">{estado ? (estado.mfa_activo ? 'ACTIVO (TOTP)' : 'INACTIVO') : '—'}</dd>
-            {estado?.mfa_activado_en && <dd className="font-radar text-xs text-gray-500 mt-1">desde {new Date(estado.mfa_activado_en).toLocaleDateString()}</dd>}
+          <div className="rounded-xl bg-gray-50 p-4 dark:bg-white/[0.03]">
+            <dt className="text-theme-xs text-gray-500 dark:text-gray-400">Estado</dt>
+            <dd className="mt-2">
+              {estado ? (estado.mfa_activo ? <Insignia color="exito">Activo · TOTP</Insignia> : <Insignia color="aviso">Inactivo</Insignia>) : '—'}
+            </dd>
+            {estado?.mfa_activado_en && (
+              <dd className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">desde {new Date(estado.mfa_activado_en).toLocaleDateString('es-BO')}</dd>
+            )}
           </div>
-          <div className="bg-gray-800 rounded-xl p-4">
-            <dt className="font-radar text-xs text-gray-500">CÓDIGOS DE RESPALDO</dt>
-            <dd className={`font-bold mt-1 ${pocos ? 'text-yellow-400' : 'text-white'}`}>{estado?.respaldo_restantes ?? '—'} disponibles</dd>
-            {pocos && <dd className="font-radar text-xs text-yellow-500 mt-1">Quedan pocos: genera nuevos</dd>}
+          <div className="rounded-xl bg-gray-50 p-4 dark:bg-white/[0.03]">
+            <dt className="text-theme-xs text-gray-500 dark:text-gray-400">Códigos de respaldo</dt>
+            <dd className={`mt-1 text-title-sm font-bold ${pocos ? 'text-warning-600 dark:text-orange-400' : 'text-gray-800 dark:text-white/90'}`}>
+              {estado?.respaldo_restantes ?? '—'}
+            </dd>
+            <dd className="text-theme-xs text-gray-500 dark:text-gray-400">{pocos ? 'Quedan pocos: genera nuevos' : 'disponibles'}</dd>
           </div>
         </dl>
+        <p className="mt-5 text-theme-sm text-gray-500 dark:text-gray-400">
+          Si pierdes el teléfono y los códigos, pide a la plataforma que restablezca tu segundo factor.
+        </p>
+      </Tarjeta>
 
+      <Tarjeta icono={KeyRound} titulo="Códigos de respaldo" subtitulo="Para entrar si no tienes el teléfono a mano">
         {nuevos ? (
-          <div className="space-y-3">
-            <p className="text-gray-400 text-sm">Los códigos anteriores ya no sirven. Guarda estos: <b className="text-yellow-400">no se volverán a mostrar.</b></p>
+          <div className="space-y-4">
+            <Mensaje tipo="aviso" texto="Los códigos anteriores ya no sirven. Guarda estos: no se volverán a mostrar." />
             <CodigosRespaldo codigos={nuevos} cuenta={cuenta} />
-            <button onClick={() => setNuevos(null)} className="font-radar text-xs text-gray-500 hover:text-gray-300">LISTO</button>
+            <button onClick={() => setNuevos(null)} className={botonSecundario}>Listo</button>
           </div>
         ) : (
-          <form onSubmit={regenerar} className="space-y-3">
-            <p className="text-gray-400 text-sm">Generar códigos nuevos anula los anteriores. Confirma con el código de tu app autenticadora.</p>
-            <div className="flex gap-3">
-              <input required value={codigo} onChange={e => setCodigo(e.target.value)} inputMode="numeric" autoComplete="one-time-code"
-                maxLength={6} pattern="\d{6}" placeholder="000000"
-                className="flex-1 bg-gray-800 border border-gray-700 text-white px-4 py-2 rounded-xl font-radar tracking-[0.3em] text-center focus:outline-none focus:border-green-500 transition placeholder-gray-700" />
-              <button type="submit" disabled={enviando} className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl font-bold text-sm transition">
-                {enviando ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}REGENERAR
-              </button>
+          <form onSubmit={regenerar} className="space-y-4">
+            <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+              Generar códigos nuevos anula los anteriores. Confirma con el código de tu app autenticadora.
+            </p>
+            <div>
+              <label htmlFor="codigo-regenerar" className={etiqueta}>Código de la app</label>
+              <input id="codigo-regenerar" required value={codigo} onChange={e => setCodigo(e.target.value)} inputMode="numeric" autoComplete="one-time-code"
+                maxLength={6} pattern="\d{6}" placeholder="000000" className={`${campo} text-center font-mono tracking-[0.3em]`} />
             </div>
+            <button type="submit" disabled={enviando} className={botonPrimario}>
+              {enviando ? <RefreshCw className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}Regenerar códigos
+            </button>
           </form>
         )}
-      </div>
+      </Tarjeta>
     </div>
   );
 }

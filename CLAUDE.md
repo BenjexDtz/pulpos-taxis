@@ -11,7 +11,7 @@ Tres módulos + PostgreSQL:
 | Carpeta | Stack | Rol |
 |---|---|---|
 | `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST: `app.js` (Express y orden de rutas), `rutas/` (un router por área), `middlewares/`, `utilidades.js` (auditar, transacciones), `validacion.js`; `index.js` solo arranca |
-| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (sesión, carga de datos, menú), `vistas/` (una por pestaña), `componentes/` (Login, SegundoFactor, Navegacion, MapaFlota, FormEmpresa…), `utilidades.js` |
+| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 + react-router + Recharts | Panel con diseño adaptado de TailAdmin: `src/App.jsx` (sesión, rutas, carga de datos), `vistas/` (una por ruta, carga diferida), `componentes/` (`layout/`, `tablero/`, `ui/`, Login, SegundoFactor…), `contexto/` (tema y menú), `utilidades.js` |
 | `pulpos_apk/` | Flutter (Dart SDK ^3.11) | Taxímetro Android offline-first |
 | `database/init.sql` | PostgreSQL 16 | **Esquema canónico** de la base principal + semillas de dos empresas. `migraciones/` lleva una BD existente a la versión actual. `pulpos_backend/database.sql` es obsoleto |
 | `database/auditoria/` | PostgreSQL 16 | Base de auditoría separada (`esquema.sql`, `rol_app.sql`; en Docker la inicializa `inicializar.sh`) |
@@ -93,7 +93,10 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
 ### Panel web
-- `App.jsx` carga viajes, choferes y `/api/config` y los pasa a las vistas por props; cada vista guarda su propio estado de formularios y mensajes. Las vistas reciben `urlServidor`, `headers()` y `manejarErrorApi`.
+- Rutas con react-router (`/`, `/radar`, `/flota`, `/parametros`, `/empresa`, `/auditoria`, `/seguridad`; superadmin `/plataforma`). Cada vista se carga con `lazy` (Recharts solo baja con el tablero). En Docker, `nginx.conf` ya redirige toda ruta a `index.html`.
+- `App.jsx` carga viajes, choferes y `/api/config` y los pasa a las vistas por props; cada vista guarda su propio estado de formularios y mensajes. Las vistas reciben `urlServidor`, `headers()` y `manejarErrorApi`. El tablero pide además `/api/admin/estadisticas` (rutas/estadisticas.js) para sus gráficos.
+- Estilos: clases de TailAdmin centralizadas en `componentes/ui/estilos.js` (`tarjeta`, `campo`, `botonPrimario`…) y componentes `Tarjeta`, `Insignia`, `Mensaje`. El color de marca es la variable CSS `--marca` (App la fija con `empresas.color_primario`; la escala `brand-*` se deriva con `color-mix` en `index.css`). Modo claro/oscuro con la clase `dark` en `<html>` (`ProveedorTema`, se recuerda en `localStorage.tema`).
+- Los hooks de contexto están en `contexto/contextos.js` y los proveedores en archivos aparte (regla `react-refresh/only-export-components`).
 - Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve `Plataforma` y `Auditoria` (todas las empresas, verificación); los demás, las vistas de su empresa y su bitácora. 401/403 → cierra sesión.
 - Nombre, logo, color, moneda, centro del mapa y altitud vienen de `/api/config` (`empresa`).
 - Leaflet se carga en runtime desde unpkg (`useLeaflet`, en `componentes/MapaFlota.jsx`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.

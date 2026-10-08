@@ -1,9 +1,152 @@
+/* Paleta, sombras y utilidades del menú adaptadas de TailAdmin (MIT, © 2023 TailAdmin). Ver LICENCIAS-TERCEROS.md */
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300..700&display=swap");
+
 @import "tailwindcss";
 
-body {
-  background-color: #f3f4f6;
+@custom-variant dark (&:is(.dark *));
+
+/* --marca la fija App con el color de la empresa; el resto de la escala se deriva de ella. */
+:root {
+  --marca: #465fff;
 }
 
-.mapa-oscuro {
+@theme inline {
+  --color-brand-25: color-mix(in oklab, var(--marca) 4%, white);
+  --color-brand-50: color-mix(in oklab, var(--marca) 9%, white);
+  --color-brand-100: color-mix(in oklab, var(--marca) 18%, white);
+  --color-brand-200: color-mix(in oklab, var(--marca) 32%, white);
+  --color-brand-300: color-mix(in oklab, var(--marca) 52%, white);
+  --color-brand-400: color-mix(in oklab, var(--marca) 76%, white);
+  --color-brand-500: var(--marca);
+  --color-brand-600: color-mix(in oklab, var(--marca) 85%, black);
+  --color-brand-700: color-mix(in oklab, var(--marca) 70%, black);
+  --color-brand-800: color-mix(in oklab, var(--marca) 55%, black);
+  --color-brand-900: color-mix(in oklab, var(--marca) 40%, black);
+  --color-brand-950: color-mix(in oklab, var(--marca) 22%, black);
+}
+
+@theme {
+  --font-outfit: Outfit, sans-serif;
+
+  --text-title-md: 36px;
+  --text-title-md--line-height: 44px;
+  --text-title-sm: 30px;
+  --text-title-sm--line-height: 38px;
+  --text-theme-xl: 20px;
+  --text-theme-xl--line-height: 30px;
+  --text-theme-sm: 14px;
+  --text-theme-sm--line-height: 20px;
+  --text-theme-xs: 12px;
+  --text-theme-xs--line-height: 18px;
+
+  --color-gray-25: #fcfcfd;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f2f4f7;
+  --color-gray-200: #e4e7ec;
+  --color-gray-300: #d0d5dd;
+  --color-gray-400: #98a2b3;
+  --color-gray-500: #667085;
+  --color-gray-600: #475467;
+  --color-gray-700: #344054;
+  --color-gray-800: #1d2939;
+  --color-gray-900: #101828;
+  --color-gray-950: #0c111d;
+
+  --color-success-50: #ecfdf3;
+  --color-success-100: #d1fadf;
+  --color-success-500: #12b76a;
+  --color-success-600: #039855;
+  --color-success-700: #027a48;
+
+  --color-error-50: #fef3f2;
+  --color-error-100: #fee4e2;
+  --color-error-300: #fda29b;
+  --color-error-400: #f97066;
+  --color-error-500: #f04438;
+  --color-error-600: #d92d20;
+  --color-error-700: #b42318;
+
+  --color-warning-50: #fffaeb;
+  --color-warning-100: #fef0c7;
+  --color-warning-400: #fdb022;
+  --color-warning-500: #f79009;
+  --color-warning-600: #dc6803;
+  --color-warning-700: #b54708;
+
+  --shadow-theme-xs: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  --shadow-theme-sm: 0px 1px 3px 0px rgba(16, 24, 40, 0.1), 0px 1px 2px 0px rgba(16, 24, 40, 0.06);
+  --shadow-theme-md: 0px 4px 8px -2px rgba(16, 24, 40, 0.1), 0px 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-theme-lg: 0px 12px 16px -4px rgba(16, 24, 40, 0.08), 0px 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-theme-xl: 0px 20px 24px -4px rgba(16, 24, 40, 0.08), 0px 8px 8px -4px rgba(16, 24, 40, 0.03);
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  body {
+    @apply relative bg-gray-50 font-outfit font-normal text-gray-800 dark:bg-gray-950 dark:text-white/90;
+  }
+}
+
+@utility menu-item {
+  @apply relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium;
+}
+
+@utility menu-item-active {
+  @apply bg-brand-50 text-brand-600 dark:bg-brand-500/[0.12] dark:text-brand-400;
+}
+
+@utility menu-item-inactive {
+  @apply text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5;
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    @apply size-1.5;
+  }
+  &::-webkit-scrollbar-track {
+    @apply rounded-full;
+  }
+  &::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-gray-200 dark:bg-gray-700;
+  }
+}
+
+/* Recharts: la cuadrícula y los ejes siguen el tema claro/oscuro. */
+.recharts-cartesian-grid line {
+  @apply stroke-gray-100 dark:stroke-gray-800;
+}
+
+.recharts-cartesian-axis-tick-value {
+  @apply fill-gray-500 dark:fill-gray-400;
+}
+
+.recharts-surface:focus,
+.recharts-wrapper:focus,
+.recharts-sector:focus {
+  outline: none;
+}
+
+/* Mapa de OpenStreetMap invertido solo en modo oscuro. */
+.dark .mapa-oscuro {
   filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6);
 }

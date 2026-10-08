@@ -91,23 +91,21 @@ export default function MapaFlota({ choferes, viajes, empresa }) {
     <div className="relative h-full w-full">
       <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
       {!leafletReady && (
-        <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-          <div className="flex items-center space-x-3 text-green-400">
-            <RefreshCw className="w-5 h-5 animate-spin" />
-            <span className="font-mono text-sm">Inicializando radar...</span>
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+          <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            <span className="text-sm">Cargando el mapa...</span>
           </div>
         </div>
       )}
-      <div className="absolute top-3 left-3 bg-gray-900/90 border border-gray-700 rounded-lg px-3 py-2 text-xs font-mono z-[1000] space-y-1">
-        <div className="flex items-center space-x-2 text-green-400">
-          <div className="w-3 h-3 rounded-full bg-green-500" style={{ boxShadow: '0 0 6px #10b981' }} />
-          <span>GPS activo (últimos 5 min)</span>
+      <div className="absolute top-3 left-3 z-[1000] space-y-1.5 rounded-xl border border-gray-200 bg-white/95 px-3 py-2.5 text-theme-xs shadow-theme-sm dark:border-gray-800 dark:bg-gray-900/95">
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+          <span className="h-3 w-3 rounded-full bg-success-500" />GPS activo (últimos 5 min)
         </div>
-        <div className="flex items-center space-x-2 text-yellow-400">
-          <div className="w-3 h-3 rounded-full bg-yellow-500" />
-          <span>Sin actualizar (+5 min)</span>
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+          <span className="h-3 w-3 rounded-full bg-warning-500" />Sin actualizar (+5 min)
         </div>
-        {empresa && <div className="text-gray-600 pt-0.5">{empresa.ciudad}{empresa.altitud_msnm ? ` · ${empresa.altitud_msnm.toLocaleString('es-BO')} msnm` : ''}</div>}
+        {empresa && <div className="pt-0.5 text-gray-500 dark:text-gray-400">{empresa.ciudad}{empresa.altitud_msnm ? ` · ${empresa.altitud_msnm.toLocaleString('es-BO')} msnm` : ''}</div>}
       </div>
     </div>
   );
