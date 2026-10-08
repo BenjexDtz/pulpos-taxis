@@ -443,7 +443,11 @@ pulpos-taxis/
 │
 ├── 📁 pulpos_web_admin/        # Panel de gerencia React
 │   ├── src/
-│   │   ├── App.jsx             # Componente principal (toda la UI)
+│   │   ├── App.jsx             # Sesión, carga de datos, menú y vista activa
+│   │   ├── vistas/             # Tablero, Radar, Flota, Parametros, Empresa, Auditoria,
+│   │   │                       #   Seguridad, Plataforma
+│   │   ├── componentes/        # Login, SegundoFactor, Navegacion, MapaFlota, FormEmpresa…
+│   │   ├── utilidades.js       # Token, fechas, escapar HTML, resumen de la flota
 │   │   ├── main.jsx
 │   │   └── index.css
 │   ├── package.json

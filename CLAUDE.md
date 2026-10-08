@@ -11,7 +11,7 @@ Tres módulos + PostgreSQL:
 | Carpeta | Stack | Rol |
 |---|---|---|
 | `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST: `app.js` (Express y orden de rutas), `rutas/` (un router por área), `middlewares/`, `utilidades.js` (auditar, transacciones), `validacion.js`; `index.js` solo arranca |
-| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (gerencia), `Plataforma.jsx` (superadmin), `FormEmpresa.jsx`, `Auditoria.jsx`, `Mfa.jsx` (segundo factor) |
+| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 | Panel: `src/App.jsx` (sesión, carga de datos, menú), `vistas/` (una por pestaña), `componentes/` (Login, SegundoFactor, Navegacion, MapaFlota, FormEmpresa…), `utilidades.js` |
 | `pulpos_apk/` | Flutter (Dart SDK ^3.11) | Taxímetro Android offline-first |
 | `database/init.sql` | PostgreSQL 16 | **Esquema canónico** de la base principal + semillas de dos empresas. `migraciones/` lleva una BD existente a la versión actual. `pulpos_backend/database.sql` es obsoleto |
 | `database/auditoria/` | PostgreSQL 16 | Base de auditoría separada (`esquema.sql`, `rol_app.sql`; en Docker la inicializa `inicializar.sh`) |
@@ -78,7 +78,7 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 ### Fórmula tarifaria (v3) — está duplicada, mantener sincronizada
 `T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td`
 
-Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `App.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js`, y la semilla de `init.sql`. Un cambio de fórmula toca los cuatro y los tests de `test/calculadora_test.dart`.
+Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js`, y la semilla de `init.sql`. Un cambio de fórmula toca los cuatro y los tests de `test/calculadora_test.dart`.
 
 Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y en los `min`/`max` de los inputs del panel: mantenerlos iguales. `pg` devuelve `NUMERIC` como **string**: parsear siempre. Las columnas conservan el sufijo `_bs` por compatibilidad, pero el símbolo mostrado es `empresas.moneda_simbolo`.
 
@@ -93,9 +93,10 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
 ### Panel web
+- `App.jsx` carga viajes, choferes y `/api/config` y los pasa a las vistas por props; cada vista guarda su propio estado de formularios y mensajes. Las vistas reciben `urlServidor`, `headers()` y `manejarErrorApi`.
 - Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve `Plataforma` y `Auditoria` (todas las empresas, verificación); los demás, las vistas de su empresa y su bitácora. 401/403 → cierra sesión.
 - Nombre, logo, color, moneda, centro del mapa y altitud vienen de `/api/config` (`empresa`).
-- Leaflet se carga en runtime desde unpkg (`useLeaflet`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
+- Leaflet se carga en runtime desde unpkg (`useLeaflet`, en `componentes/MapaFlota.jsx`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
 - `VITE_API_URL` define el backend (en Docker llega como build arg).
 
 ## Gotchas
