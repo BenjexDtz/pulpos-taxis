@@ -428,7 +428,13 @@ Los parámetros `Cb`, `Cl`, `Pc`, `FH`, `FR` y `Ct` son editables desde el panel
 pulpos-taxis/
 │
 ├── 📁 pulpos_backend/          # API REST Node.js
-│   ├── index.js                # Servidor principal + todas las rutas
+│   ├── index.js                # Arranca el servidor
+│   ├── app.js                  # Express: seguridad, CORS, rutas y errores
+│   ├── rutas/                  # Un archivo por área: autenticacion, mfa, empresa, movil,
+│   │                           #   viajes, choferes, auditoria, plataforma
+│   ├── middlewares/            # Token, roles y límite de intentos de login
+│   ├── validacion.js           # Fechas, rangos de parámetros, datos de empresa
+│   ├── utilidades.js           # Auditar, transacciones, firmar tokens
 │   ├── auditoria.js            # Bitácora en la base de auditoría
 │   ├── mfa.js                  # TOTP (RFC 6238), cifrado del secreto y códigos de respaldo
 │   ├── db.js                   # Conexión PostgreSQL (pool)
