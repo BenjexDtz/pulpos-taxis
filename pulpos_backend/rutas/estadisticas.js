@@ -30,6 +30,7 @@ router.get('/api/admin/estadisticas', verificarToken, soloAdmin, async (req, res
     const desde = req.query.desde || null;
     const hasta = req.query.hasta || null;
     const fin = hasta ?? new Date().toISOString().slice(0, 10);
+    if (desde && desde > fin) return res.status(400).json({ error: '⚠️ La fecha "desde" es posterior a "hasta".' });
     if (desde && diasEntre(desde, fin) > DIAS_MAXIMOS)
         return res.status(400).json({ error: `⚠️ El rango no puede superar ${DIAS_MAXIMOS} días.` });
 

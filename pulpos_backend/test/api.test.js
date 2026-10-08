@@ -249,7 +249,7 @@ describe('Estadísticas del tablero', () => {
         responder = () => ({ rows: [{}] });
         await pedir('GET', '/api/admin/estadisticas?desde=2026-01-01&hasta=2026-01-31', { token: TOKEN_ADMIN });
         assert.deepEqual(consultasDeDatos()[0].params, [2, '2026-01-01', '2026-01-31']);
-        for (const q of ['desde=2026-02-30', 'desde=2026-03-01&hasta=2026-02-01', 'desde=2024-01-01&hasta=2026-01-01'])
+        for (const q of ['desde=2026-02-30', 'desde=2026-03-01&hasta=2026-02-01', 'desde=2024-01-01&hasta=2026-01-01', 'desde=2999-01-01'])
             assert.equal((await pedir('GET', `/api/admin/estadisticas?${q}`, { token: TOKEN_ADMIN })).status, 400, q);
     });
 });
@@ -488,6 +488,17 @@ describe('Login', () => {
         assert.equal(r.status, 200);
         assert.equal(r.json.mfa, 'configurar');
         assert.equal(jwt.decode(r.json.token_mfa).etapa, 'configurar');
+    });
+
+    test('una cuenta inexistente también pasa por bcrypt (el tiempo no revela qué cuentas existen)', async (t) => {
+        const original = bcrypt.compare;
+        let llamadas = 0;
+        bcrypt.compare = async (...args) => { llamadas++; return original(...args); };
+        t.after(() => { bcrypt.compare = original; });
+        responder = () => ({ rows: [] });
+        assert.equal((await pedir('POST', '/api/admin/login', { headers: IP(6), body: { usuario: 'nadie@x.bo', password: 'x' } })).status, 401);
+        assert.equal((await pedir('POST', '/api/login', { headers: IP(6), body: { empresa: 'pulpos', placa_vehiculo: 'NO-EXISTE', password: 'x' } })).status, 401);
+        assert.equal(llamadas, 2);
     });
 
     test('10 intentos fallidos por IP → el 11 recibe 429; otra IP sigue pudiendo', async () => {
