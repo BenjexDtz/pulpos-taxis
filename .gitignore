@@ -20,3 +20,6 @@ Thumbs.db
 *.user
 # Plantilla de referencia (TailAdmin): no se versiona
 plantilla/
+
+# Configuración personal de Claude Code
+.claude/settings.local.json
