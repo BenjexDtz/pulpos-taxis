@@ -9,4 +9,7 @@ const pool = new Pool({
     database: process.env.DB_NAME,
 });
 
+// Sin este manejador, una conexión inactiva que PostgreSQL cierra (reinicio, corte) tumba el proceso.
+pool.on('error', (err) => console.error('⚠️ Se perdió una conexión inactiva con PostgreSQL:', err.message));
+
 module.exports = pool;

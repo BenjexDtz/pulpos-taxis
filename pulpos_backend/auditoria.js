@@ -11,6 +11,7 @@ const pool = configurada ? new Pool({
     database: process.env.AUDIT_DB_NAME,
     max: 5,
 }) : null;
+pool?.on('error', (err) => console.error('⚠️ Se perdió una conexión inactiva con la base de auditoría:', err.message));
 
 const ANCLA_CADA = Number(process.env.AUDITORIA_ANCLA_CADA || 50);
 const CAMPOS_SECRETOS = new Set(['password', 'password_hash', 'nueva_password', 'token', 'mfa_secreto', 'codigos_respaldo']);
