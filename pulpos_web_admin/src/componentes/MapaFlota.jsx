@@ -1,23 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
+import useLeaflet from './useLeaflet.js';
 import { escaparHtml, haceTiempo } from '../utilidades.js';
-
-// ─── LEAFLET ──────────────────────────────────────────────────────────────────
-function useLeaflet() {
-  const [ready, setReady] = useState(() => Boolean(window.L));
-  useEffect(() => {
-    if (window.L) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload = () => setReady(true);
-    document.head.appendChild(script);
-  }, []);
-  return ready;
-}
 
 export default function MapaFlota({ choferes, viajes, empresa }) {
   const mapRef = useRef(null);

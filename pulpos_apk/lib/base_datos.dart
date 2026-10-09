@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -49,7 +49,20 @@ class BaseDatosLocal {
         km_tierra REAL
       )
     ''');
+    await _crearTablaPuntos(db);
   }
+
+  Future _crearTablaPuntos(Database db) => db.execute('''
+      CREATE TABLE IF NOT EXISTS puntos_viaje (
+        viaje_uuid TEXT NOT NULL,
+        orden INTEGER NOT NULL,
+        lat REAL NOT NULL,
+        lng REAL NOT NULL,
+        segundos INTEGER NOT NULL,
+        superficie INTEGER NOT NULL,
+        PRIMARY KEY (viaje_uuid, orden)
+      )
+    ''');
 
   static const _columnasV3 = '''
         tipo_superficie TEXT,
@@ -83,18 +96,55 @@ class BaseDatosLocal {
       await db.execute('ALTER TABLE viajes ADD COLUMN km_asfalto REAL');
       await db.execute('ALTER TABLE viajes ADD COLUMN km_tierra REAL');
     }
+    if (oldVersion < 6) await _crearTablaPuntos(db);
   }
 
-  // Función para guardar un nuevo viaje en la "caja negra"
-  Future<int> insertarViaje(Map<String, dynamic> viaje) async {
+  // Viaje y ruta en una sola transacción: o se guardan los dos o ninguno
+  Future<int> insertarViaje(
+    Map<String, dynamic> viaje, {
+    List<PuntoRuta> ruta = const [],
+  }) async {
     final db = await instancia.database;
+    final uuid = viaje['uuid'] ?? nuevoUuid();
+    return db.transaction((txn) async {
+      final id = await txn.insert('viajes', {...viaje, 'uuid': uuid});
+      final lote = txn.batch();
+      for (var i = 0; i < ruta.length; i++) {
+        lote.insert('puntos_viaje', ruta[i].paraSqlite(uuid, i));
+      }
+      await lote.commit(noResult: true);
+      return id;
+    });
+  }
 
-    int idGenerado = await db.insert(
-      'viajes', // 🔥 NOMBRE UNIFICADO
-      {...viaje, 'uuid': viaje['uuid'] ?? nuevoUuid()},
+  Future<List<PuntoRuta>> puntosDeViaje(String? uuid) async {
+    if (uuid == null) return const [];
+    final db = await instancia.database;
+    final filas = await db.query(
+      'puntos_viaje',
+      where: 'viaje_uuid = ?',
+      whereArgs: [uuid],
+      orderBy: 'orden',
     );
+    return filas.map(PuntoRuta.desdeSqlite).toList();
+  }
 
-    return idGenerado;
+  // El servidor ya tiene la ruta: se borra del teléfono para no acumular puntos
+  Future<void> marcarSincronizado(Map<String, dynamic> viaje) async {
+    final db = await instancia.database;
+    await db.transaction((txn) async {
+      await txn.update(
+        'viajes',
+        {'estado_sincronizacion': 1},
+        where: 'id = ?',
+        whereArgs: [viaje['id']],
+      );
+      await txn.delete(
+        'puntos_viaje',
+        where: 'viaje_uuid = ?',
+        whereArgs: [viaje['uuid']],
+      );
+    });
   }
 
   Future<List<Map<String, dynamic>>> viajesPendientes(int choferId) async {

@@ -129,7 +129,15 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     fecha_sincronizacion         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     uuid                         UUID,
 
+    -- El servidor recalcula la tarifa y mide la ruta; un viaje no se rechaza, se marca
+    distancia_ruta_km            NUMERIC(8, 3),
+    tarifa_calculada             NUMERIC(8, 2),
+    verificacion                 VARCHAR(15)   NOT NULL DEFAULT 'sin_verificar',
+    verificacion_detalle         TEXT,
+
     CONSTRAINT viajes_chofer_uuid_key UNIQUE (chofer_id, uuid),
+    CONSTRAINT viajes_verificacion_check
+        CHECK (verificacion IN ('ok', 'sin_ruta', 'diferencia', 'sin_verificar')),
     CONSTRAINT viajes_km_asfalto_check CHECK (km_asfalto >= 0),
     CONSTRAINT viajes_km_tierra_check  CHECK (km_tierra >= 0),
     CONSTRAINT viajes_km_por_superficie_check
@@ -139,6 +147,17 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
 );
 
 CREATE INDEX IF NOT EXISTS viajes_empresa_fecha_idx ON viajes_historial (empresa_id, fecha_hora_viaje DESC);
+
+-- Puntos GPS con los que la app calculó la tarifa; superficie = la marcada al llegar a ese punto
+CREATE TABLE IF NOT EXISTS viajes_puntos (
+    viaje_id    INTEGER NOT NULL REFERENCES viajes_historial(id_servidor) ON DELETE CASCADE,
+    orden       INTEGER NOT NULL,
+    lat         DOUBLE PRECISION NOT NULL,
+    lng         DOUBLE PRECISION NOT NULL,
+    segundos    INTEGER NOT NULL,
+    superficie  VARCHAR(10) NOT NULL CHECK (superficie IN ('asfalto', 'tierra')),
+    PRIMARY KEY (viaje_id, orden)
+);
 CREATE INDEX IF NOT EXISTS choferes_empresa_idx     ON choferes (empresa_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════════

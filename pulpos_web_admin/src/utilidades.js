@@ -54,3 +54,11 @@ export const variacion = (actual, anterior) => {
   if (!b) return null;
   return ((a - b) / b) * 100;
 };
+
+// Resultado de la verificación que hace el servidor al recibir cada viaje
+export const VERIFICACION = {
+  ok: { texto: 'Verificado', color: 'exito', ayuda: 'La tarifa sale de la fórmula y la ruta GPS coincide con los km cobrados.' },
+  sin_ruta: { texto: 'Sin ruta', color: 'neutro', ayuda: 'La tarifa sale de la fórmula, pero la app no envió la ruta (versión anterior).' },
+  diferencia: { texto: 'Diferencia', color: 'error', ayuda: 'La tarifa o los km no coinciden con lo que registró el GPS.' },
+  sin_verificar: { texto: 'Sin verificar', color: 'neutro', ayuda: 'Viaje anterior a la verificación o sin los parámetros aplicados.' },
+};

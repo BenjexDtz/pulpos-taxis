@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'calculadora.dart';
+
 final _azar = Random.secure();
 
 // UUID v4: identifica el viaje para que el servidor ignore reenvíos
@@ -12,7 +14,44 @@ String nuevoUuid() {
       '${h.substring(16, 20)}-${h.substring(20)}';
 }
 
-Map<String, dynamic> viajeParaServidor(Map<String, dynamic> viaje) {
+// Punto GPS que entró en el cálculo; la superficie es la marcada al llegar a él
+class PuntoRuta {
+  const PuntoRuta(this.lat, this.lng, this.segundos, this.superficie);
+
+  final double lat;
+  final double lng;
+  final int segundos;
+  final Superficie superficie;
+
+  factory PuntoRuta.desdeSqlite(Map<String, dynamic> fila) => PuntoRuta(
+    (fila['lat'] as num).toDouble(),
+    (fila['lng'] as num).toDouble(),
+    fila['segundos'] as int,
+    fila['superficie'] == 1 ? Superficie.tierra : Superficie.asfalto,
+  );
+
+  Map<String, Object> paraSqlite(String uuidViaje, int orden) => {
+    'viaje_uuid': uuidViaje,
+    'orden': orden,
+    'lat': lat,
+    'lng': lng,
+    'segundos': segundos,
+    'superficie': superficie == Superficie.tierra ? 1 : 0,
+  };
+
+  // 6 decimales ≈ 10 cm: no altera la distancia y achica el envío
+  List<Object> paraServidor() => [
+    (lat * 1e6).round() / 1e6,
+    (lng * 1e6).round() / 1e6,
+    segundos,
+    superficie == Superficie.tierra ? 1 : 0,
+  ];
+}
+
+Map<String, dynamic> viajeParaServidor(
+  Map<String, dynamic> viaje, {
+  List<PuntoRuta> ruta = const [],
+}) {
   final factorSuperficie = viaje['factor_superficie'];
   final tipoSuperficie =
       viaje['tipo_superficie'] ??
@@ -37,5 +76,6 @@ Map<String, dynamic> viajeParaServidor(Map<String, dynamic> viaje) {
     'precio_combustible_aplicado': viaje['precio_combustible_bs'],
   };
   body.removeWhere((_, valor) => valor == null);
+  if (ruta.isNotEmpty) body['ruta'] = ruta.map((p) => p.paraServidor()).toList();
   return body;
 }

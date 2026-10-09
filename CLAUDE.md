@@ -42,7 +42,7 @@ flutter analyze
 
 # Migrar una BD sin empresas (v3) a multiempresa
 psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
-# (luego 002 a 005 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie)
+# (luego 002 a 006 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación)
 ```
 
 Versiones: SemVer única para todo el sistema. Al publicar, subir `version` en `pulpos_backend/package.json`, `pulpos_web_admin/package.json` (`npm version X.Y.Z --no-git-tag-version`) y `pulpos_apk/pubspec.yaml` (el `+N` sube en cada APK), anotar en `CHANGELOG.md` y crear la etiqueta anotada `vX.Y.Z`.
@@ -89,7 +89,7 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 
 Da/Dt: km en asfalto/tierra. La app suma cada tramo GPS a la superficie elegida en ese momento (`RecorridoPorSuperficie`); con una sola superficie se reduce a la v3. `viajes_historial` guarda `km_asfalto` y `km_tierra` (CHECK: suman `distancia_km`), `tipo_superficie` es `asfalto`/`tierra`/`mixto` y lo decide el servidor, y `factor_superficie_aplicado` es el FR de la tierra. Si la app no envía los km (versiones previas), `kmPorSuperficie()` asigna toda la distancia a su `tipo_superficie`.
 
-Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `RecorridoPorSuperficie`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js` (y el reparto por superficie de `rutas/estadisticas.js`), la herramienta `calcular_tarifa` de `pulpos_backend/asistente.js` y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
+Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `RecorridoPorSuperficie`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js` (y el reparto por superficie de `rutas/estadisticas.js`), `tarifaV4` de `pulpos_backend/verificacion.js` (la usan la verificación de viajes y la herramienta `calcular_tarifa` del asistente) y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
 
 Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y en los `min`/`max` de los inputs del panel: mantenerlos iguales. `pg` devuelve `NUMERIC` como **string**: parsear siempre. Las columnas conservan el sufijo `_bs` por compatibilidad, pero el símbolo mostrado es `empresas.moneda_simbolo`.
 
@@ -99,8 +99,10 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 3. Durante el viaje: `MotorGPS.obtenerFlujoUbicacion()` (distanceFilter 10 m) acumula distancia y envía `/api/posicion` cada 10 posiciones.
 4. Espera (`Td`): `lib/detector_detencion.dart`. Detenido si velocidad < 0.5 m/s **o** 10 s sin posición nueva. No volver a leer `Position.speed` directamente.
 5. El viaje se guarda en SQLite (`viajes`) con todos los parámetros aplicados, `estado_sincronizacion = 0` y un `uuid` v4 (`nuevoUuid()`, lo asigna `insertarViaje`).
-6. "SINC. NUBE" envía solo `viajesPendientes(choferId)` del chofer con sesión; `viajeParaServidor()` mapea columnas locales → campos `*_aplicado` y omite nulos. El historial también filtra por chofer.
-7. Sincronización idempotente: el servidor guarda el `uuid` con `UNIQUE (chofer_id, uuid)` e `INSERT ... ON CONFLICT DO NOTHING`; un reenvío responde **200** `{duplicado: true}` con el mismo `id_servidor` (sin auditar) y la app lo marca sincronizado igual que un 201. Sin `uuid` (apps viejas) se inserta como antes.
+6. La ruta: cada punto GPS aceptado (precisión ≤ 20 m, más la posición inicial) se guarda como `PuntoRuta` en `puntos_viaje` (SQLite, misma transacción que el viaje) con la superficie marcada al llegar a él. Se borra del teléfono al confirmarse la sincronización.
+7. `Sincronizador` (`lib/sincronizador.dart`, dependencias inyectadas para los tests) envía solo `viajesPendientes(choferId)` del chofer con sesión; `viajeParaServidor()` mapea columnas locales → campos `*_aplicado`, omite nulos y añade `ruta: [[lat, lng, segundos, 0|1]]`. Corre solo al terminar un viaje, al abrir o volver a la app y cada 2 min (nunca durante un viaje); "SINC. NUBE" lo lanza a mano. Sin red se detiene en el primer fallo. El historial también filtra por chofer.
+8. Verificación (`pulpos_backend/verificacion.js`): el servidor mide la ruta con Haversine (cada tramo cuenta para la superficie del punto final, como en la app), recalcula la tarifa con `tarifaV4` y los parámetros aplicados, y guarda `verificacion` = `ok` | `sin_ruta` | `diferencia` | `sin_verificar` con su detalle. **Nunca rechaza** un viaje por no cuadrar (el pasajero ya pagó): lo marca y lo audita. Tolerancias: tarifa ± 0,02; km 1 % o 20 m (la app usa otro radio terrestre). Puntos en `viajes_puntos`; `GET /api/admin/viajes/:id/ruta` filtra por la empresa del token. El JSON de `/api/viajes/sincronizar` admite hasta 1 MB (20 000 puntos).
+9. Sincronización idempotente: el servidor guarda el `uuid` con `UNIQUE (chofer_id, uuid)` e `INSERT ... ON CONFLICT DO NOTHING`; un reenvío responde **200** `{duplicado: true}` con el mismo `id_servidor` (sin auditar) y la app lo marca sincronizado igual que un 201. Sin `uuid` (apps viejas) se inserta como antes. Un reenvío no vuelve a insertar la ruta.
 
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
@@ -111,7 +113,7 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 - Los hooks de contexto están en `contexto/contextos.js` y los proveedores en archivos aparte (regla `react-refresh/only-export-components`).
 - Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve `Plataforma` y `Auditoria` (todas las empresas, verificación); los demás, las vistas de su empresa y su bitácora. 401/403 → cierra sesión.
 - Nombre, logo, color, moneda, centro del mapa y altitud vienen de `/api/config` (`empresa`).
-- Leaflet se carga en runtime desde unpkg (`useLeaflet`, en `componentes/MapaFlota.jsx`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
+- Leaflet se carga en runtime desde unpkg (`componentes/useLeaflet.js`; lo usan `MapaFlota.jsx` y `RutaViaje.jsx`, el modal con la ruta y la verificación de un viaje). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
 - `VITE_API_URL` define el backend (en Docker llega como build arg).
 
 ## Gotchas

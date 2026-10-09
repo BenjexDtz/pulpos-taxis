@@ -5,6 +5,12 @@ Backend, panel web y app comparten un único número de versión: se entregan ju
 
 ## [Sin publicar]
 
+### Añadido
+- **Ruta de cada viaje**: la app guarda los puntos GPS con los que calculó la tarifa, cada uno con la superficie marcada en ese momento, y los envía al sincronizar. En el panel, cada viaje abre su ruta en el mapa coloreada por superficie.
+- **Verificación en el servidor**: al recibir un viaje, el servidor mide la ruta (Haversine), reparte los km por superficie y recalcula la tarifa con los parámetros aplicados. El viaje queda como verificado, sin ruta, con diferencia o sin verificar; nunca se rechaza, pero las diferencias quedan en la bitácora y el tablero permite filtrarlas.
+- **Sincronización automática**: al terminar un viaje, al abrir la app y cada 2 minutos mientras haya viajes pendientes. El botón "SINC. NUBE" muestra cuántos quedan.
+- Herramienta `viajes_con_diferencias` del asistente.
+
 ### Cambiado
 - **Tarifa por tramos (fórmula v4)**: `T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td`. Cada tramo GPS se cobra con la superficie que el chofer tenía marcada en ese momento; antes, la superficie elegida al terminar se aplicaba a todo el viaje. Con una sola superficie el resultado es igual al de la v3.
 - La app muestra los km en asfalto y en tierra durante el viaje y los guarda con el viaje; el servidor valida que sumen la distancia y marca el viaje como asfalto, tierra o mixto.
@@ -12,6 +18,7 @@ Backend, panel web y app comparten un único número de versión: se entregan ju
 - La vista previa de Parámetros y la herramienta `calcular_tarifa` del asistente admiten viajes mixtos.
 
 ### Migraciones
+- `006_rutas_y_verificacion.sql`: tabla `viajes_puntos` y columnas de verificación en `viajes_historial`; los viajes existentes quedan "sin verificar". SQLite pasa a la versión 6 (tabla `puntos_viaje`).
 - `005_km_por_superficie.sql`: añade `km_asfalto` y `km_tierra` a `viajes_historial`, reparte los viajes existentes según su tipo de superficie y agrega los CHECK. La base de la app (SQLite) pasa a la versión 5 sin borrar viajes.
 
 ## [1.1.0] - 2026-10-09

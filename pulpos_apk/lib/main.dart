@@ -8,10 +8,8 @@ import 'calculadora.dart';
 import 'base_datos.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_login.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'config.dart';
 import 'sesion.dart';
+import 'sincronizador.dart';
 
 void main() {
   runApp(const AplicacionTaximetro());
@@ -69,9 +67,12 @@ class PantallaPrueba extends StatefulWidget {
   State<PantallaPrueba> createState() => _PantallaPruebaState();
 }
 
-class _PantallaPruebaState extends State<PantallaPrueba> {
+class _PantallaPruebaState extends State<PantallaPrueba>
+    with WidgetsBindingObserver {
   // ── GPS y métricas del viaje ───────────────────────────────────────────────
   RecorridoPorSuperficie recorrido = RecorridoPorSuperficie();
+  List<PuntoRuta> _ruta = [];
+  DateTime _inicioViaje = DateTime.now();
   Position? posicionAnterior;
   bool enViaje = false;
   StreamSubscription<Position>? suscripcionGPS;
@@ -88,10 +89,25 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
 
   Superficie superficie = Superficie.asfalto;
 
+  final _sincronizador = Sincronizador.local();
+  Timer? _relojSincronizacion;
+  int _pendientes = 0;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _cargarParametros();
+    _sincronizarEnSegundoPlano();
+    _relojSincronizacion = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _sincronizarEnSegundoPlano(),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.resumed) _sincronizarEnSegundoPlano();
   }
 
   // 🔥 Descarga los parámetros del servidor al iniciar la pantalla
@@ -108,84 +124,91 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   }
 
   // ── Sincronización de viajes ───────────────────────────────────────────────
-  Future<void> sincronizarViajesPendientes() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🔄 Sincronizando viajes con la central...'),
-      ),
-    );
+  Future<void> _actualizarPendientes() async {
+    final choferId = await Sesion.choferId();
+    if (choferId == null) return;
+    final n = (await BaseDatosLocal.instancia.viajesPendientes(choferId)).length;
+    if (mounted) setState(() => _pendientes = n);
+  }
 
-    final db = await BaseDatosLocal.instancia.database;
+  // Al terminar un viaje, al abrir la app y cada 2 minutos; sin red no avisa nada
+  Future<void> _sincronizarEnSegundoPlano() async {
+    if (enViaje) return;
+    final token = await Sesion.tokenValido();
+    final choferId = await Sesion.choferId();
+    if (token == null || choferId == null) return;
+    final r = await _sincronizador.ejecutar(token: token, choferId: choferId);
+    await _actualizarPendientes();
+    if (r == null || !mounted) return;
+    if (r.sesionRechazada) {
+      await _sesionRechazada();
+      return;
+    }
+    if (r.enviados > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('☁️ ${r.enviados} viaje(s) enviados a la central.'),
+          backgroundColor: Colors.green[700],
+        ),
+      );
+    }
+  }
+
+  Future<void> sincronizarViajesPendientes() async {
+    final mensajero = ScaffoldMessenger.of(context);
     final token = await Sesion.tokenValido();
     final choferId = await Sesion.choferId();
     if (token == null || choferId == null) {
       if (mounted) await irAlLogin(context);
       return;
     }
-    final pendientes = await BaseDatosLocal.instancia.viajesPendientes(choferId);
-
-    if (pendientes.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Todo al día. No hay viajes pendientes.'),
-          ),
-        );
-      }
-      return;
-    }
-
-    int enviados = 0;
-    bool sesionRechazada = false;
-    for (var viaje in pendientes) {
-      try {
-        final response = await http.post(
-          Uri.parse('$urlServidor/api/viajes/sincronizar'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          body: jsonEncode(viajeParaServidor(viaje)),
-        );
-        // 200: el servidor ya tenía este viaje (reintento)
-        if (response.statusCode == 201 || response.statusCode == 200) {
-          await db.update(
-            'viajes',
-            {'estado_sincronizacion': 1},
-            where: 'id = ?',
-            whereArgs: [viaje['id']],
-          );
-          enviados++;
-        } else if (response.statusCode == 401 || response.statusCode == 403) {
-          sesionRechazada = true;
-          break;
-        }
-      } catch (e) {
-        debugPrint("Error de red: $e");
-      }
-    }
-
-    if (mounted && sesionRechazada) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            '🔒 Sesión no válida o cuenta desactivada. Vuelve a iniciar sesión.',
-          ),
-          backgroundColor: Colors.red[800],
-        ),
+    mensajero.showSnackBar(
+      const SnackBar(content: Text('🔄 Sincronizando viajes con la central...')),
+    );
+    final r = await _sincronizador.ejecutar(token: token, choferId: choferId);
+    await _actualizarPendientes();
+    if (!mounted) return;
+    mensajero.hideCurrentSnackBar();
+    if (r == null) {
+      mensajero.showSnackBar(
+        const SnackBar(content: Text('⏳ Ya se están enviando los viajes.')),
       );
-      await irAlLogin(context);
-      return;
-    }
-
-    if (mounted && enviados > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    } else if (r.sesionRechazada) {
+      await _sesionRechazada();
+    } else if (r.pendientes == 0) {
+      mensajero.showSnackBar(
         SnackBar(
-          content: Text('📡 Éxito: $enviados viaje(s) subidos a gerencia.'),
+          content: Text(
+            r.enviados == 0
+                ? '✅ Todo al día. No hay viajes pendientes.'
+                : '📡 Éxito: ${r.enviados} viaje(s) subidos a gerencia.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
+    } else {
+      mensajero.showSnackBar(
+        SnackBar(
+          content: Text(
+            '📶 Sin conexión con la central: ${r.pendientes} viaje(s) quedan '
+            'guardados y se enviarán solos al recuperar la señal.',
+          ),
+          backgroundColor: Colors.orange[800],
+        ),
+      );
     }
+  }
+
+  Future<void> _sesionRechazada() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          '🔒 Sesión no válida o cuenta desactivada. Vuelve a iniciar sesión.',
+        ),
+        backgroundColor: Colors.red[800],
+      ),
+    );
+    await irAlLogin(context);
   }
 
   Future<void> _confirmarCierreSesion() async {
@@ -241,6 +264,10 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     MotorGPS.resetContador();
     setState(() {
       recorrido = RecorridoPorSuperficie();
+      _inicioViaje = DateTime.now();
+      _ruta = [
+        PuntoRuta(posInicial.latitude, posInicial.longitude, 0, superficie),
+      ];
       _detector = DetectorDetencion(
         inicio: DateTime.now(),
         velocidadInicial: posInicial.speed,
@@ -267,6 +294,14 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           velocidadReportada: nuevaPosicion.speed,
           metros: metros,
         );
+        _ruta.add(
+          PuntoRuta(
+            nuevaPosicion.latitude,
+            nuevaPosicion.longitude,
+            DateTime.now().difference(_inicioViaje).inSeconds,
+            superficie,
+          ),
+        );
         setState(() => recorrido.sumar(metros / 1000, superficie));
       }
       posicionAnterior = nuevaPosicion;
@@ -290,7 +325,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
 
     final idChofer = await Sesion.choferId();
 
-    await BaseDatosLocal.instancia.insertarViaje({
+    await BaseDatosLocal.instancia.insertarViaje(ruta: _ruta, {
       'chofer_id': idChofer,
       'distancia_km': recorrido.kmTotal,
       'km_asfalto': recorrido.kmAsfalto,
@@ -307,6 +342,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
       'consumo_litros_km': params.consumoLitrosKm,
       'precio_combustible_bs': params.precioCombustibleBs,
     });
+    _ruta = [];
 
     setState(() {
       enViaje = false;
@@ -324,10 +360,14 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
         ),
       );
     }
+    await _actualizarPendientes();
+    _sincronizarEnSegundoPlano();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _relojSincronizacion?.cancel();
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
     super.dispose();
@@ -578,7 +618,11 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                     Expanded(
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.cloud_upload),
-                        label: const Text('SINC. NUBE'),
+                        label: Text(
+                          _pendientes > 0
+                              ? 'SINC. NUBE ($_pendientes)'
+                              : 'SINC. NUBE',
+                        ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           foregroundColor: Colors.green[700],

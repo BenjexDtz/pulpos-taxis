@@ -2,6 +2,7 @@ const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { distanciaKm } = require('../validacion');
 
 const activo = process.env.PG_INTEGRACION === '1';
 const sufijo = `${Date.now()}_${process.pid}`;
@@ -144,6 +145,37 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         await assert.rejects(pool.query(
             `UPDATE viajes_historial SET km_tierra = km_tierra + 1 WHERE id_servidor = $1`, [r.json.id_servidor]),
             /viajes_km_por_superficie_check/);
+    });
+
+    test('viaje con ruta: el servidor la mide, verifica la tarifa y solo la empresa del viaje la ve', async () => {
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        // 2 km hacia el este: 30 tramos en asfalto y 10 en tierra, de 50 m cada uno
+        const paso = 0.05 / distanciaKm(-16.5, -68.19, -16.5, -68.18) * 0.01;
+        const ruta = Array.from({ length: 41 }, (_, i) => [-16.5, -68.19 + i * paso, i * 5, i > 30 ? 1 : 0]);
+        const body = {
+            distancia_km: 2, km_asfalto: 1.5, km_tierra: 0.5, tiempo_detencion_min: 0, tarifa_cobrada: 10.38,
+            costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
+            factor_altitud_aplicado: 1.4, factor_superficie_aplicado: 2.5, costo_minuto_aplicado: 0.5,
+            fecha_hora_viaje: '2026-10-09T10:00:00', uuid: '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d', ruta,
+        };
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token, body });
+        assert.equal(r.status, 201);
+        assert.equal(r.json.verificacion, 'ok');
+
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const detalle = (await pedir('GET', `/api/admin/viajes/${r.json.id_servidor}/ruta`, { token: pulpos })).json;
+        assert.equal(detalle.puntos.length, 41);
+        assert.deepEqual([detalle.viaje.verificacion, detalle.viaje.distancia_ruta_km, detalle.viaje.tarifa_calculada], ['ok', '2.000', '10.38']);
+        assert.equal(detalle.puntos.filter(p => p.superficie === 'tierra').length, 10);
+        const fila = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json.find(x => x.id === r.json.id_servidor);
+        assert.equal(fila.tiene_ruta, true);
+
+        const illimani = await loginAdmin('admin@illimani.bo');
+        assert.equal((await pedir('GET', `/api/admin/viajes/${r.json.id_servidor}/ruta`, { token: illimani })).status, 404);
+
+        assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body })).status, 200);
+        const { rows } = await pool.query('SELECT count(*)::int AS n FROM viajes_puntos WHERE viaje_id = $1', [r.json.id_servidor]);
+        assert.equal(rows[0].n, 41);
     });
 
     test('reenviar el mismo viaje (también en paralelo) no lo duplica', async () => {
