@@ -27,6 +27,7 @@ app.use(require('./rutas/estadisticas'));
 app.use(require('./rutas/choferes'));
 app.use(require('./rutas/auditoria'));
 app.use(require('./rutas/plataforma'));
+app.use(require('./rutas/asistente'));
 
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
 
