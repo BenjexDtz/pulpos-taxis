@@ -16,6 +16,8 @@ router.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
             c.nombre_completo            AS chofer,
             c.placa_vehiculo,
             v.distancia_km,
+            v.km_asfalto,
+            v.km_tierra,
             v.tiempo_detencion_min,
             v.tarifa_cobrada             AS tarifa_total,
             v.tipo_superficie,
@@ -26,8 +28,8 @@ router.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
             v.consumo_litros_aplicado,
             v.precio_combustible_aplicado,
             ROUND((v.consumo_litros_aplicado * v.precio_combustible_aplicado
-                   * v.distancia_km * v.factor_altitud_aplicado
-                   * v.factor_superficie_aplicado)::numeric, 2)
+                   * (v.km_asfalto + v.km_tierra * v.factor_superficie_aplicado)
+                   * v.factor_altitud_aplicado)::numeric, 2)
                 AS costo_combustible_total,
             v.fecha_hora_viaje           AS fecha_hora
          FROM viajes_historial v
@@ -49,6 +51,8 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
             c.nombre_completo,
             c.placa_vehiculo,
             ROUND(v.distancia_km::numeric, 3),
+            ROUND(v.km_asfalto::numeric, 3),
+            ROUND(v.km_tierra::numeric, 3),
             ROUND(v.tiempo_detencion_min::numeric, 2),
             v.tipo_superficie,
             v.factor_altitud_aplicado,
@@ -74,7 +78,7 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
 
     const m = req.empresa.moneda_simbolo;
     const encabezados = [
-        'ID', 'Conductor', 'Placa', 'Km', 'Min Espera', 'Superficie', 'FH', 'FR',
+        'ID', 'Conductor', 'Placa', 'Km', 'Km asfalto', 'Km tierra', 'Min Espera', 'Superficie', 'FH', 'FR tierra',
         `Cb (${m}/km)`, 'Cl (L/km)', `Pc (${m}/L)`, `Cl×Pc (${m}/km)`, 'Cb+Cl×Pc',
         `Tarifa Total (${m})`, 'Fecha',
     ];

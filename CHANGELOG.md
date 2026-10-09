@@ -3,6 +3,17 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [Sin publicar]
+
+### Cambiado
+- **Tarifa por tramos (fórmula v4)**: `T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td`. Cada tramo GPS se cobra con la superficie que el chofer tenía marcada en ese momento; antes, la superficie elegida al terminar se aplicaba a todo el viaje. Con una sola superficie el resultado es igual al de la v3.
+- La app muestra los km en asfalto y en tierra durante el viaje y los guarda con el viaje; el servidor valida que sumen la distancia y marca el viaje como asfalto, tierra o mixto.
+- El listado y el CSV de viajes incluyen los km por superficie; el gráfico "Asfalto vs tierra" del tablero reparte km y cobro por recorrido entre superficies.
+- La vista previa de Parámetros y la herramienta `calcular_tarifa` del asistente admiten viajes mixtos.
+
+### Migraciones
+- `005_km_por_superficie.sql`: añade `km_asfalto` y `km_tierra` a `viajes_historial`, reparte los viajes existentes según su tipo de superficie y agrega los CHECK. La base de la app (SQLite) pasa a la versión 5 sin borrar viajes.
+
 ## [1.1.0] - 2026-10-09
 
 ### Añadido

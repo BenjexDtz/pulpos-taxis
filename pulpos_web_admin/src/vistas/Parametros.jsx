@@ -23,15 +23,16 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
     } finally { setGuardandoParams(false); }
   };
 
-  // T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
-  const previewTarifa = (fr) => {
+  // T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td, con un viaje de 5 km y 10 min de espera
+  const previewTarifa = (kmTierra) => {
     if (!formParams) return '0.00';
     const Cb = parseFloat(formParams.costo_base_km || 0);
     const Cl = parseFloat(formParams.consumo_litros_km || 0);
     const Pc = parseFloat(formParams.precio_combustible_bs || 0);
     const FH = parseFloat(formParams.factor_altitud || 0);
+    const FR = parseFloat(formParams.factor_superficie || 1);
     const Ct = parseFloat(formParams.costo_minuto_detencion || 0);
-    return (5 * (Cb + Cl * Pc) * FH * fr + 10 * Ct).toFixed(2);
+    return ((5 - kmTierra + kmTierra * FR) * (Cb + Cl * Pc) * FH + 10 * Ct).toFixed(2);
   };
 
   const previewCostoCombustibleKm = () => {
@@ -110,10 +111,11 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
       <div className="space-y-6 xl:sticky xl:top-28 xl:self-start">
         <Tarjeta icono={Calculator} titulo="Fórmula tarifaria">
           <p className="rounded-lg bg-brand-50 px-4 py-3 text-center font-mono text-theme-sm font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-            T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+            T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td
           </p>
           <dl className="mt-4 space-y-1.5 text-theme-xs text-gray-500 dark:text-gray-400">
-            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">D</dt> <dd className="inline">distancia recorrida (km)</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Da</dt> <dd className="inline">km recorridos en asfalto</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Dt</dt> <dd className="inline">km recorridos en tierra; el chofer marca cada tramo en la app</dd></div>
             <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Td</dt> <dd className="inline">minutos detenido o en tráfico</dd></div>
           </dl>
         </Tarjeta>
@@ -125,14 +127,21 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
                 <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">Asfalto</p>
                 <p className="text-theme-xs text-gray-500 dark:text-gray-400">FR = 1,0</p>
               </div>
-              <span className="text-xl font-bold text-gray-800 dark:text-white/90">{formatoMoneda(previewTarifa(1.0), m)}</span>
+              <span className="text-xl font-bold text-gray-800 dark:text-white/90">{formatoMoneda(previewTarifa(0), m)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">Mixto</p>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">3 km asfalto + 2 km tierra</p>
+              </div>
+              <span className="text-xl font-bold text-gray-800 dark:text-white/90">{formatoMoneda(previewTarifa(2), m)}</span>
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">Tierra / barro</p>
                 <p className="text-theme-xs text-gray-500 dark:text-gray-400">FR = {formatoNumero(formParams.factor_superficie || 1, 1)}</p>
               </div>
-              <span className="text-xl font-bold text-warning-600 dark:text-orange-400">{formatoMoneda(previewTarifa(parseFloat(formParams.factor_superficie || 1)), m)}</span>
+              <span className="text-xl font-bold text-warning-600 dark:text-orange-400">{formatoMoneda(previewTarifa(5), m)}</span>
             </div>
             <p className="border-t border-gray-100 pt-3 text-theme-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
               Se recalcula mientras editas; los choferes la reciben al guardar.

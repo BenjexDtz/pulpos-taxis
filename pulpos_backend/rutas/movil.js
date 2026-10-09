@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const { verificarToken, soloChofer } = require('../middlewares/autenticacion');
 const { auditar } = require('../utilidades');
-const { distanciaKm } = require('../validacion');
+const { distanciaKm, kmPorSuperficie } = require('../validacion');
 
 const router = express.Router();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,6 +14,8 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
     const uuid = req.body.uuid ?? null;
     if (uuid !== null && !(typeof uuid === 'string' && UUID.test(uuid)))
         return res.status(400).json({ error: 'Identificador de viaje inválido.' });
+    const km = kmPorSuperficie(req.body);
+    if (!km) return res.status(400).json({ error: 'Distancia inválida o km por superficie que no suman la distancia.' });
 
     const p = (await pool.query(
         'SELECT * FROM parametros_topograficos WHERE empresa_id = $1', [req.empresa.id]
@@ -22,19 +24,19 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
 
     const r = await pool.query(
         `INSERT INTO viajes_historial (
-            empresa_id, chofer_id, distancia_km, tiempo_detencion_min, tarifa_cobrada,
+            empresa_id, chofer_id, distancia_km, km_asfalto, km_tierra, tiempo_detencion_min, tarifa_cobrada,
             tipo_superficie, factor_altitud_aplicado, factor_superficie_aplicado,
             costo_base_aplicado, costo_minuto_aplicado,
             consumo_litros_aplicado, precio_combustible_aplicado,
             fecha_hora_viaje, uuid
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          ON CONFLICT (chofer_id, uuid) DO NOTHING
          RETURNING *`,
         [
-            req.empresa.id, req.usuario.id, distancia_km, tiempo_detencion_min, tarifa_cobrada,
-            b.tipo_superficie ?? 'asfalto',
+            req.empresa.id, req.usuario.id, distancia_km, km.km_asfalto, km.km_tierra,
+            tiempo_detencion_min, tarifa_cobrada, km.tipo,
             b.factor_altitud_aplicado ?? p.factor_altitud ?? 1,
-            b.factor_superficie_aplicado ?? 1,
+            b.factor_superficie_aplicado ?? (km.km_tierra > 0 ? p.factor_superficie : null) ?? 1,
             b.costo_base_aplicado ?? p.costo_base_km,
             b.costo_minuto_aplicado ?? p.costo_minuto_detencion,
             b.consumo_litros_aplicado ?? p.consumo_litros_km,

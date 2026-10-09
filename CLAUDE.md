@@ -42,7 +42,7 @@ flutter analyze
 
 # Migrar una BD sin empresas (v3) a multiempresa
 psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
-# (luego 002, 003 y 004 en orden; 004 añade viajes_historial.uuid)
+# (luego 002 a 005 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie)
 ```
 
 Versiones: SemVer única para todo el sistema. Al publicar, subir `version` en `pulpos_backend/package.json`, `pulpos_web_admin/package.json` (`npm version X.Y.Z --no-git-tag-version`) y `pulpos_apk/pubspec.yaml` (el `+N` sube en cada APK), anotar en `CHANGELOG.md` y crear la etiqueta anotada `vX.Y.Z`.
@@ -84,10 +84,12 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - El cliente envía el historial (`{rol: 'usuario'|'asistente', texto}`, máx. 12); el prompt de sistema lo arma solo el servidor. Máx. 5 rondas de herramientas, límite de 20 preguntas/10 min por administrador. Cada pregunta se audita (`asistente.consulta`) con las herramientas usadas.
 - La ruta llama a `asistente.llamarModelo` por el objeto del módulo: los tests lo reemplazan por un guion.
 
-### Fórmula tarifaria (v3) — está duplicada, mantener sincronizada
-`T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td`
+### Fórmula tarifaria (v4, por tramos) — está duplicada, mantener sincronizada
+`T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td`
 
-Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js`, la herramienta `calcular_tarifa` de `pulpos_backend/asistente.js` y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
+Da/Dt: km en asfalto/tierra. La app suma cada tramo GPS a la superficie elegida en ese momento (`RecorridoPorSuperficie`); con una sola superficie se reduce a la v3. `viajes_historial` guarda `km_asfalto` y `km_tierra` (CHECK: suman `distancia_km`), `tipo_superficie` es `asfalto`/`tierra`/`mixto` y lo decide el servidor, y `factor_superficie_aplicado` es el FR de la tierra. Si la app no envía los km (versiones previas), `kmPorSuperficie()` asigna toda la distancia a su `tipo_superficie`.
+
+Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `RecorridoPorSuperficie`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js` (y el reparto por superficie de `rutas/estadisticas.js`), la herramienta `calcular_tarifa` de `pulpos_backend/asistente.js` y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
 
 Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y en los `min`/`max` de los inputs del panel: mantenerlos iguales. `pg` devuelve `NUMERIC` como **string**: parsear siempre. Las columnas conservan el sufijo `_bs` por compatibilidad, pero el símbolo mostrado es `empresas.moneda_simbolo`.
 

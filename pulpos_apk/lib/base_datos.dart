@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -44,7 +44,9 @@ class BaseDatosLocal {
         estado_sincronizacion INTEGER,
         fecha_hora TEXT,
         $_columnasV3,
-        uuid TEXT
+        uuid TEXT,
+        km_asfalto REAL,
+        km_tierra REAL
       )
     ''');
   }
@@ -75,6 +77,11 @@ class BaseDatosLocal {
         await db.update('viajes', {'uuid': nuevoUuid()},
             where: 'id = ?', whereArgs: [fila['id']]);
       }
+    }
+    // Viajes previos quedan en NULL: el servidor deduce los km por superficie
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN km_asfalto REAL');
+      await db.execute('ALTER TABLE viajes ADD COLUMN km_tierra REAL');
     }
   }
 

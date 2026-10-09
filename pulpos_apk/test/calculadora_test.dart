@@ -5,98 +5,112 @@ import 'package:pulpos_tarifa_core/calculadora.dart';
 void main() {
   group('calcularTarifa', () {
     double tarifaElAlto({
-      required double distanciaKm,
-      required double factorSuperficie,
+      double kmAsfalto = 0,
+      double kmTierra = 0,
       required double tiempoDetencionMin,
       double consumoLitrosKm = 0.100,
     }) => calcularTarifa(
-      distanciaKm: distanciaKm,
+      kmAsfalto: kmAsfalto,
+      kmTierra: kmTierra,
       costoBaseKm: 2.00,
       consumoLitrosKm: consumoLitrosKm,
       precioCombustibleBs: 6.96,
       factorAltitud: 1.40,
-      factorSuperficie: factorSuperficie,
+      factorSuperficie: 2.5,
       tiempoDetencionMin: tiempoDetencionMin,
       costoMinutoDetencion: 0.50,
     );
 
     test('escenario crítico: 5 km en tierra con 10 min de espera', () {
-      final t = tarifaElAlto(
-        distanciaKm: 5,
-        factorSuperficie: 2.5,
-        tiempoDetencionMin: 10,
+      expect(
+        tarifaElAlto(kmTierra: 5, tiempoDetencionMin: 10),
+        closeTo(52.18, 1e-9),
       );
-      expect(t, closeTo(52.18, 1e-9));
     });
 
     test('escenario ideal: 5 km en asfalto sin espera', () {
-      final t = tarifaElAlto(
-        distanciaKm: 5,
-        factorSuperficie: 1.0,
-        tiempoDetencionMin: 0,
+      expect(
+        tarifaElAlto(kmAsfalto: 5, tiempoDetencionMin: 0),
+        closeTo(18.872, 1e-9),
       );
-      expect(t, closeTo(18.872, 1e-9));
+    });
+
+    test('viaje mixto: 3 km asfalto + 2 km tierra cobra cada tramo con su factor', () {
+      // (3 + 2 × 2.5) × 2.696 × 1.4 + 10 × 0.5
+      expect(
+        tarifaElAlto(kmAsfalto: 3, kmTierra: 2, tiempoDetencionMin: 10),
+        closeTo(35.1952, 1e-9),
+      );
+    });
+
+    test('el mixto queda entre el viaje todo en asfalto y todo en tierra', () {
+      final asfalto = tarifaElAlto(kmAsfalto: 5, tiempoDetencionMin: 10);
+      final mixto = tarifaElAlto(kmAsfalto: 3, kmTierra: 2, tiempoDetencionMin: 10);
+      final tierra = tarifaElAlto(kmTierra: 5, tiempoDetencionMin: 10);
+      expect(mixto, greaterThan(asfalto));
+      expect(mixto, lessThan(tierra));
     });
 
     test('sin combustible (Cl=0) reproduce la fórmula anterior', () {
       expect(
-        tarifaElAlto(
-          distanciaKm: 5,
-          factorSuperficie: 2.5,
-          tiempoDetencionMin: 10,
-          consumoLitrosKm: 0,
-        ),
+        tarifaElAlto(kmTierra: 5, tiempoDetencionMin: 10, consumoLitrosKm: 0),
         closeTo(40.0, 1e-9),
       );
       expect(
-        tarifaElAlto(
-          distanciaKm: 5,
-          factorSuperficie: 1.0,
-          tiempoDetencionMin: 0,
-          consumoLitrosKm: 0,
-        ),
+        tarifaElAlto(kmAsfalto: 5, tiempoDetencionMin: 0, consumoLitrosKm: 0),
         closeTo(14.0, 1e-9),
       );
     });
 
     test('viaje de 0 km sin espera cuesta 0', () {
-      expect(
-        tarifaElAlto(distanciaKm: 0, factorSuperficie: 1, tiempoDetencionMin: 0),
-        0,
-      );
+      expect(tarifaElAlto(tiempoDetencionMin: 0), 0);
     });
 
     test('solo espera: 3 min detenido cobra Ct × Td', () {
-      expect(
-        tarifaElAlto(distanciaKm: 0, factorSuperficie: 1, tiempoDetencionMin: 3),
-        closeTo(1.5, 1e-9),
-      );
+      expect(tarifaElAlto(tiempoDetencionMin: 3), closeTo(1.5, 1e-9));
     });
   });
 
-  group('DesgloseTarifa', () {
-    test('el total coincide con calcularTarifa', () {
+  group('RecorridoPorSuperficie', () {
+    test('suma cada tramo a la superficie elegida en ese momento', () {
+      final r = RecorridoPorSuperficie()
+        ..sumar(1.2, Superficie.asfalto)
+        ..sumar(0.5, Superficie.tierra)
+        ..sumar(0.3, Superficie.asfalto);
+      expect(r.kmAsfalto, closeTo(1.5, 1e-9));
+      expect(r.kmTierra, closeTo(0.5, 1e-9));
+      expect(r.kmTotal, closeTo(2.0, 1e-9));
+    });
+
+    test('cambiar a tierra al final no encarece lo ya recorrido en asfalto', () {
       const p = ParametrosTopograficos.porDefecto;
-      final d = DesgloseTarifa.calcular(
-        params: p,
-        distanciaKm: 3.5,
-        tiempoDetencionMin: 8.5,
-        factorSuperficie: p.factorSuperficie,
-        tipoSuperficie: 'tierra',
+      final r = RecorridoPorSuperficie()
+        ..sumar(4.8, Superficie.asfalto)
+        ..sumar(0.2, Superficie.tierra);
+      final todoEnTierra = RecorridoPorSuperficie()..sumar(5, Superficie.tierra);
+      expect(r.tarifa(p, 0), closeTo((4.8 + 0.2 * 2.5) * 2.696 * 1.4, 1e-9));
+      expect(r.tarifa(p, 0), lessThan(todoEnTierra.tarifa(p, 0)));
+    });
+
+    test('tipo: asfalto, tierra o mixto según los km', () {
+      expect(RecorridoPorSuperficie().tipo, 'asfalto');
+      expect((RecorridoPorSuperficie()..sumar(1, Superficie.asfalto)).tipo, 'asfalto');
+      expect((RecorridoPorSuperficie()..sumar(1, Superficie.tierra)).tipo, 'tierra');
+      expect(
+        (RecorridoPorSuperficie()
+              ..sumar(1, Superficie.asfalto)
+              ..sumar(1, Superficie.tierra))
+            .tipo,
+        'mixto',
       );
-      final t = calcularTarifa(
-        distanciaKm: 3.5,
-        costoBaseKm: p.costoBaseKm,
-        consumoLitrosKm: p.consumoLitrosKm,
-        precioCombustibleBs: p.precioCombustibleBs,
-        factorAltitud: p.factorAltitud,
-        factorSuperficie: p.factorSuperficie,
-        tiempoDetencionMin: 8.5,
-        costoMinutoDetencion: p.costoMinutoDetencion,
-      );
-      expect(d.tarifaTotal, closeTo(t, 1e-9));
-      expect(d.costoCombustibleKm, closeTo(0.696, 1e-9));
-      expect(d.costoVariableKm, closeTo(2.696, 1e-9));
+    });
+
+    test('tarifa usa los parámetros de la empresa', () {
+      const p = ParametrosTopograficos.porDefecto;
+      final r = RecorridoPorSuperficie()
+        ..sumar(3, Superficie.asfalto)
+        ..sumar(2, Superficie.tierra);
+      expect(r.tarifa(p, 10), closeTo(35.1952, 1e-9));
     });
   });
 
@@ -146,18 +160,20 @@ void main() {
   });
 
   group('viajeParaServidor', () {
-    test('viaje v3 en tierra envía todos los parámetros aplicados', () {
+    test('viaje v4 mixto envía los km por superficie y los parámetros aplicados', () {
       final body = viajeParaServidor({
         'id': 7,
         'chofer_id': 2,
         'distancia_km': 3.5,
+        'km_asfalto': 1.5,
+        'km_tierra': 2.0,
         'tiempo_detencion_min': 8.5,
         'factor_altitud': 1.4,
         'factor_superficie': 2.5,
         'tarifa_total': 37.27,
         'estado_sincronizacion': 0,
         'fecha_hora': '2026-10-07T10:00:00.000',
-        'tipo_superficie': 'tierra',
+        'tipo_superficie': 'mixto',
         'costo_base_km': 2.0,
         'costo_minuto_detencion': 0.5,
         'consumo_litros_km': 0.1,
@@ -167,10 +183,12 @@ void main() {
       expect(body, {
         'uuid': '3f1c2a9e-8b7d-4c6e-9a1b-2d3e4f5a6b7c',
         'distancia_km': 3.5,
+        'km_asfalto': 1.5,
+        'km_tierra': 2.0,
         'tiempo_detencion_min': 8.5,
         'tarifa_cobrada': 37.27,
         'fecha_hora_viaje': '2026-10-07T10:00:00.000',
-        'tipo_superficie': 'tierra',
+        'tipo_superficie': 'mixto',
         'factor_altitud_aplicado': 1.4,
         'factor_superficie_aplicado': 2.5,
         'costo_base_aplicado': 2.0,
@@ -211,8 +229,11 @@ void main() {
         'costo_minuto_detencion': null,
         'consumo_litros_km': null,
         'precio_combustible_bs': null,
+        'km_asfalto': null,
+        'km_tierra': null,
       });
       expect(body['tipo_superficie'], 'tierra');
+      expect(body.containsKey('km_tierra'), isFalse);
       expect(body['factor_superficie_aplicado'], 2.5);
       expect(body.values, isNot(contains(null)));
       expect(body.containsKey('costo_base_aplicado'), isFalse);

@@ -23,6 +23,8 @@ Map<String, dynamic> viajeParaServidor(Map<String, dynamic> viaje) {
   final body = <String, dynamic>{
     'uuid': viaje['uuid'],
     'distancia_km': viaje['distancia_km'],
+    'km_asfalto': viaje['km_asfalto'],
+    'km_tierra': viaje['km_tierra'],
     'tiempo_detencion_min': viaje['tiempo_detencion_min'],
     'tarifa_cobrada': viaje['tarifa_total'],
     'fecha_hora_viaje': viaje['fecha_hora'],

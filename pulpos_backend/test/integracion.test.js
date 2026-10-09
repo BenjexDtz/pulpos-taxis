@@ -79,7 +79,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.deepEqual(choferesI.map(c => c.placa_vehiculo), ['5678-ILL']);
 
         const viajesP = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json;
-        assert.equal(viajesP.length, 5);
+        assert.equal(viajesP.length, 6);
         assert.ok(viajesP.every(v => v.placa_vehiculo === '1234-KKK'));
     });
 
@@ -123,6 +123,27 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const pulpos = await loginAdmin('admin@pulpos.bo');
         const ids = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json.map(x => x.id);
         assert.ok(!ids.includes(r.json.id_servidor));
+    });
+
+    test('viaje mixto: guarda los km por superficie y la base rechaza km que no suman la distancia', async () => {
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+            distancia_km: 5, km_asfalto: 3, km_tierra: 2, tiempo_detencion_min: 10, tarifa_cobrada: 35.20,
+            factor_superficie_aplicado: 2.5, fecha_hora_viaje: '2026-10-09T09:00:00',
+        } });
+        assert.equal(r.status, 201);
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const v = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json.find(x => x.id === r.json.id_servidor);
+        assert.deepEqual([v.km_asfalto, v.km_tierra, v.tipo_superficie], ['3.000', '2.000', 'mixto']);
+        // Cl × Pc × (Da + Dt × FR) × FH = 0.696 × 8 × 1.4
+        assert.equal(v.costo_combustible_total, '7.80');
+
+        assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+            distancia_km: 5, km_asfalto: 1, km_tierra: 1, tiempo_detencion_min: 0, tarifa_cobrada: 1, fecha_hora_viaje: '2026-10-09T09:00:00',
+        } })).status, 400);
+        await assert.rejects(pool.query(
+            `UPDATE viajes_historial SET km_tierra = km_tierra + 1 WHERE id_servidor = $1`, [r.json.id_servidor]),
+            /viajes_km_por_superficie_check/);
     });
 
     test('reenviar el mismo viaje (también en paralelo) no lo duplica', async () => {
@@ -198,7 +219,8 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const [pulpos, illimani] = await Promise.all([loginAdmin('admin@pulpos.bo'), loginAdmin('admin@illimani.bo')]);
         const e = (await pedir('GET', '/api/admin/estadisticas', { token: pulpos })).json;
         const real = (await pool.query(
-            `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total
+            `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total,
+                    sum(distancia_km)::float AS km, count(*) FILTER (WHERE tipo_superficie = 'mixto')::int AS mixtos
              FROM viajes_historial v JOIN empresas em ON em.id = v.empresa_id
              WHERE em.codigo = 'pulpos' AND fecha_hora_viaje >= CURRENT_DATE - 29 AND fecha_hora_viaje < CURRENT_DATE + 1`)).rows[0];
         assert.ok(real.n >= 5);
@@ -207,8 +229,10 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal(e.por_dia.length, 30);
         assert.equal(e.por_dia.reduce((s, d) => s + d.viajes, 0), real.n);
         assert.equal(e.horas.reduce((s, h) => s + h.viajes, 0), real.n);
-        assert.equal(e.superficie.reduce((s, x) => s + x.viajes, 0), real.n);
-        assert.ok(e.superficie.every(x => ['asfalto', 'tierra'].includes(x.tipo)));
+        assert.ok(real.mixtos >= 1);
+        assert.equal(e.superficie.reduce((s, x) => s + x.viajes, 0), real.n + real.mixtos);
+        assert.ok(Math.abs(e.superficie.reduce((s, x) => s + x.km, 0) - real.km) < 1e-6);
+        assert.ok(e.superficie.every(x => ['asfalto', 'tierra'].includes(x.tipo) && x.recorrido > 0));
         assert.ok(e.choferes.every(c => c.placa !== '5678-ILL'));
 
         const i = (await pedir('GET', '/api/admin/estadisticas', { token: illimani })).json;

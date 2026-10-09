@@ -211,8 +211,37 @@ describe('Sincronización de viajes', () => {
             return { rows: [{ id_servidor: 1 }] };
         };
         await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: viaje });
-        assert.deepEqual(insert().params.slice(5),
+        assert.deepEqual(insert().params.slice(7),
             ['asfalto', '1.30', 1, '2.50', '0.60', '0.110', '7.50', viaje.fecha_hora_viaje, null]);
+    });
+
+    test('viaje mixto guarda los km de cada superficie y el tipo lo decide el servidor', async () => {
+        responder = (sql) => sql.includes('INSERT') ? { rows: [{ id_servidor: 1 }] } : { rows: [] };
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER,
+            body: { ...viaje, km_asfalto: 1.5, km_tierra: 2, tipo_superficie: 'asfalto', factor_superficie_aplicado: 2.5 } });
+        assert.equal(r.status, 201);
+        const p = insert().params;
+        assert.deepEqual(p.slice(2, 5), [3.5, 1.5, 2]);
+        assert.equal(p[7], 'mixto');
+        assert.equal(p[9], 2.5);
+    });
+
+    test('app anterior a la v4 (sin km): toda la distancia va a su única superficie', async () => {
+        responder = (sql) => {
+            if (sql.includes('FROM parametros_topograficos')) return { rows: [{ factor_superficie: '2.50' }] };
+            return { rows: [{ id_servidor: 1 }] };
+        };
+        await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...viaje, tipo_superficie: 'tierra' } });
+        assert.deepEqual(insert().params.slice(2, 5), [3.5, 0, 3.5]);
+        assert.equal(insert().params[7], 'tierra');
+        assert.equal(insert().params[9], '2.50');
+    });
+
+    test('km por superficie que no suman la distancia, negativos o no numéricos → 400 sin insertar', async () => {
+        for (const km of [{ km_asfalto: 1, km_tierra: 1 }, { km_asfalto: -1, km_tierra: 4.5 },
+            { km_asfalto: '3.5' }, { km_tierra: 3.6 }, { km_asfalto: null, km_tierra: 3.5, distancia_km: 'x' }])
+            assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...viaje, ...km } })).status, 400);
+        assert.equal(insert(), undefined);
     });
 
     test('uuid con formato inválido → 400 sin insertar', async () => {
@@ -882,14 +911,19 @@ describe('Asistente de IA', () => {
         assert.equal(consultasDeDatos().filter(c => !c.sql.includes('FROM empresas')).length, 0);
     });
 
-    test('calcular_tarifa usa la fórmula v3 con los parámetros de la empresa', async () => {
+    test('calcular_tarifa usa la fórmula v4 con los parámetros de la empresa', async () => {
         responder = datosBase;
         const tierra = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"espera_min":10,"superficie":"tierra"}', contexto);
         // 5 × (2 + 0.1 × 6.96) × 1.4 × 2 + 0.5 × 10
         assert.equal(tierra.tarifa, 42.74);
-        assert.equal(tierra.parametros.FR, 2);
+        assert.deepEqual([tierra.km_tierra, tierra.superficie, tierra.parametros.FR], [5, 'tierra', 2]);
         const asfalto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5}', contexto);
-        assert.deepEqual([asfalto.tarifa, asfalto.parametros.FR, asfalto.costo_espera], [18.87, 1, 0]);
+        assert.deepEqual([asfalto.tarifa, asfalto.km_tierra, asfalto.superficie, asfalto.costo_espera], [18.87, 0, 'asfalto', 0]);
+        // (3 + 2 × 2) × (2 + 0.1 × 6.96) × 1.4 + 0.5 × 10
+        const mixto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"espera_min":10,"km_tierra":2}', contexto);
+        assert.deepEqual([mixto.tarifa, mixto.km_asfalto, mixto.superficie], [31.42, 3, 'mixto']);
+        for (const km of ['-1', '6', '"dos"'])
+            assert.ok((await asistente.ejecutarHerramienta('calcular_tarifa', `{"distancia_km":5,"km_tierra":${km}}`, contexto)).error);
     });
 
     test('ranking: criterio y límite solo de la lista permitida', async () => {

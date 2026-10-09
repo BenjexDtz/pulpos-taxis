@@ -117,6 +117,20 @@ const distanciaKm = (lat1, lng1, lat2, lng2) => {
     return 2 * 6371 * Math.asin(Math.sqrt(a));
 };
 
+// Apps anteriores a la v4 no envían km por superficie: el viaje entero era de un solo tipo
+const kmPorSuperficie = (b) => {
+    const D = Number(b.distancia_km);
+    if (!Number.isFinite(D) || D < 0) return null;
+    if (b.km_asfalto === undefined && b.km_tierra === undefined) {
+        const tierra = b.tipo_superficie === 'tierra';
+        return { km_asfalto: tierra ? 0 : D, km_tierra: tierra ? D : 0, tipo: tierra ? 'tierra' : 'asfalto' };
+    }
+    const [a, t] = [b.km_asfalto ?? 0, b.km_tierra ?? 0];
+    if (![a, t].every(x => typeof x === 'number' && Number.isFinite(x) && x >= 0) || Math.abs(a + t - D) > 0.005)
+        return null;
+    return { km_asfalto: a, km_tierra: t, tipo: t === 0 ? 'asfalto' : a === 0 ? 'tierra' : 'mixto' };
+};
+
 const conCostos = (p) => {
     const combustible = parseFloat(p.consumo_litros_km) * parseFloat(p.precio_combustible_bs);
     return {
@@ -127,6 +141,6 @@ const conCostos = (p) => {
 };
 
 module.exports = {
-    validarRangoDias, filtroFechas, numeroEnRango, validarEmpresa, distanciaKm, conCostos,
+    validarRangoDias, filtroFechas, numeroEnRango, validarEmpresa, distanciaKm, kmPorSuperficie, conCostos,
     RANGOS_PARAMETROS, PARAMETROS_INICIALES, CAMPOS_EMPRESA,
 };

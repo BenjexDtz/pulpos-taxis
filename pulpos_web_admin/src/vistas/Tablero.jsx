@@ -111,7 +111,7 @@ export default function Tablero({
             : 'Cargando...'}>
           <GraficoRecaudacion datos={estadisticas?.por_dia ?? []} color={color} moneda={m} />
         </Tarjeta>
-        <Tarjeta className="col-span-12 xl:col-span-4" icono={Layers} titulo="Asfalto vs tierra" subtitulo="Viajes por tipo de superficie">
+        <Tarjeta className="col-span-12 xl:col-span-4" icono={Layers} titulo="Asfalto vs tierra" subtitulo="Km recorridos por superficie">
           <GraficoSuperficie datos={estadisticas?.superficie ?? []} colores={{ asfalto: color, tierra: COLOR_TIERRA }}
             moneda={m} factorTierra={params?.factor_superficie} />
         </Tarjeta>
@@ -156,10 +156,19 @@ export default function Tablero({
                     <p className="font-medium text-gray-800 dark:text-white/90">{v.chofer}</p>
                     <p className="text-theme-xs text-gray-500 dark:text-gray-400">{v.placa_vehiculo}</p>
                   </td>
-                  <td className={td}>{formatoNumero(v.distancia_km, 2)} km</td>
+                  <td className={td}>
+                    {formatoNumero(v.distancia_km, 2)} km
+                    {v.tipo_superficie === 'mixto' && (
+                      <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                        {formatoNumero(v.km_asfalto, 2)} asfalto · {formatoNumero(v.km_tierra, 2)} tierra
+                      </p>
+                    )}
+                  </td>
                   <td className={td}>{Math.floor(v.tiempo_detencion_min)} min</td>
                   <td className={td}>
-                    <Insignia color={v.tipo_superficie === 'tierra' ? 'aviso' : 'neutro'}>{v.tipo_superficie === 'tierra' ? 'Tierra' : 'Asfalto'}</Insignia>
+                    <Insignia color={v.tipo_superficie === 'asfalto' ? 'neutro' : 'aviso'}>
+                      {{ tierra: 'Tierra', mixto: 'Mixto' }[v.tipo_superficie] ?? 'Asfalto'}
+                    </Insignia>
                   </td>
                   <td className={`${td} font-semibold text-gray-800 dark:text-white/90`}>{formatoMoneda(v.tarifa_total, m)}</td>
                   <td className={td}>{new Date(v.fecha_hora).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>

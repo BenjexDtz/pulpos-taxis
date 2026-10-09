@@ -115,26 +115,26 @@ class ParametrosService {
   }
 }
 
-// ─── Fórmula tarifaria v3 ─────────────────────────────────────────────────────
+// ─── Fórmula tarifaria v4 ─────────────────────────────────────────────────────
 //
-//   T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+//   T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td
 //
 // Donde:
-//   D   = distancia en km                        (GPS en tiempo real)
+//   Da  = km recorridos en asfalto               (GPS, por tramos)
+//   Dt  = km recorridos en tierra/complejo       (GPS, por tramos)
 //   Cb  = costo base por km en Bs                (ganancia conductor + depreciación)
 //   Cl  = consumo del vehículo en litros/km       (0.10 L/km para taxi pequeño)
 //   Pc  = precio combustible en Bs/litro          (6.96 Bs sin subvención)
-//   Cl × Pc = costo de gasolina por km            (0.696 Bs/km)
 //   FH  = factor de altitud (4,100 msnm)          (1.40 — motor trabaja más)
-//   FR  = factor de superficie                    (asfalto: 1.0 / tierra: 2.5)
+//   FR  = factor de superficie de la tierra       (2.5; el asfalto vale 1.0)
 //   Ct  = costo por minuto de detención en Bs     (tráfico, semáforos)
 //   Td  = tiempo de detención en minutos          (GPS en tiempo real)
 //
-// El combustible se multiplica por FH × FR porque en terreno complicado
-// y a gran altitud el motor consume proporcionalmente más gasolina.
+// Con un solo tipo de superficie se reduce a la v3: D × (Cb + Cl × Pc) × FH × FR + Ct × Td.
 //
 double calcularTarifa({
-  required double distanciaKm,
+  required double kmAsfalto,
+  required double kmTierra,
   required double costoBaseKm,
   required double consumoLitrosKm,
   required double precioCombustibleBs,
@@ -143,81 +143,46 @@ double calcularTarifa({
   required double tiempoDetencionMin,
   required double costoMinutoDetencion,
 }) {
-  // Costo variable por km = Cb + Cl × Pc
   final costoVariableKm = costoBaseKm + (consumoLitrosKm * precioCombustibleBs);
-
-  // Componente de recorrido: D × (Cb + Cl×Pc) × FH × FR
-  final costoRecorrido =
-      distanciaKm * costoVariableKm * factorAltitud * factorSuperficie;
-
-  // Componente de detención: Ct × Td
+  final kmPonderados = kmAsfalto + kmTierra * factorSuperficie;
+  final costoRecorrido = kmPonderados * costoVariableKm * factorAltitud;
   final costoDetencion = tiempoDetencionMin * costoMinutoDetencion;
-
   return costoRecorrido + costoDetencion;
 }
 
-// ─── Desglose detallado (útil para mostrar en pantalla o auditoría) ───────────
-class DesgloseTarifa {
-  final double distanciaKm;
-  final double costoBaseKm;
-  final double costoCombustibleKm;
-  final double costoVariableKm;
-  final double factorAltitud;
-  final double factorSuperficie;
-  final double costoRecorrido;
-  final double tiempoDetencionMin;
-  final double costoDetencion;
-  final double tarifaTotal;
-  final String tipoSuperficie;
+enum Superficie { asfalto, tierra }
 
-  const DesgloseTarifa({
-    required this.distanciaKm,
-    required this.costoBaseKm,
-    required this.costoCombustibleKm,
-    required this.costoVariableKm,
-    required this.factorAltitud,
-    required this.factorSuperficie,
-    required this.costoRecorrido,
-    required this.tiempoDetencionMin,
-    required this.costoDetencion,
-    required this.tarifaTotal,
-    required this.tipoSuperficie,
-  });
+// Cada tramo GPS se suma a la superficie elegida cuando llega la posición
+class RecorridoPorSuperficie {
+  double kmAsfalto = 0;
+  double kmTierra = 0;
 
-  static DesgloseTarifa calcular({
-    required ParametrosTopograficos params,
-    required double distanciaKm,
-    required double tiempoDetencionMin,
-    required double factorSuperficie,
-    required String tipoSuperficie,
-  }) {
-    final costoCombustibleKm =
-        params.consumoLitrosKm * params.precioCombustibleBs;
-    final costoVariableKm = params.costoBaseKm + costoCombustibleKm;
-    final costoRecorrido =
-        distanciaKm * costoVariableKm * params.factorAltitud * factorSuperficie;
-    final costoDetencion = tiempoDetencionMin * params.costoMinutoDetencion;
+  double get kmTotal => kmAsfalto + kmTierra;
 
-    return DesgloseTarifa(
-      distanciaKm: distanciaKm,
-      costoBaseKm: params.costoBaseKm,
-      costoCombustibleKm: costoCombustibleKm,
-      costoVariableKm: costoVariableKm,
-      factorAltitud: params.factorAltitud,
-      factorSuperficie: factorSuperficie,
-      costoRecorrido: costoRecorrido,
-      tiempoDetencionMin: tiempoDetencionMin,
-      costoDetencion: costoDetencion,
-      tarifaTotal: costoRecorrido + costoDetencion,
-      tipoSuperficie: tipoSuperficie,
-    );
+  String get tipo {
+    if (kmTierra == 0) return 'asfalto';
+    if (kmAsfalto == 0) return 'tierra';
+    return 'mixto';
   }
 
-  @override
-  String toString() =>
-      'D=${distanciaKm.toStringAsFixed(3)}km × '
-      '(Cb=$costoBaseKm + Cl×Pc=${costoCombustibleKm.toStringAsFixed(3)}) × '
-      'FH=$factorAltitud × FR=$factorSuperficie + '
-      'Ct=${costoDetencion.toStringAsFixed(2)} = '
-      '${tarifaTotal.toStringAsFixed(2)}';
+  void sumar(double km, Superficie superficie) {
+    if (superficie == Superficie.tierra) {
+      kmTierra += km;
+    } else {
+      kmAsfalto += km;
+    }
+  }
+
+  double tarifa(ParametrosTopograficos p, double tiempoDetencionMin) =>
+      calcularTarifa(
+        kmAsfalto: kmAsfalto,
+        kmTierra: kmTierra,
+        costoBaseKm: p.costoBaseKm,
+        consumoLitrosKm: p.consumoLitrosKm,
+        precioCombustibleBs: p.precioCombustibleBs,
+        factorAltitud: p.factorAltitud,
+        factorSuperficie: p.factorSuperficie,
+        tiempoDetencionMin: tiempoDetencionMin,
+        costoMinutoDetencion: p.costoMinutoDetencion,
+      );
 }

@@ -78,16 +78,17 @@ CREATE TABLE IF NOT EXISTS mfa_codigos_respaldo (
 -- ── 4. PARÁMETROS TOPOGRÁFICOS ────────────────────────────────────────────────
 --
 -- Fórmula completa:
---   T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+--   T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td
 --
 -- Cb  = costo_base_km           — ganancia del conductor + depreciación
 -- Cl  = consumo_litros_km       — cuántos litros gasta el taxi por km
 -- Pc  = precio_combustible_bs   — precio actual del litro de combustible
 -- FH  = factor_altitud          — penalización por la altitud de operación
--- FR  = factor_superficie       — asfalto (1.0) o tierra/barro (2.5)
+-- FR  = factor_superficie       — tierra/barro (2.5); el asfalto vale 1.0
 -- Ct  = costo_minuto_detencion  — cobro por tiempo en tráfico o espera
 -- Td  = tiempo detención (min)  — medido por GPS en tiempo real
--- D   = distancia (km)          — medida por GPS en tiempo real
+-- Da  = km en asfalto           — tramos GPS con asfalto seleccionado
+-- Dt  = km en tierra            — tramos GPS con tierra seleccionada
 --
 CREATE TABLE IF NOT EXISTS parametros_topograficos (
     id                      SERIAL PRIMARY KEY,
@@ -111,6 +112,8 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     chofer_id                    INTEGER NOT NULL,
 
     distancia_km                 NUMERIC(8, 3) NOT NULL,
+    km_asfalto                   NUMERIC(8, 3) NOT NULL DEFAULT 0,
+    km_tierra                    NUMERIC(8, 3) NOT NULL DEFAULT 0,
     tiempo_detencion_min         NUMERIC(8, 2) NOT NULL,
     tarifa_cobrada               NUMERIC(8, 2) NOT NULL,
 
@@ -127,6 +130,10 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     uuid                         UUID,
 
     CONSTRAINT viajes_chofer_uuid_key UNIQUE (chofer_id, uuid),
+    CONSTRAINT viajes_km_asfalto_check CHECK (km_asfalto >= 0),
+    CONSTRAINT viajes_km_tierra_check  CHECK (km_tierra >= 0),
+    CONSTRAINT viajes_km_por_superficie_check
+        CHECK (abs(km_asfalto + km_tierra - distancia_km) <= 0.01),
     CONSTRAINT viajes_chofer_misma_empresa_fk
         FOREIGN KEY (chofer_id, empresa_id) REFERENCES choferes(id, empresa_id)
 );
@@ -181,7 +188,7 @@ JOIN empresas e ON e.codigo = v.codigo
 ON CONFLICT (empresa_id, placa_vehiculo) DO NOTHING;
 
 INSERT INTO viajes_historial (
-    empresa_id, chofer_id, distancia_km, tiempo_detencion_min, tarifa_cobrada,
+    empresa_id, chofer_id, distancia_km, km_asfalto, km_tierra, tiempo_detencion_min, tarifa_cobrada,
     tipo_superficie, factor_altitud_aplicado, factor_superficie_aplicado,
     costo_base_aplicado, costo_minuto_aplicado,
     consumo_litros_aplicado, precio_combustible_aplicado,
@@ -190,23 +197,27 @@ INSERT INTO viajes_historial (
 SELECT
     c.empresa_id,
     c.id,
-    v.dist,
+    v.asf + v.tie,
+    v.asf,
+    v.tie,
     v.deten,
-    ROUND((v.dist * (p.costo_base_km + p.consumo_litros_km * p.precio_combustible_bs)
-           * p.factor_altitud * fr.valor + v.deten * p.costo_minuto_detencion)::numeric, 2),
-    v.sup, p.factor_altitud, fr.valor, p.costo_base_km, p.costo_minuto_detencion,
+    ROUND(((v.asf + v.tie * p.factor_superficie)
+           * (p.costo_base_km + p.consumo_litros_km * p.precio_combustible_bs)
+           * p.factor_altitud + v.deten * p.costo_minuto_detencion)::numeric, 2),
+    CASE WHEN v.tie = 0 THEN 'asfalto' WHEN v.asf = 0 THEN 'tierra' ELSE 'mixto' END,
+    p.factor_altitud, p.factor_superficie, p.costo_base_km, p.costo_minuto_detencion,
     p.consumo_litros_km, p.precio_combustible_bs,
     NOW() - (random() * interval '7 days')
 FROM choferes c
 JOIN parametros_topograficos p ON p.empresa_id = c.empresa_id
 CROSS JOIN (VALUES
-    (5.200, 12.00, 'asfalto'),
-    (2.100,  0.00, 'asfalto'),
-    (3.500,  8.50, 'tierra'),
-    (1.800,  5.00, 'asfalto'),
-    (4.200, 15.00, 'tierra')
-) AS v(dist, deten, sup)
-CROSS JOIN LATERAL (SELECT CASE WHEN v.sup = 'tierra' THEN p.factor_superficie ELSE 1.00 END AS valor) fr
+    (5.200, 0.000, 12.00),
+    (2.100, 0.000,  0.00),
+    (0.000, 3.500,  8.50),
+    (1.800, 0.000,  5.00),
+    (0.000, 4.200, 15.00),
+    (3.600, 1.400,  6.00)
+) AS v(asf, tie, deten)
 WHERE c.placa_vehiculo IN ('1234-KKK', '5678-ILL')
   AND NOT EXISTS (SELECT 1 FROM viajes_historial vh WHERE vh.chofer_id = c.id);
 

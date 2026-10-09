@@ -88,7 +88,8 @@ const HERRAMIENTAS = [
         {
             distancia_km: { type: 'number', description: 'Distancia en km (0.1 a 500).' },
             espera_min: { type: 'number', description: 'Minutos detenido (0 a 600, por defecto 0).' },
-            superficie: { type: 'string', enum: ['asfalto', 'tierra'], description: 'Por defecto, asfalto.' },
+            superficie: { type: 'string', enum: ['asfalto', 'tierra'], description: 'Si todo el viaje es de un tipo. Por defecto, asfalto.' },
+            km_tierra: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en tierra (el resto, asfalto).' },
         },
         ['distancia_km']),
 ];
@@ -173,24 +174,28 @@ const EJECUTORES = {
         return r.rows[0];
     },
 
-    // Misma fórmula que calculadora.dart: T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+    // Misma fórmula que calculadora.dart: T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td
     async calcular_tarifa(args, { empresaId }) {
         const D = numeroEnRango(args.distancia_km, 0.1, 500);
         const Td = numeroEnRango(args.espera_min ?? 0, 0, 600);
         if (D === null) return { error: 'distancia_km debe estar entre 0.1 y 500.' };
         if (Td === null) return { error: 'espera_min debe estar entre 0 y 600.' };
+        const Dt = args.km_tierra !== undefined ? numeroEnRango(args.km_tierra, 0, D)
+            : args.superficie === 'tierra' ? D : 0;
+        if (Dt === null) return { error: 'km_tierra debe estar entre 0 y distancia_km.' };
         const r = await pool.query(`SELECT * FROM parametros_topograficos WHERE empresa_id = $1`, [empresaId]);
         if (!r.rows.length) return { error: 'La empresa no tiene parámetros tarifarios.' };
         const p = r.rows[0];
         const [Cb, Cl, Pc, FH, Ct] = [p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
             p.factor_altitud, p.costo_minuto_detencion].map(parseFloat);
-        const superficie = args.superficie === 'tierra' ? 'tierra' : 'asfalto';
-        const FR = superficie === 'tierra' ? parseFloat(p.factor_superficie) : 1;
-        const recorrido = D * (Cb + Cl * Pc) * FH * FR;
+        const FR = parseFloat(p.factor_superficie);
+        const Da = D - Dt;
+        const superficie = Dt === 0 ? 'asfalto' : Da === 0 ? 'tierra' : 'mixto';
+        const recorrido = (Da + Dt * FR) * (Cb + Cl * Pc) * FH;
         const espera = Ct * Td;
         const r2 = (x) => Math.round(x * 100) / 100;
         return {
-            distancia_km: D, espera_min: Td, superficie,
+            distancia_km: D, km_asfalto: r2(Da), km_tierra: r2(Dt), espera_min: Td, superficie,
             parametros: { Cb, Cl, Pc, FH, FR, Ct },
             costo_recorrido: r2(recorrido), costo_espera: r2(espera), tarifa: r2(recorrido + espera),
         };

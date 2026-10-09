@@ -71,7 +71,7 @@ class PantallaPrueba extends StatefulWidget {
 
 class _PantallaPruebaState extends State<PantallaPrueba> {
   // ── GPS y métricas del viaje ───────────────────────────────────────────────
-  double distanciaTotalKm = 0.0;
+  RecorridoPorSuperficie recorrido = RecorridoPorSuperficie();
   Position? posicionAnterior;
   bool enViaje = false;
   StreamSubscription<Position>? suscripcionGPS;
@@ -86,8 +86,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   String get _moneda => _empresa?.monedaSimbolo ?? 'Bs';
   bool _cargandoParams = true;
 
-  // Factor de superficie elegido por el conductor (1.0 asfalto / 2.5 tierra)
-  double fSuperficie = 1.0;
+  Superficie superficie = Superficie.asfalto;
 
   @override
   void initState() {
@@ -241,7 +240,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
 
     MotorGPS.resetContador();
     setState(() {
-      distanciaTotalKm = 0.0;
+      recorrido = RecorridoPorSuperficie();
       _detector = DetectorDetencion(
         inicio: DateTime.now(),
         velocidadInicial: posInicial.speed,
@@ -268,9 +267,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           velocidadReportada: nuevaPosicion.speed,
           metros: metros,
         );
-        setState(() {
-          distanciaTotalKm += (metros / 1000);
-        });
+        setState(() => recorrido.sumar(metros / 1000, superficie));
       }
       posicionAnterior = nuevaPosicion;
     });
@@ -289,29 +286,22 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     // Usar parámetros del servidor (o por defecto si no cargaron)
     final params = _params ?? ParametrosTopograficos.porDefecto;
 
-    double tarifaFinal = calcularTarifa(
-      distanciaKm: distanciaTotalKm,
-      costoBaseKm: params.costoBaseKm,
-      consumoLitrosKm: params.consumoLitrosKm, // ← agregar
-      precioCombustibleBs: params.precioCombustibleBs, // ← agregar
-      factorAltitud: params.factorAltitud,
-      factorSuperficie: fSuperficie,
-      tiempoDetencionMin: minutosDetencion,
-      costoMinutoDetencion: params.costoMinutoDetencion,
-    );
+    final tarifaFinal = recorrido.tarifa(params, minutosDetencion);
 
     final idChofer = await Sesion.choferId();
 
     await BaseDatosLocal.instancia.insertarViaje({
       'chofer_id': idChofer,
-      'distancia_km': distanciaTotalKm,
+      'distancia_km': recorrido.kmTotal,
+      'km_asfalto': recorrido.kmAsfalto,
+      'km_tierra': recorrido.kmTierra,
       'tiempo_detencion_min': minutosDetencion,
       'factor_altitud': params.factorAltitud,
-      'factor_superficie': fSuperficie,
+      'factor_superficie': params.factorSuperficie,
       'tarifa_total': tarifaFinal,
       'estado_sincronizacion': 0,
       'fecha_hora': DateTime.now().toIso8601String(),
-      'tipo_superficie': fSuperficie == 1.0 ? 'asfalto' : 'tierra',
+      'tipo_superficie': recorrido.tipo,
       'costo_base_km': params.costoBaseKm,
       'costo_minuto_detencion': params.costoMinutoDetencion,
       'consumo_litros_km': params.consumoLitrosKm,
@@ -320,7 +310,7 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
 
     setState(() {
       enViaje = false;
-      fSuperficie = 1.0;
+      superficie = Superficie.asfalto;
     });
 
     if (mounted) {
@@ -347,16 +337,8 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   Widget build(BuildContext context) {
     final params = _params ?? ParametrosTopograficos.porDefecto;
 
-    double tarifaEnVivo = calcularTarifa(
-      distanciaKm: distanciaTotalKm,
-      costoBaseKm: params.costoBaseKm,
-      consumoLitrosKm: params.consumoLitrosKm, // ← agregar
-      precioCombustibleBs: params.precioCombustibleBs, // ← agregar
-      factorAltitud: params.factorAltitud,
-      factorSuperficie: fSuperficie,
-      tiempoDetencionMin: minutosDetencion,
-      costoMinutoDetencion: params.costoMinutoDetencion,
-    );
+    final tarifaEnVivo = recorrido.tarifa(params, minutosDetencion);
+    final enTierra = superficie == Superficie.tierra;
 
     return Scaffold(
       backgroundColor: enViaje ? Colors.black : Colors.grey[100],
@@ -485,13 +467,22 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                         ),
                       ),
                       Text(
-                        '${distanciaTotalKm.toStringAsFixed(3)} KM',
+                        '${recorrido.kmTotal.toStringAsFixed(3)} KM',
                         style: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
                           color: enViaje ? Colors.white : Colors.black87,
                         ),
                       ),
+                      if (recorrido.kmTierra > 0)
+                        Text(
+                          'Asfalto ${recorrido.kmAsfalto.toStringAsFixed(2)} km · '
+                          'Tierra ${recorrido.kmTierra.toStringAsFixed(2)} km',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: enViaje ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
                       const SizedBox(height: 20),
                       Text(
                         'TIPO DE RUTA',
@@ -510,15 +501,16 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                               'ASFALTO',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            selected: fSuperficie == 1.0,
-                            onSelected: (_) =>
-                                setState(() => fSuperficie = 1.0),
+                            selected: !enTierra,
+                            onSelected: (_) => setState(
+                              () => superficie = Superficie.asfalto,
+                            ),
                             selectedColor: Colors.blue[800],
                             backgroundColor: enViaje
                                 ? Colors.grey[800]
                                 : Colors.grey[200],
                             labelStyle: TextStyle(
-                              color: fSuperficie == 1.0
+                              color: !enTierra
                                   ? Colors.white
                                   : (enViaje ? Colors.grey[300] : Colors.black),
                             ),
@@ -529,16 +521,16 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                               'TIERRA / COMPLEJO',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            selected: fSuperficie != 1.0,
+                            selected: enTierra,
                             onSelected: (_) => setState(
-                              () => fSuperficie = params.factorSuperficie,
+                              () => superficie = Superficie.tierra,
                             ),
                             selectedColor: Colors.orange[800],
                             backgroundColor: enViaje
                                 ? Colors.grey[800]
                                 : Colors.grey[200],
                             labelStyle: TextStyle(
-                              color: fSuperficie != 1.0
+                              color: enTierra
                                   ? Colors.white
                                   : (enViaje ? Colors.grey[300] : Colors.black),
                             ),
