@@ -3,6 +3,11 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [Sin publicar]
+
+### Añadido
+- **Asistente de IA en el panel**: chat que responde preguntas sobre viajes, recaudación, choferes y tarifas con los datos de la empresa. Usa Groq (plan gratuito) o cualquier API compatible con OpenAI, como Ollama local. El modelo solo elige entre consultas fijas que filtran por la empresa del token; cada pregunta queda en la bitácora y hay un límite de 20 preguntas cada 10 minutos por administrador.
+
 ## [1.0.0] - 2026-10-08
 
 Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro offline-first, fórmula tarifaria v3, panel de parámetros y despliegue con Docker y ngrok).

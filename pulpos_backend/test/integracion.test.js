@@ -218,6 +218,52 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.deepEqual([vacio.desde, vacio.hasta, vacio.resumen.viajes, vacio.por_dia.length, vacio.choferes.length], ['2020-01-01', '2020-01-01', 0, 1, 0]);
     });
 
+    test('asistente: el SQL de cada herramienta corre en PostgreSQL y no mezcla empresas', async () => {
+        const asistente = require('../asistente');
+        const { rows: [{ id }] } = await pool.query(`SELECT id FROM empresas WHERE codigo = 'pulpos'`);
+        const hoy = asistente.hoyEn('America/La_Paz');
+        const ctx = { empresaId: id, hoy };
+        const ejecutar = (nombre, args = {}) => asistente.ejecutarHerramienta(nombre, JSON.stringify(args), ctx);
+
+        const resumen = await ejecutar('resumen_periodo');
+        const real = (await pool.query(
+            `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total
+             FROM viajes_historial WHERE empresa_id = $1 AND fecha_hora_viaje >= $2::date AND fecha_hora_viaje < $3::date + 1`,
+            [id, resumen.desde, resumen.hasta])).rows[0];
+        assert.ok(real.n >= 5);
+        assert.deepEqual([resumen.viajes, resumen.recaudado], [real.n, real.total]);
+
+        for (const criterio of ['recaudado', 'viajes', 'km']) {
+            const r = await ejecutar('ranking_choferes', { criterio });
+            assert.deepEqual(r.choferes.map(c => c.placa), ['1234-KKK']);
+        }
+        assert.deepEqual((await ejecutar('detalle_chofer', { busqueda: '1234' })).choferes.map(c => c.placa), ['1234-KKK']);
+        assert.deepEqual((await ejecutar('detalle_chofer', { busqueda: '5678' })).choferes, []);
+        assert.ok((await ejecutar('choferes_inactivos', { dias: 365 })).choferes.every(c => c.placa !== '5678-ILL'));
+        const flota = await ejecutar('estado_flota');
+        assert.ok(flota.registrados >= 1 && flota.habilitados <= flota.registrados);
+        const tarifa = await ejecutar('calcular_tarifa', { distancia_km: 5, espera_min: 10 });
+        assert.ok(tarifa.tarifa > 0 && Number.isFinite(tarifa.tarifa));
+
+        const llamarOriginal = asistente.llamarModelo;
+        const claveOriginal = process.env.LLM_API_KEY;
+        process.env.LLM_API_KEY = 'prueba';
+        const guion = [
+            { tool_calls: [{ id: 'a', function: { name: 'ranking_choferes', arguments: '{}' } }] },
+            { content: 'El primero es 1234-KKK.' },
+        ];
+        asistente.llamarModelo = async () => guion.shift();
+        try {
+            const token = await loginAdmin('admin@pulpos.bo');
+            const r = await pedir('POST', '/api/admin/asistente', { token, body: { mensajes: [{ rol: 'usuario', texto: '¿Quién lidera?' }] } });
+            assert.equal(r.status, 200);
+            assert.deepEqual(r.json.consultas, ['ranking_choferes']);
+        } finally {
+            asistente.llamarModelo = llamarOriginal;
+            if (claveOriginal === undefined) delete process.env.LLM_API_KEY; else process.env.LLM_API_KEY = claveOriginal;
+        }
+    });
+
     test('la posición se valida contra el radio de operación de cada empresa', async () => {
         const { token } = await loginChofer('pulpos', '1234-KKK');
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -16.52, lng: -68.20 } })).status, 200);

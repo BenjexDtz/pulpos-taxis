@@ -78,10 +78,16 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - Manejador de errores global al final de `app.js` que responde JSON genérico; no devolver stack traces.
 - Una ruta nueva va en el router de su área (`rutas/*.js`, con la ruta completa `/api/...`); un área nueva se registra en `app.js`. Los módulos llaman a `pool.query` y `auditoria.registrar` a través del objeto del módulo (no desestructurar): los tests los reemplazan.
 
+### Asistente de IA (`pulpos_backend/asistente.js`, `rutas/asistente.js`, `componentes/Asistente.jsx`)
+- `POST /api/admin/asistente` (solo gerente/supervisor; el superadmin no lo ve). API compatible con OpenAI: Groq por defecto (`LLM_API_KEY`, `LLM_URL`, `LLM_MODELO`); cambiando URL y modelo sirve Ollama local. Sin `LLM_API_KEY` responde 503.
+- El modelo **nunca escribe SQL**: elige entre herramientas fijas (`HERRAMIENTAS`/`EJECUTORES`) con consultas parametrizadas. `empresaId` y `hoy` (en `empresas.zona_horaria`) los pone el servidor en el contexto; los argumentos del modelo se validan como entrada externa y un error vuelve al modelo como `{error}`. Herramienta nueva: añadirla a ambos, filtrar por `$1 = empresa_id` y cubrirla en el test de aislamiento del asistente.
+- El cliente envía el historial (`{rol: 'usuario'|'asistente', texto}`, máx. 12); el prompt de sistema lo arma solo el servidor. Máx. 5 rondas de herramientas, límite de 20 preguntas/10 min por administrador. Cada pregunta se audita (`asistente.consulta`) con las herramientas usadas.
+- La ruta llama a `asistente.llamarModelo` por el objeto del módulo: los tests lo reemplazan por un guion.
+
 ### Fórmula tarifaria (v3) — está duplicada, mantener sincronizada
 `T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td`
 
-Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js`, y la semilla de `init.sql`. Un cambio de fórmula toca los cuatro y los tests de `test/calculadora_test.dart`.
+Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js`, la herramienta `calcular_tarifa` de `pulpos_backend/asistente.js` y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
 
 Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y en los `min`/`max` de los inputs del panel: mantenerlos iguales. `pg` devuelve `NUMERIC` como **string**: parsear siempre. Las columnas conservan el sufijo `_bs` por compatibilidad, pero el símbolo mostrado es `empresas.moneda_simbolo`.
 

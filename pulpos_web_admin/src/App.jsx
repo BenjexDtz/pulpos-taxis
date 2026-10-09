@@ -19,6 +19,7 @@ const Empresa = lazy(() => import('./vistas/Empresa.jsx'));
 const Plataforma = lazy(() => import('./vistas/Plataforma.jsx'));
 const Auditoria = lazy(() => import('./vistas/Auditoria.jsx'));
 const Seguridad = lazy(() => import('./vistas/Seguridad.jsx'));
+const Asistente = lazy(() => import('./componentes/Asistente.jsx'));
 
 const urlServidor = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 const MARCA_PLATAFORMA = '#465fff';
@@ -195,6 +196,7 @@ export default function App() {
           )}
         </Routes>
         </Suspense>
+        {!esSuperadmin && <Suspense fallback={null}><Asistente {...api} /></Suspense>}
       </Diseno>
     </ProveedorBarra>
   );
