@@ -274,7 +274,7 @@ describe('Sincronización de viajes', () => {
         assert.equal(r.status, 201);
         assert.equal(r.json.verificacion, 'ok');
         assert.deepEqual(insert().params.slice(18, 20), [0.1, 0.38]);
-        assert.deepEqual(insert().params.slice(20), ['ok', null, null, null, null]);
+        assert.deepEqual(insert().params.slice(20), ['ok', null, null, null, null, null]);
         const pts = insertPuntos();
         assert.deepEqual(pts.params[0], 12);
         assert.deepEqual(pts.params.slice(1, 2), [[0, 1, 2]]);
@@ -291,9 +291,19 @@ describe('Sincronización de viajes', () => {
         const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: {
             ...conParametros, distancia_km: 0, km_asfalto: 0, km_tierra: 0, tarifa_cobrada: 0, vibracion_referencia: 0.5, ruta: lisa } });
         assert.equal(r.status, 201);
-        assert.deepEqual(insert().params.slice(22), [0.5, 0.5, 'dudosa']);
+        assert.deepEqual(insert().params.slice(22, 25), [0.5, 0.5, 'dudosa']);
         assert.deepEqual(insertPuntos().params[6], [null, ...Array(11).fill(0.5)]);
         assert.match(eventos.find(e => e.accion === 'viaje.sincronizar').detalle, /Superficie dudosa/);
+    });
+
+    test('tarifa sin taxímetro: opcional; un valor inválido se descarta sin rechazar el viaje', async () => {
+        responder = (sql) => sql.includes('INSERT INTO viajes_historial') ? { rows: [{ id_servidor: 17 }] } : { rows: [] };
+        for (const [enviado, guardado] of [[25, 25], ['30.5', 30.5], [-3, null], [0, null], ['diez', null], [99999, null], [undefined, null]]) {
+            consultas = [];
+            const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...viaje, tarifa_tradicional: enviado } });
+            assert.equal(r.status, 201);
+            assert.equal(insert().params[25], guardado, String(enviado));
+        }
     });
 
     test('tarifa que no sale de la fórmula: se guarda igual, marcada como diferencia y auditada', async () => {
@@ -375,20 +385,20 @@ describe('Posición GPS', () => {
 });
 
 describe('Estadísticas del tablero', () => {
-    test('las cinco consultas usan la empresa del token, nunca la de la URL', async () => {
+    test('las seis consultas usan la empresa del token, nunca la de la URL', async () => {
         responder = (sql) => sql.includes('AS resumen')
             ? { rows: [{ desde: '2026-09-08', hasta: '2026-10-07', resumen: { viajes: 3 }, anterior: { viajes: 1 } }] }
             : { rows: [] };
         const r = await pedir('GET', '/api/admin/estadisticas?empresa_id=99', { token: TOKEN_ADMIN });
         assert.equal(r.status, 200);
         const datos = consultasDeDatos();
-        assert.equal(datos.length, 5);
+        assert.equal(datos.length, 6);
         for (const c of datos) {
             assert.match(c.sql, /empresa_id = \$1/);
             assert.deepEqual(c.params, [2, null, null]);
         }
         assert.deepEqual(Object.keys(r.json).sort(),
-            ['anterior', 'choferes', 'desde', 'hasta', 'horas', 'por_dia', 'resumen', 'superficie']);
+            ['anterior', 'choferes', 'comparacion', 'desde', 'hasta', 'horas', 'por_dia', 'resumen', 'superficie']);
     });
 
     test('pasa las fechas a la consulta y rechaza fechas inválidas o rangos de más de un año', async () => {

@@ -53,6 +53,12 @@ class PuntoRuta {
   ];
 }
 
+// Acepta coma decimal; null si está vacío, no es número o no es positivo
+double? leerMonto(String texto) {
+  final n = double.tryParse(texto.trim().replaceAll(',', '.'));
+  return n != null && n > 0 && n <= 10000 ? n : null;
+}
+
 Map<String, dynamic> viajeParaServidor(
   Map<String, dynamic> viaje, {
   List<PuntoRuta> ruta = const [],
@@ -78,6 +84,7 @@ Map<String, dynamic> viajeParaServidor(
     'factor_superficie_aplicado': factorSuperficie,
     'factor_empedrado_aplicado': viaje['factor_empedrado'],
     'vibracion_referencia': viaje['vibracion_referencia'],
+    'tarifa_tradicional': viaje['tarifa_tradicional'],
     'costo_base_aplicado': viaje['costo_base_km'],
     'costo_minuto_aplicado': viaje['costo_minuto_detencion'],
     'consumo_litros_aplicado': viaje['consumo_litros_km'],

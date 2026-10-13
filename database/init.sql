@@ -145,11 +145,15 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     vibracion_irregular          NUMERIC(5, 2),
     superficie_respaldo          VARCHAR(12),
 
+    -- Opcional: lo que el chofer habría cobrado negociando de palabra (comparación con el sistema)
+    tarifa_tradicional           NUMERIC(8, 2),
+
     CONSTRAINT viajes_chofer_uuid_key UNIQUE (chofer_id, uuid),
     CONSTRAINT viajes_verificacion_check
         CHECK (verificacion IN ('ok', 'sin_ruta', 'diferencia', 'sin_verificar')),
     CONSTRAINT viajes_superficie_respaldo_check
         CHECK (superficie_respaldo IN ('respaldada', 'dudosa', 'sin_datos')),
+    CONSTRAINT viajes_tarifa_tradicional_check CHECK (tarifa_tradicional > 0),
     CONSTRAINT viajes_km_asfalto_check CHECK (km_asfalto >= 0),
     CONSTRAINT viajes_km_tierra_check  CHECK (km_tierra >= 0),
     CONSTRAINT viajes_km_empedrado_check CHECK (km_empedrado >= 0),

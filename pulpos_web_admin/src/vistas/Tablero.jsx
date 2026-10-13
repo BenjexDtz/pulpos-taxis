@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Activity, Car, Clock, Coins, Download, Flame, Layers, MapPinned, RefreshCw, Route, Search, Trophy, TrendingUp } from 'lucide-react';
+import { Activity, Car, Clock, Coins, Download, Flame, Layers, MapPinned, RefreshCw, Route, Scale, Search, Trophy, TrendingUp } from 'lucide-react';
 import Tarjeta from '../componentes/ui/Tarjeta.jsx';
 import Insignia from '../componentes/ui/Insignia.jsx';
 import Mensaje from '../componentes/Mensaje.jsx';
@@ -10,6 +10,7 @@ import GraficoRecaudacion from '../componentes/tablero/GraficoRecaudacion.jsx';
 import GraficoSuperficie from '../componentes/tablero/GraficoSuperficie.jsx';
 import RankingChoferes from '../componentes/tablero/RankingChoferes.jsx';
 import MapaCalorHoras from '../componentes/tablero/MapaCalorHoras.jsx';
+import ComparacionTradicional from '../componentes/tablero/ComparacionTradicional.jsx';
 import { botonIcono, botonSecundario, campo, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
 import {
   consultaFechas, desgloseKm, fechaLocal, formatoMoneda, formatoNumero, RESPALDO_SUPERFICIE, resumenFlota, SUPERFICIES,
@@ -131,6 +132,10 @@ export default function Tablero({
         </Tarjeta>
         <Tarjeta className="col-span-12 xl:col-span-7" icono={Flame} titulo="Horas pico" subtitulo="Viajes por día de la semana y hora">
           <MapaCalorHoras horas={estadisticas?.horas ?? []} />
+        </Tarjeta>
+        <Tarjeta className="col-span-12" icono={Scale} titulo="Taxímetro vs. negociación de palabra"
+          subtitulo="Tarifa del sistema frente a lo que el chofer habría cobrado sin taxímetro">
+          <ComparacionTradicional datos={estadisticas?.comparacion ?? []} moneda={m} />
         </Tarjeta>
       </div>
 

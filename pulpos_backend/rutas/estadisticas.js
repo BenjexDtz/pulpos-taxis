@@ -35,7 +35,7 @@ router.get('/api/admin/estadisticas', verificarToken, soloAdmin, async (req, res
         return res.status(400).json({ error: `⚠️ El rango no puede superar ${DIAS_MAXIMOS} días.` });
 
     const params = [req.empresa.id, desde, hasta];
-    const [periodo, porDia, choferes, horas, superficie] = await Promise.all([
+    const [periodo, porDia, choferes, horas, superficie, comparacion] = await Promise.all([
         pool.query(`${RANGO}
             SELECT r.d::text AS desde, r.h::text AS hasta,
                    (SELECT ${TOTALES} FROM viajes_historial v WHERE ${EN_RANGO}) AS resumen,
@@ -73,6 +73,18 @@ router.get('/api/admin/estadisticas', verificarToken, soloAdmin, async (req, res
             CROSS JOIN LATERAL (VALUES ('asfalto', v.km_asfalto, 1.0), ('tierra', v.km_tierra, v.factor_superficie_aplicado),
                 ('empedrado', v.km_empedrado, v.factor_empedrado_aplicado)) s(tipo, km, fr)
             GROUP BY s.tipo HAVING sum(s.km) > 0 ORDER BY km DESC`, params),
+        // Tarifa del sistema frente a lo que el chofer habría cobrado de palabra (objetivo 4)
+        pool.query(`${RANGO}
+            SELECT CASE WHEN grouping(v.tipo_superficie) = 1 THEN 'total' ELSE v.tipo_superficie END AS tipo,
+                   count(*)::int AS viajes,
+                   avg(v.tarifa_cobrada)::float AS sistema,
+                   avg(v.tarifa_tradicional)::float AS tradicional,
+                   avg((v.tarifa_cobrada - v.tarifa_tradicional) / v.tarifa_tradicional * 100)::float AS diferencia_pct,
+                   avg(abs(v.tarifa_cobrada - v.tarifa_tradicional) / v.tarifa_tradicional * 100)::float AS diferencia_abs_pct,
+                   count(*) FILTER (WHERE v.tarifa_cobrada < v.tarifa_tradicional)::int AS sistema_menor
+            FROM rango r JOIN viajes_historial v ON ${EN_RANGO} AND v.tarifa_tradicional IS NOT NULL
+            GROUP BY GROUPING SETS ((v.tipo_superficie), ())
+            ORDER BY grouping(v.tipo_superficie) DESC, viajes DESC`, params),
     ]);
 
     res.json({
@@ -81,6 +93,7 @@ router.get('/api/admin/estadisticas', verificarToken, soloAdmin, async (req, res
         choferes: choferes.rows,
         horas: horas.rows,
         superficie: superficie.rows,
+        comparacion: comparacion.rows,
     });
 });
 

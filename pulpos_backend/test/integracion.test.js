@@ -251,6 +251,27 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal((await pedir('GET', '/api/admin/choferes', { token: gerente })).status, 200);
     });
 
+    test('estadísticas: comparan la tarifa del sistema con la que se habría cobrado sin taxímetro', async () => {
+        const { token } = await loginChofer('illimani', '5678-ILL');
+        const base = { tiempo_detencion_min: 0, fecha_hora_viaje: new Date().toISOString().slice(0, 19) };
+        for (const [km, cobrada, tradicional, tipo] of [[2, 10, 15, 'asfalto'], [3, 30, 20, 'tierra'], [1, 5, undefined, 'asfalto']])
+            assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+                ...base, distancia_km: km, tipo_superficie: tipo, tarifa_cobrada: cobrada, tarifa_tradicional: tradicional } })).status, 201);
+        const illimani = await loginAdmin('admin@illimani.bo');
+        const c = (await pedir('GET', '/api/admin/estadisticas', { token: illimani })).json.comparacion;
+        const total = c.find(x => x.tipo === 'total');
+        // (10 - 15) / 15 = -33,3 % y (30 - 20) / 20 = +50 %
+        assert.equal(total.viajes, 2);
+        assert.deepEqual([total.sistema, total.tradicional, total.sistema_menor], [20, 17.5, 1]);
+        assert.ok(Math.abs(total.diferencia_pct - (50 - 100 / 3) / 2) < 1e-9);
+        assert.ok(Math.abs(total.diferencia_abs_pct - (50 + 100 / 3) / 2) < 1e-9);
+        assert.deepEqual(c.filter(x => x.tipo !== 'total').map(x => [x.tipo, x.viajes]).sort(), [['asfalto', 1], ['tierra', 1]]);
+
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const p = (await pedir('GET', '/api/admin/estadisticas', { token: pulpos })).json.comparacion;
+        assert.equal(p.find(x => x.tipo === 'total').viajes, 0);
+    });
+
     test('estadísticas: cuadran con los viajes de la base y no mezclan empresas', async () => {
         const [pulpos, illimani] = await Promise.all([loginAdmin('admin@pulpos.bo'), loginAdmin('admin@illimani.bo')]);
         const e = (await pedir('GET', '/api/admin/estadisticas', { token: pulpos })).json;

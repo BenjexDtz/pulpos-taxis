@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 9,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -49,7 +49,8 @@ class BaseDatosLocal {
         km_tierra REAL,
         km_empedrado REAL,
         factor_empedrado REAL,
-        vibracion_referencia REAL
+        vibracion_referencia REAL,
+        tarifa_tradicional REAL
       )
     ''');
     await _crearTablaPuntos(db);
@@ -113,6 +114,9 @@ class BaseDatosLocal {
         await db.execute('ALTER TABLE puntos_viaje ADD COLUMN vibracion REAL');
       }
     }
+    if (oldVersion < 9) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN tarifa_tradicional REAL');
+    }
   }
 
   // Viaje y ruta en una sola transacción: o se guardan los dos o ninguno
@@ -131,6 +135,17 @@ class BaseDatosLocal {
       await lote.commit(noResult: true);
       return id;
     });
+  }
+
+  // Solo mientras el viaje no se haya enviado
+  Future<void> guardarTarifaTradicional(int id, double monto) async {
+    final db = await instancia.database;
+    await db.update(
+      'viajes',
+      {'tarifa_tradicional': monto},
+      where: 'id = ? AND estado_sincronizacion = 0',
+      whereArgs: [id],
+    );
   }
 
   Future<List<PuntoRuta>> puntosDeViaje(String? uuid) async {

@@ -100,6 +100,8 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   StreamSubscription<AccelerometerEvent>? _suscripcionSensor;
   Sugerencia _sugerencia = Sugerencia.ninguna;
   DateTime _ultimoPunto = DateTime.now();
+  // Mientras el chofer responde, el viaje no se sincroniza para no perder el monto
+  bool _preguntandoMonto = false;
 
   // ── Parámetros topográficos (desde servidor) ───────────────────────────────
   ParametrosTopograficos? _params;
@@ -153,7 +155,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
 
   // Al terminar un viaje, al abrir la app y cada 2 minutos; sin red no avisa nada
   Future<void> _sincronizarEnSegundoPlano() async {
-    if (enViaje) return;
+    if (enViaje || _preguntandoMonto) return;
     final token = await Sesion.tokenValido();
     final choferId = await Sesion.choferId();
     if (token == null || choferId == null) return;
@@ -368,7 +370,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
 
     final idChofer = await Sesion.choferId();
 
-    await BaseDatosLocal.instancia.insertarViaje(ruta: _ruta, {
+    final idViaje = await BaseDatosLocal.instancia.insertarViaje(ruta: _ruta, {
       'chofer_id': idChofer,
       'distancia_km': recorrido.kmTotal,
       'km_asfalto': recorrido.kmAsfalto,
@@ -394,7 +396,14 @@ class _PantallaPruebaState extends State<PantallaPrueba>
       enViaje = false;
       superficie = Superficie.asfalto;
       _sugerencia = Sugerencia.ninguna;
+      _preguntandoMonto = true;
     });
+
+    final tradicional = await _preguntarTarifaTradicional(tarifaFinal);
+    if (tradicional != null) {
+      await BaseDatosLocal.instancia.guardarTarifaTradicional(idViaje, tradicional);
+    }
+    _preguntandoMonto = false;
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -419,6 +428,55 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     relojDetencion?.cancel();
     _suscripcionSensor?.cancel();
     super.dispose();
+  }
+
+  // Opcional: sirve para comparar la tarifa con la negociación de palabra
+  Future<double?> _preguntarTarifaTradicional(double tarifa) async {
+    if (!mounted) return null;
+    final controlador = TextEditingController();
+    final monto = await showDialog<double>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text('Total: $_moneda ${tarifa.toStringAsFixed(2)}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '¿Cuánto habrías cobrado este viaje sin el taxímetro? '
+              'Es opcional y solo sirve para comparar.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controlador,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                prefixText: '$_moneda ',
+                hintText: 'Ej. 15',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OMITIR'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              ctx,
+              leerMonto(controlador.text),
+            ),
+            child: const Text('GUARDAR'),
+          ),
+        ],
+      ),
+    );
+    controlador.dispose();
+    return monto;
   }
 
   void _elegirSuperficie(Superficie s) => setState(() {

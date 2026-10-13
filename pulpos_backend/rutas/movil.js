@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const { verificarToken, soloChofer } = require('../middlewares/autenticacion');
 const { auditar, enTransaccion } = require('../utilidades');
-const { distanciaKm, kmPorSuperficie } = require('../validacion');
+const { distanciaKm, kmPorSuperficie, numeroEnRango } = require('../validacion');
 const { leerRuta, verificarViaje } = require('../verificacion');
 
 const router = express.Router();
@@ -37,8 +37,8 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 consumo_litros_aplicado, precio_combustible_aplicado,
                 fecha_hora_viaje, uuid,
                 distancia_ruta_km, tarifa_calculada, verificacion, verificacion_detalle,
-                vibracion_referencia, vibracion_irregular, superficie_respaldo
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+                vibracion_referencia, vibracion_irregular, superficie_respaldo, tarifa_tradicional
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
              ON CONFLICT (chofer_id, uuid) DO NOTHING
              RETURNING *`,
             [
@@ -54,6 +54,8 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 fecha_hora_viaje, uuid,
                 v.distancia_ruta_km, v.tarifa_calculada, v.estado, v.detalle,
                 v.vibracion_referencia, v.vibracion_irregular, v.superficie_respaldo,
+                // Dato opcional para comparar: si llega mal se descarta, el viaje no
+                numeroEnRango(b.tarifa_tradicional, 0.01, 10000),
             ]
         );
         const nuevo = r.rows[0];

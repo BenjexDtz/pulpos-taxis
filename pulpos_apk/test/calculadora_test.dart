@@ -319,4 +319,19 @@ void main() {
       expect(PuntoRuta.desdeSqlite(fila).superficie, Superficie.empedrado);
     });
   });
+
+  group('tarifa sin taxímetro', () {
+    test('leerMonto acepta coma o punto y descarta lo que no es un monto', () {
+      expect(leerMonto('15'), 15);
+      expect(leerMonto(' 12,50 '), 12.5);
+      for (final malo in ['', 'diez', '0', '-3', '20000']) {
+        expect(leerMonto(malo), isNull, reason: malo);
+      }
+    });
+
+    test('se envía solo si el chofer la respondió', () {
+      expect(viajeParaServidor({'tarifa_tradicional': 15.0})['tarifa_tradicional'], 15.0);
+      expect(viajeParaServidor({'tarifa_tradicional': null}).containsKey('tarifa_tradicional'), isFalse);
+    });
+  });
 }
