@@ -149,9 +149,10 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
 
     test('viaje con ruta: el servidor la mide, verifica la tarifa y solo la empresa del viaje la ve', async () => {
         const { token } = await loginChofer('pulpos', '1234-KKK');
-        // 2 km hacia el este: 30 tramos en asfalto y 10 en tierra, de 50 m cada uno
+        // 2 km hacia el este: 30 tramos en asfalto y 10 en tierra, de 50 m cada uno; la tierra vibra el triple
         const paso = 0.05 / distanciaKm(-16.5, -68.19, -16.5, -68.18) * 0.01;
-        const ruta = Array.from({ length: 41 }, (_, i) => [-16.5, -68.19 + i * paso, i * 5, i > 30 ? 1 : 0]);
+        const ruta = Array.from({ length: 41 }, (_, i) =>
+            [-16.5, -68.19 + i * paso, i * 5, i > 30 ? 1 : 0, ...(i === 0 ? [] : [i > 30 ? 1.5 : 0.5])]);
         const body = {
             distancia_km: 2, km_asfalto: 1.5, km_tierra: 0.5, tiempo_detencion_min: 0, tarifa_cobrada: 10.38,
             costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
@@ -167,6 +168,9 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal(detalle.puntos.length, 41);
         assert.deepEqual([detalle.viaje.verificacion, detalle.viaje.distancia_ruta_km, detalle.viaje.tarifa_calculada], ['ok', '2.000', '10.38']);
         assert.equal(detalle.puntos.filter(p => p.superficie === 'tierra').length, 10);
+        assert.deepEqual([detalle.puntos[0].vibracion, detalle.puntos[40].vibracion], [null, 1.5]);
+        assert.deepEqual([detalle.viaje.superficie_respaldo, detalle.viaje.vibracion_referencia, detalle.viaje.vibracion_irregular],
+            ['respaldada', '0.50', '1.50']);
         const fila = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json.find(x => x.id === r.json.id_servidor);
         assert.equal(fila.tiene_ruta, true);
 

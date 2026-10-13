@@ -36,8 +36,9 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 costo_base_aplicado, costo_minuto_aplicado,
                 consumo_litros_aplicado, precio_combustible_aplicado,
                 fecha_hora_viaje, uuid,
-                distancia_ruta_km, tarifa_calculada, verificacion, verificacion_detalle
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                distancia_ruta_km, tarifa_calculada, verificacion, verificacion_detalle,
+                vibracion_referencia, vibracion_irregular, superficie_respaldo
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
              ON CONFLICT (chofer_id, uuid) DO NOTHING
              RETURNING *`,
             [
@@ -52,15 +53,17 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 b.precio_combustible_aplicado ?? p.precio_combustible_bs,
                 fecha_hora_viaje, uuid,
                 v.distancia_ruta_km, v.tarifa_calculada, v.estado, v.detalle,
+                v.vibracion_referencia, v.vibracion_irregular, v.superficie_respaldo,
             ]
         );
         const nuevo = r.rows[0];
         if (nuevo && ruta) await cliente.query(
-            `INSERT INTO viajes_puntos (viaje_id, orden, lat, lng, segundos, superficie)
-             SELECT $1, t.orden, t.lat, t.lng, t.segundos, t.superficie
-             FROM unnest($2::int[], $3::float8[], $4::float8[], $5::int[], $6::text[]) AS t(orden, lat, lng, segundos, superficie)`,
+            `INSERT INTO viajes_puntos (viaje_id, orden, lat, lng, segundos, superficie, vibracion)
+             SELECT $1, t.orden, t.lat, t.lng, t.segundos, t.superficie, t.vibracion
+             FROM unnest($2::int[], $3::float8[], $4::float8[], $5::int[], $6::text[], $7::real[])
+                  AS t(orden, lat, lng, segundos, superficie, vibracion)`,
             [nuevo.id_servidor, ruta.map((_, i) => i), ruta.map(x => x.lat), ruta.map(x => x.lng),
-             ruta.map(x => x.segundos), ruta.map(x => x.superficie)]
+             ruta.map(x => x.segundos), ruta.map(x => x.superficie), ruta.map(x => x.vibracion)]
         );
         return nuevo;
     });
@@ -75,7 +78,11 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
     }
     await auditar(req, {
         accion: 'viaje.sincronizar', entidad: 'viajes_historial', entidad_id: viaje.id_servidor, datos_despues: viaje,
-        detalle: v.estado === 'diferencia' ? `Verificación: ${v.detalle}` : undefined,
+        detalle: [
+            v.estado === 'diferencia' && `Verificación: ${v.detalle}`,
+            v.superficie_respaldo === 'dudosa' &&
+                `Superficie dudosa: lo marcado como tierra/empedrado vibró ${v.vibracion_irregular} m/s² frente a ${v.vibracion_referencia} del asfalto`,
+        ].filter(Boolean).join('. ') || undefined,
     });
     res.status(201).json({ success: true, id_servidor: viaje.id_servidor, verificacion: v.estado });
 });

@@ -1,7 +1,11 @@
-const { distanciaKm, SUPERFICIES } = require('./validacion');
+const { distanciaKm, numeroEnRango, SUPERFICIES } = require('./validacion');
 
 const MAX_PUNTOS = 20000;
 const TOLERANCIA_TARIFA = 0.02;
+const MAX_VIBRACION = 50;
+// Lecturas mínimas para comparar y cuánto más debe vibrar lo marcado como irregular
+const MIN_LECTURAS = 10;
+const RAZON_IRREGULAR = 1.5;
 
 const redondear = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 
@@ -9,18 +13,20 @@ const redondear = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 const tarifaV4 = ({ km_asfalto, km_tierra, km_empedrado = 0, Cb, Cl, Pc, FH, FR, FE = 1, Ct, Td }) =>
     (km_asfalto + km_tierra * FR + km_empedrado * FE) * (Cb + Cl * Pc) * FH + Ct * Td;
 
-// La app envía [[lat, lng, segundos desde el inicio, superficie]] con superficie 0 = asfalto, 1 = tierra, 2 = empedrado
+// La app envía [[lat, lng, segundos desde el inicio, superficie, vibración?]] con superficie
+// 0 = asfalto, 1 = tierra, 2 = empedrado y la vibración en m/s² (RMS) solo si la midió
 const leerRuta = (ruta) => {
     if (!Array.isArray(ruta) || ruta.length < 1 || ruta.length > MAX_PUNTOS) return null;
     const puntos = [];
     let segundosPrevios = 0;
     for (const p of ruta) {
-        if (!Array.isArray(p) || p.length !== 4) return null;
-        const [lat, lng, segundos, superficie] = p;
+        if (!Array.isArray(p) || p.length < 4 || p.length > 5) return null;
+        const [lat, lng, segundos, superficie, vibracion = null] = p;
         if (![lat, lng].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
         if (!Number.isInteger(segundos) || segundos < segundosPrevios || !Number.isInteger(superficie) || !SUPERFICIES[superficie]) return null;
+        if (vibracion !== null && !(Number.isFinite(vibracion) && vibracion >= 0 && vibracion <= MAX_VIBRACION)) return null;
         segundosPrevios = segundos;
-        puntos.push({ lat, lng, segundos, superficie: SUPERFICIES[superficie] });
+        puntos.push({ lat, lng, segundos, superficie: SUPERFICIES[superficie], vibracion });
     }
     return puntos;
 };
@@ -34,6 +40,30 @@ const resumenRuta = (puntos) => {
         km_asfalto: km.asfalto, km_tierra: km.tierra, km_empedrado: km.empedrado,
         km: km.asfalto + km.tierra + km.empedrado,
     };
+};
+
+const media = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
+
+// ¿Los tramos marcados como tierra o empedrado vibraron más que el asfalto? La referencia es el
+// asfalto del mismo viaje o, si hubo poco, la que la app aprendió para ese teléfono y vehículo.
+// No cambia la tarifa ni la verificación: es un indicio para que la gerencia revise.
+const evaluarSuperficie = (puntos, referenciaApp) => {
+    const tramos = puntos.slice(1);
+    const lecturas = (irregular) => tramos
+        .filter(p => p.vibracion !== null && (p.superficie !== 'asfalto') === irregular)
+        .map(p => p.vibracion);
+    const asfalto = lecturas(false);
+    const irregular = lecturas(true);
+    const referencia = asfalto.length >= MIN_LECTURAS ? media(asfalto) : referenciaApp;
+    const resultado = {
+        vibracion_referencia: referencia == null ? null : redondear(referencia),
+        vibracion_irregular: irregular.length ? redondear(media(irregular)) : null,
+        superficie_respaldo: null,
+    };
+    if (!tramos.some(p => p.superficie !== 'asfalto')) return resultado;
+    if (irregular.length < MIN_LECTURAS || !referencia) return { ...resultado, superficie_respaldo: 'sin_datos' };
+    const respaldada = media(irregular) >= RAZON_IRREGULAR * referencia;
+    return { ...resultado, superficie_respaldo: respaldada ? 'respaldada' : 'dudosa' };
 };
 
 // La app mide con otro radio terrestre y descarta lecturas imprecisas: se tolera 1 % o 20 m
@@ -61,8 +91,10 @@ const verificarViaje = ({ cuerpo, km, ruta }) => {
     }
 
     let distancia_ruta_km = null;
+    let superficie = { vibracion_referencia: null, vibracion_irregular: null, superficie_respaldo: null };
     if (ruta === null) problemas.push('la ruta llegó con formato inválido');
     else if (ruta !== undefined) {
+        superficie = evaluarSuperficie(ruta, numeroEnRango(cuerpo.vibracion_referencia, 0.05, 5));
         const r = resumenRuta(ruta);
         distancia_ruta_km = redondear(r.km, 3);
         const declarados = km.km_asfalto + km.km_tierra + km.km_empedrado;
@@ -76,7 +108,7 @@ const verificarViaje = ({ cuerpo, km, ruta }) => {
     const estado = problemas.length ? 'diferencia'
         : tarifa_calculada === null ? 'sin_verificar'
         : ruta === undefined ? 'sin_ruta' : 'ok';
-    return { estado, detalle: problemas.join('; ') || null, tarifa_calculada, distancia_ruta_km };
+    return { estado, detalle: problemas.join('; ') || null, tarifa_calculada, distancia_ruta_km, ...superficie };
 };
 
-module.exports = { tarifaV4, leerRuta, resumenRuta, verificarViaje, MAX_PUNTOS };
+module.exports = { tarifaV4, leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, MAX_PUNTOS, MIN_LECTURAS };

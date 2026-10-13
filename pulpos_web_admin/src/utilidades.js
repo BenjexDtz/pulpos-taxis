@@ -77,3 +77,18 @@ export const VERIFICACION = {
   diferencia: { texto: 'Diferencia', color: 'error', ayuda: 'La tarifa o los km no coinciden con lo que registró el GPS.' },
   sin_verificar: { texto: 'Sin verificar', color: 'neutro', ayuda: 'Viaje anterior a la verificación o sin los parámetros aplicados.' },
 };
+
+// Lo marcado como tierra o empedrado, ¿vibró como tal? (acelerómetro del teléfono; no cambia la tarifa)
+export const RESPALDO_SUPERFICIE = {
+  respaldada: { texto: 'Superficie respaldada', color: 'exito', ayuda: 'Lo marcado como tierra o empedrado vibró al menos 1,5 veces más que el asfalto.' },
+  dudosa: { texto: 'Superficie dudosa', color: 'aviso', ayuda: 'Lo marcado como tierra o empedrado vibró casi como el asfalto: conviene revisarlo con el chofer.' },
+  sin_datos: { texto: 'Sin datos de vibración', color: 'neutro', ayuda: 'Hubo pocas lecturas del acelerómetro para comparar.' },
+};
+
+// Color de un tramo según cuántas veces vibró más que el asfalto
+export const NIVELES_VIBRACION = [
+  { hasta: 1.5, texto: 'Liso (< 1,5×)', color: '#12b76a' },
+  { hasta: 2.5, texto: 'Irregular (1,5–2,5×)', color: '#f79009' },
+  { hasta: Infinity, texto: 'Muy irregular (> 2,5×)', color: '#f04438' },
+];
+export const COLOR_SIN_VIBRACION = '#98a2b3';

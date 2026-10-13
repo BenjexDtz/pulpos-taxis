@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api_sync.dart';
 import 'detector_detencion.dart';
 import 'motor_gps.dart';
@@ -8,6 +11,7 @@ import 'calculadora.dart';
 import 'base_datos.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_login.dart';
+import 'rugosidad.dart';
 import 'sesion.dart';
 import 'sincronizador.dart';
 
@@ -86,6 +90,16 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   double get minutosDetencion => _detector?.minutosDetenido ?? 0;
   Timer? relojDetencion;
   bool estaDetenido = false;
+
+  // ── Rugosidad del camino (acelerómetro) ────────────────────────────────────
+  static const _claveReferencia = 'vibracion_referencia';
+  // Bajo ~7 km/h la vibración es del motor, no del camino
+  static const _velocidadMinimaVibracion = 2.0;
+  final _medidor = MedidorVibracion();
+  SugerenciaSuperficie _sugeridor = SugerenciaSuperficie();
+  StreamSubscription<AccelerometerEvent>? _suscripcionSensor;
+  Sugerencia _sugerencia = Sugerencia.ninguna;
+  DateTime _ultimoPunto = DateTime.now();
 
   // ── Parámetros topográficos (desde servidor) ───────────────────────────────
   ParametrosTopograficos? _params;
@@ -268,7 +282,15 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     if (posInicial == null) return;
 
     MotorGPS.resetContador();
+    final prefs = await SharedPreferences.getInstance();
+    _sugeridor = SugerenciaSuperficie(referencia: prefs.getDouble(_claveReferencia));
+    _medidor.tomar();
+    _suscripcionSensor = accelerometerEventStream(
+      samplingPeriod: SensorInterval.gameInterval,
+    ).listen((e) => _medidor.registrar(e.x, e.y, e.z), onError: (_) {});
     setState(() {
+      _sugerencia = Sugerencia.ninguna;
+      _ultimoPunto = DateTime.now();
       recorrido = RecorridoPorSuperficie();
       _inicioViaje = DateTime.now();
       _ruta = [
@@ -295,20 +317,31 @@ class _PantallaPruebaState extends State<PantallaPrueba>
           nuevaPosicion.latitude,
           nuevaPosicion.longitude,
         );
+        final ahora = DateTime.now();
         _detector?.registrarPosicion(
-          DateTime.now(),
+          ahora,
           velocidadReportada: nuevaPosicion.speed,
           metros: metros,
         );
+        final segundos = ahora.difference(_ultimoPunto).inMilliseconds / 1000;
+        _ultimoPunto = ahora;
+        final velocidad = max(nuevaPosicion.speed, segundos > 0 ? metros / segundos : 0.0);
+        final rms = _medidor.tomar();
+        final vibracion = velocidad >= _velocidadMinimaVibracion ? rms : null;
         _ruta.add(
           PuntoRuta(
             nuevaPosicion.latitude,
             nuevaPosicion.longitude,
-            DateTime.now().difference(_inicioViaje).inSeconds,
+            ahora.difference(_inicioViaje).inSeconds,
             superficie,
+            vibracion,
           ),
         );
-        setState(() => recorrido.sumar(metros / 1000, superficie));
+        final sugerencia = _sugeridor.registrar(vibracion, superficie);
+        setState(() {
+          recorrido.sumar(metros / 1000, superficie);
+          if (sugerencia != Sugerencia.ninguna) _sugerencia = sugerencia;
+        });
       }
       posicionAnterior = nuevaPosicion;
     });
@@ -317,6 +350,10 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   void detenerRastreo() async {
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
+    _suscripcionSensor?.cancel();
+    _suscripcionSensor = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_claveReferencia, _sugeridor.referencia);
     _detector?.tick(DateTime.now());
 
     // Enviar última posición al servidor
@@ -349,12 +386,14 @@ class _PantallaPruebaState extends State<PantallaPrueba>
       'costo_minuto_detencion': params.costoMinutoDetencion,
       'consumo_litros_km': params.consumoLitrosKm,
       'precio_combustible_bs': params.precioCombustibleBs,
+      'vibracion_referencia': _sugeridor.referencia,
     });
     _ruta = [];
 
     setState(() {
       enViaje = false;
       superficie = Superficie.asfalto;
+      _sugerencia = Sugerencia.ninguna;
     });
 
     if (mounted) {
@@ -378,7 +417,74 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     _relojSincronizacion?.cancel();
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
+    _suscripcionSensor?.cancel();
     super.dispose();
+  }
+
+  void _elegirSuperficie(Superficie s) => setState(() {
+    superficie = s;
+    _sugerencia = Sugerencia.ninguna;
+  });
+
+  void _descartarSugerencia() {
+    _sugeridor.descartar();
+    setState(() => _sugerencia = Sugerencia.ninguna);
+  }
+
+  Widget _avisoSuperficie() {
+    final irregular = _sugerencia == Sugerencia.caminoIrregular;
+    final opciones = irregular
+        ? [Superficie.tierra, Superficie.empedrado]
+        : [Superficie.asfalto];
+    return Container(
+      margin: const EdgeInsets.only(top: 14, left: 12, right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.vibration, color: Colors.amber),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  irregular
+                      ? 'El camino vibra más que el asfalto. ¿Es tierra o empedrado?'
+                      : 'El camino parece liso. ¿Volviste al asfalto?',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            children: [
+              for (final s in opciones)
+                FilledButton(
+                  onPressed: () => _elegirSuperficie(s),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _estiloSuperficie[s]!.$2[800],
+                  ),
+                  child: Text(_estiloSuperficie[s]!.$1.toUpperCase()),
+                ),
+              TextButton(
+                onPressed: _descartarSugerencia,
+                child: const Text(
+                  'NO, SEGUIR',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -556,7 +662,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                               selected: superficie == s,
-                              onSelected: (_) => setState(() => superficie = s),
+                              onSelected: (_) => _elegirSuperficie(s),
                               selectedColor: _estiloSuperficie[s]!.$2[800],
                               backgroundColor: enViaje
                                   ? Colors.grey[800]
@@ -569,6 +675,16 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                             ),
                         ],
                       ),
+                      if (enViaje && _sugerencia != Sugerencia.ninguna)
+                        _avisoSuperficie(),
+                      if (enViaje && _sugeridor.vibracionReciente != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Vibración del camino: '
+                          '${(_sugeridor.vibracionReciente! / _sugeridor.referencia).toStringAsFixed(1)}× la del asfalto',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                        ),
+                      ],
                       // Mostrar parámetros activos (transparencia para el tribunal)
                       if (!enViaje) ...[
                         const SizedBox(height: 16),

@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -48,7 +48,8 @@ class BaseDatosLocal {
         km_asfalto REAL,
         km_tierra REAL,
         km_empedrado REAL,
-        factor_empedrado REAL
+        factor_empedrado REAL,
+        vibracion_referencia REAL
       )
     ''');
     await _crearTablaPuntos(db);
@@ -62,6 +63,7 @@ class BaseDatosLocal {
         lng REAL NOT NULL,
         segundos INTEGER NOT NULL,
         superficie INTEGER NOT NULL,
+        vibracion REAL,
         PRIMARY KEY (viaje_uuid, orden)
       )
     ''');
@@ -102,6 +104,14 @@ class BaseDatosLocal {
     if (oldVersion < 7) {
       await db.execute('ALTER TABLE viajes ADD COLUMN km_empedrado REAL');
       await db.execute('ALTER TABLE viajes ADD COLUMN factor_empedrado REAL');
+    }
+    if (oldVersion < 8) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN vibracion_referencia REAL');
+      // Si puntos_viaje se creó en esta misma actualización (desde v5 o antes) ya la trae
+      final columnas = await db.rawQuery('PRAGMA table_info(puntos_viaje)');
+      if (!columnas.any((c) => c['name'] == 'vibracion')) {
+        await db.execute('ALTER TABLE puntos_viaje ADD COLUMN vibracion REAL');
+      }
     }
   }
 

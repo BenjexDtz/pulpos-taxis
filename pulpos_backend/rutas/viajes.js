@@ -38,6 +38,9 @@ router.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
             v.distancia_ruta_km,
             v.verificacion,
             v.verificacion_detalle,
+            v.superficie_respaldo,
+            v.vibracion_referencia,
+            v.vibracion_irregular,
             EXISTS (SELECT 1 FROM viajes_puntos vp WHERE vp.viaje_id = v.id_servidor) AS tiene_ruta,
             v.fecha_hora_viaje           AS fecha_hora
          FROM viajes_historial v
@@ -55,6 +58,7 @@ router.get('/api/admin/viajes/:id/ruta', verificarToken, soloAdmin, async (req, 
     const viaje = (await pool.query(
         `SELECT v.id_servidor AS id, v.distancia_km, v.km_asfalto, v.km_tierra, v.km_empedrado, v.distancia_ruta_km,
                 v.tarifa_cobrada AS tarifa_total, v.tarifa_calculada, v.verificacion, v.verificacion_detalle,
+                v.superficie_respaldo, v.vibracion_referencia, v.vibracion_irregular,
                 v.fecha_hora_viaje AS fecha_hora, c.nombre_completo AS chofer, c.placa_vehiculo
          FROM viajes_historial v
          JOIN choferes c ON c.id = v.chofer_id AND c.empresa_id = v.empresa_id
@@ -63,7 +67,7 @@ router.get('/api/admin/viajes/:id/ruta', verificarToken, soloAdmin, async (req, 
     )).rows[0];
     if (!viaje) return res.status(404).json({ error: 'Viaje no encontrado.' });
     const puntos = (await pool.query(
-        `SELECT vp.lat, vp.lng, vp.segundos, vp.superficie
+        `SELECT vp.lat, vp.lng, vp.segundos, vp.superficie, vp.vibracion
          FROM viajes_puntos vp JOIN viajes_historial v ON v.id_servidor = vp.viaje_id
          WHERE vp.viaje_id = $1 AND v.empresa_id = $2
          ORDER BY vp.orden`,
@@ -100,6 +104,9 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
             v.distancia_ruta_km,
             v.verificacion,
             v.verificacion_detalle,
+            v.superficie_respaldo,
+            v.vibracion_referencia,
+            v.vibracion_irregular,
             TO_CHAR(v.fecha_hora_viaje, 'DD/MM/YYYY HH24:MI')
          FROM viajes_historial v
          JOIN choferes c ON c.id = v.chofer_id AND c.empresa_id = v.empresa_id
@@ -117,7 +124,8 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
     const encabezados = [
         'ID', 'Conductor', 'Placa', 'Km', 'Km asfalto', 'Km tierra', 'Km empedrado', 'Min Espera', 'Superficie', 'FH', 'FR tierra', 'FE empedrado',
         `Cb (${m}/km)`, 'Cl (L/km)', `Pc (${m}/L)`, `Cl×Pc (${m}/km)`, 'Cb+Cl×Pc',
-        `Tarifa Total (${m})`, `Tarifa calculada (${m})`, 'Km ruta GPS', 'Verificación', 'Detalle verificación', 'Fecha',
+        `Tarifa Total (${m})`, `Tarifa calculada (${m})`, 'Km ruta GPS', 'Verificación', 'Detalle verificación',
+        'Respaldo superficie', 'Vibración asfalto (m/s²)', 'Vibración tierra/empedrado (m/s²)', 'Fecha',
     ];
     const celda = (x) => `"${(x ?? '').toString().replace(/"/g, '""')}"`;
     const csv = [

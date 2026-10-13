@@ -15,28 +15,32 @@ String nuevoUuid() {
 }
 
 // Punto GPS que entró en el cálculo; la superficie es la marcada al llegar a él
+// y la vibración (RMS en m/s²) la medida por el acelerómetro desde el punto anterior
 class PuntoRuta {
-  const PuntoRuta(this.lat, this.lng, this.segundos, this.superficie);
+  const PuntoRuta(this.lat, this.lng, this.segundos, this.superficie, [this.vibracion]);
 
   final double lat;
   final double lng;
   final int segundos;
   final Superficie superficie;
+  final double? vibracion;
 
   factory PuntoRuta.desdeSqlite(Map<String, dynamic> fila) => PuntoRuta(
     (fila['lat'] as num).toDouble(),
     (fila['lng'] as num).toDouble(),
     fila['segundos'] as int,
     Superficie.values[fila['superficie'] as int],
+    (fila['vibracion'] as num?)?.toDouble(),
   );
 
-  Map<String, Object> paraSqlite(String uuidViaje, int orden) => {
+  Map<String, Object?> paraSqlite(String uuidViaje, int orden) => {
     'viaje_uuid': uuidViaje,
     'orden': orden,
     'lat': lat,
     'lng': lng,
     'segundos': segundos,
     'superficie': superficie.index,
+    'vibracion': vibracion,
   };
 
   // 6 decimales ≈ 10 cm: no altera la distancia y achica el envío
@@ -45,6 +49,7 @@ class PuntoRuta {
     (lng * 1e6).round() / 1e6,
     segundos,
     superficie.index,
+    if (vibracion != null) (vibracion! * 100).round() / 100,
   ];
 }
 
@@ -72,6 +77,7 @@ Map<String, dynamic> viajeParaServidor(
     'factor_altitud_aplicado': viaje['factor_altitud'],
     'factor_superficie_aplicado': factorSuperficie,
     'factor_empedrado_aplicado': viaje['factor_empedrado'],
+    'vibracion_referencia': viaje['vibracion_referencia'],
     'costo_base_aplicado': viaje['costo_base_km'],
     'costo_minuto_aplicado': viaje['costo_minuto_detencion'],
     'consumo_litros_aplicado': viaje['consumo_litros_km'],

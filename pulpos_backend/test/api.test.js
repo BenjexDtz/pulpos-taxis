@@ -274,7 +274,7 @@ describe('Sincronización de viajes', () => {
         assert.equal(r.status, 201);
         assert.equal(r.json.verificacion, 'ok');
         assert.deepEqual(insert().params.slice(18, 20), [0.1, 0.38]);
-        assert.deepEqual(insert().params.slice(20), ['ok', null]);
+        assert.deepEqual(insert().params.slice(20), ['ok', null, null, null, null]);
         const pts = insertPuntos();
         assert.deepEqual(pts.params[0], 12);
         assert.deepEqual(pts.params.slice(1, 2), [[0, 1, 2]]);
@@ -282,6 +282,18 @@ describe('Sincronización de viajes', () => {
         const sqls = consultas.map(c => c.sql);
         assert.ok(sqls.indexOf('BEGIN') < sqls.findIndex(x => x.includes('INSERT INTO viajes_puntos')));
         assert.ok(sqls.includes('COMMIT'));
+    });
+
+    test('con vibración: guarda la de cada punto y audita una superficie dudosa sin rechazar el viaje', async () => {
+        responder = (sql) => sql.includes('INSERT INTO viajes_historial') ? { rows: [{ id_servidor: 16 }] } : { rows: [] };
+        // Marcado como tierra pero vibra como el asfalto que el teléfono conoce
+        const lisa = Array.from({ length: 12 }, (_, i) => [-16.5, -68.19 + i * 1e-6, i, 1, ...(i ? [0.5] : [])]);
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: {
+            ...conParametros, distancia_km: 0, km_asfalto: 0, km_tierra: 0, tarifa_cobrada: 0, vibracion_referencia: 0.5, ruta: lisa } });
+        assert.equal(r.status, 201);
+        assert.deepEqual(insert().params.slice(22), [0.5, 0.5, 'dudosa']);
+        assert.deepEqual(insertPuntos().params[6], [null, ...Array(11).fill(0.5)]);
+        assert.match(eventos.find(e => e.accion === 'viaje.sincronizar').detalle, /Superficie dudosa/);
     });
 
     test('tarifa que no sale de la fórmula: se guarda igual, marcada como diferencia y auditada', async () => {

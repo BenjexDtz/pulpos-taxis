@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { tarifaV4, leerRuta, resumenRuta, verificarViaje, MAX_PUNTOS } = require('../verificacion');
+const { tarifaV4, leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, MAX_PUNTOS } = require('../verificacion');
 const { distanciaKm } = require('../validacion');
 
 // Recta hacia el este desde El Alto: n tramos de 50 m, los últimos `enTierra` marcados como tierra
@@ -34,6 +34,8 @@ describe('leerRuta', () => {
         const p = leerRuta([[-16.5, -68.19, 0, 0], [-16.5, -68.189, 5, 1]]);
         assert.deepEqual(p.map(x => x.superficie), ['asfalto', 'tierra']);
         assert.equal(leerRuta([[-16.5, -68.19, 0, 2]])[0].superficie, 'empedrado');
+        assert.deepEqual(leerRuta([[-16.5, -68.19, 0, 0], [-16.5, -68.19, 1, 0, 0.8], [-16.5, -68.19, 2, 0, null]])
+            .map(x => x.vibracion), [null, 0.8, null]);
         assert.deepEqual(p.map(x => x.segundos), [0, 5]);
     });
 
@@ -42,6 +44,7 @@ describe('leerRuta', () => {
             null, 'x', {}, [], [[1, 2, 3]], [[-16.5, -68.19, 0, 3]], [[-16.5, -68.19, 0, 0.5]], [[-16.5, -68.19, 1.5, 0]],
             [[91, 0, 0, 0]], [[0, 181, 0, 0]], [['-16.5', -68.19, 0, 0]],
             [[-16.5, -68.19, 10, 0], [-16.5, -68.19, 5, 0]],
+            [[-16.5, -68.19, 0, 0, -1]], [[-16.5, -68.19, 0, 0, 51]], [[-16.5, -68.19, 0, 0, '1']], [[-16.5, -68.19, 0, 0, 1, 1]],
             Array.from({ length: MAX_PUNTOS + 1 }, () => [-16.5, -68.19, 0, 0]),
         ]) assert.equal(leerRuta(ruta), null, JSON.stringify(ruta)?.slice(0, 60));
     });
@@ -57,6 +60,41 @@ describe('resumenRuta', () => {
 
     test('un solo punto mide 0 km', () => {
         assert.deepEqual(resumenRuta(leerRuta([[-16.5, -68.19, 0, 0]])), { km_asfalto: 0, km_tierra: 0, km_empedrado: 0, km: 0 });
+    });
+});
+
+describe('evaluarSuperficie', () => {
+    // n puntos de asfalto y luego m del tipo indicado, con la vibración dada en cada tramo
+    const ruta = (n, vAsfalto, m, superficie, vIrregular) => [
+        { superficie: 'asfalto', vibracion: null },
+        ...Array.from({ length: n }, () => ({ superficie: 'asfalto', vibracion: vAsfalto })),
+        ...Array.from({ length: m }, () => ({ superficie, vibracion: vIrregular })),
+    ];
+
+    test('solo asfalto: informa la referencia pero no evalúa nada', () => {
+        assert.deepEqual(evaluarSuperficie(ruta(20, 0.5, 0), null),
+            { vibracion_referencia: 0.5, vibracion_irregular: null, superficie_respaldo: null });
+    });
+
+    test('tierra o empedrado que vibran al menos 1,5 veces el asfalto: respaldada', () => {
+        for (const s of ['tierra', 'empedrado'])
+            assert.equal(evaluarSuperficie(ruta(15, 0.6, 15, s, 0.9), null).superficie_respaldo, 'respaldada');
+    });
+
+    test('marcado irregular pero tan liso como el asfalto: dudosa', () => {
+        const e = evaluarSuperficie(ruta(15, 0.6, 15, 'tierra', 0.7), null);
+        assert.deepEqual(e, { vibracion_referencia: 0.6, vibracion_irregular: 0.7, superficie_respaldo: 'dudosa' });
+    });
+
+    test('con poco asfalto en el viaje usa la referencia que aprendió la app', () => {
+        assert.equal(evaluarSuperficie(ruta(3, 2, 15, 'tierra', 1.2), 0.5).superficie_respaldo, 'respaldada');
+        assert.equal(evaluarSuperficie(ruta(3, 2, 15, 'tierra', 0.6), 0.5).superficie_respaldo, 'dudosa');
+    });
+
+    test('sin lecturas suficientes o sin referencia: sin_datos', () => {
+        assert.equal(evaluarSuperficie(ruta(15, 0.5, 5, 'tierra', 2), null).superficie_respaldo, 'sin_datos');
+        assert.equal(evaluarSuperficie(ruta(3, 0.5, 15, 'tierra', 2), null).superficie_respaldo, 'sin_datos');
+        assert.equal(evaluarSuperficie(ruta(0, null, 15, 'empedrado', null), 0.5).superficie_respaldo, 'sin_datos');
     });
 });
 

@@ -140,9 +140,16 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     verificacion                 VARCHAR(15)   NOT NULL DEFAULT 'sin_verificar',
     verificacion_detalle         TEXT,
 
+    -- Vibración (RMS, m/s²) medida por el acelerómetro: ¿la tierra o el empedrado marcados vibraron como tales?
+    vibracion_referencia         NUMERIC(5, 2),
+    vibracion_irregular          NUMERIC(5, 2),
+    superficie_respaldo          VARCHAR(12),
+
     CONSTRAINT viajes_chofer_uuid_key UNIQUE (chofer_id, uuid),
     CONSTRAINT viajes_verificacion_check
         CHECK (verificacion IN ('ok', 'sin_ruta', 'diferencia', 'sin_verificar')),
+    CONSTRAINT viajes_superficie_respaldo_check
+        CHECK (superficie_respaldo IN ('respaldada', 'dudosa', 'sin_datos')),
     CONSTRAINT viajes_km_asfalto_check CHECK (km_asfalto >= 0),
     CONSTRAINT viajes_km_tierra_check  CHECK (km_tierra >= 0),
     CONSTRAINT viajes_km_empedrado_check CHECK (km_empedrado >= 0),
@@ -162,6 +169,7 @@ CREATE TABLE IF NOT EXISTS viajes_puntos (
     lng         DOUBLE PRECISION NOT NULL,
     segundos    INTEGER NOT NULL,
     superficie  VARCHAR(10) NOT NULL CHECK (superficie IN ('asfalto', 'tierra', 'empedrado')),
+    vibracion   REAL CHECK (vibracion >= 0),
     PRIMARY KEY (viaje_id, orden)
 );
 CREATE INDEX IF NOT EXISTS choferes_empresa_idx     ON choferes (empresa_id);

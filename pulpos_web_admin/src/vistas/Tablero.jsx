@@ -11,7 +11,10 @@ import GraficoSuperficie from '../componentes/tablero/GraficoSuperficie.jsx';
 import RankingChoferes from '../componentes/tablero/RankingChoferes.jsx';
 import MapaCalorHoras from '../componentes/tablero/MapaCalorHoras.jsx';
 import { botonIcono, botonSecundario, campo, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
-import { consultaFechas, desgloseKm, fechaLocal, formatoMoneda, formatoNumero, resumenFlota, SUPERFICIES, variacion, VERIFICACION } from '../utilidades.js';
+import {
+  consultaFechas, desgloseKm, fechaLocal, formatoMoneda, formatoNumero, RESPALDO_SUPERFICIE, resumenFlota, SUPERFICIES,
+  variacion, VERIFICACION,
+} from '../utilidades.js';
 
 const PERIODOS = [[7, '7 días'], [30, '30 días'], [90, '90 días'], [365, '1 año']];
 
@@ -189,6 +192,11 @@ export default function Tablero({
                       <span title={v.verificacion_detalle || VERIFICACION[v.verificacion]?.ayuda}>
                         <Insignia color={VERIFICACION[v.verificacion]?.color}>{VERIFICACION[v.verificacion]?.texto ?? 'Sin verificar'}</Insignia>
                       </span>
+                      {v.superficie_respaldo === 'dudosa' && (
+                        <span title={RESPALDO_SUPERFICIE.dudosa.ayuda}>
+                          <Insignia color="aviso">{RESPALDO_SUPERFICIE.dudosa.texto}</Insignia>
+                        </span>
+                      )}
                       <button onClick={() => setRutaAbierta(v.id)} className={`${botonIcono} h-8 w-8`}
                         aria-label={`Ver ruta del viaje ${v.id}`} title={v.tiene_ruta ? 'Ver ruta en el mapa' : 'Ver detalle (sin ruta GPS)'}>
                         <MapPinned className="h-4 w-4" />
