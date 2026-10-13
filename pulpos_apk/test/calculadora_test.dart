@@ -244,4 +244,79 @@ void main() {
       expect(body['tipo_superficie'], 'asfalto');
     });
   });
+
+  group('empedrado', () {
+    // Mismo caso que verificacion.test.js del backend
+    test('cada superficie se cobra con su factor', () {
+      final t = calcularTarifa(
+        kmAsfalto: 2,
+        kmTierra: 1,
+        kmEmpedrado: 2,
+        costoBaseKm: 2,
+        consumoLitrosKm: 0.1,
+        precioCombustibleBs: 6.96,
+        factorAltitud: 1.4,
+        factorSuperficie: 2.5,
+        factorEmpedrado: 1.8,
+        tiempoDetencionMin: 10,
+        costoMinutoDetencion: 0.5,
+      );
+      expect(t, closeTo(35.57264, 1e-9));
+    });
+
+    test('el recorrido suma los km de empedrado y decide el tipo', () {
+      final solo = RecorridoPorSuperficie()..sumar(1, Superficie.empedrado);
+      expect(solo.tipo, 'empedrado');
+      final tres = RecorridoPorSuperficie()
+        ..sumar(2, Superficie.asfalto)
+        ..sumar(1, Superficie.tierra)
+        ..sumar(2, Superficie.empedrado);
+      expect([tres.kmEmpedrado, tres.kmTotal, tres.tipo], [2, 5, 'mixto']);
+      // porDefecto: FR 2.5, FE 2.0
+      expect(
+        tres.tarifa(ParametrosTopograficos.porDefecto, 0),
+        closeTo((2 + 2.5 + 4) * 2.696 * 1.4, 1e-9),
+      );
+    });
+
+    test('lee FE del servidor; si no viene usa 1.5', () {
+      final base = {
+        'id': 1,
+        'zona_ciudad': 'x',
+        'costo_base_km': '2.00',
+        'factor_altitud': '1.40',
+        'factor_superficie': '2.50',
+        'costo_minuto_detencion': '0.50',
+      };
+      expect(ParametrosTopograficos.fromJson({...base, 'factor_empedrado': '1.80'}).factorEmpedrado, 1.8);
+      expect(ParametrosTopograficos.fromJson(base).factorEmpedrado, 1.5);
+    });
+
+    test('el viaje envía los km y el FE aplicado; la ruta usa el código 2', () {
+      final body = viajeParaServidor(
+        {
+          'distancia_km': 3.0,
+          'km_asfalto': 1.0,
+          'km_tierra': 0.0,
+          'km_empedrado': 2.0,
+          'factor_superficie': 2.5,
+          'factor_empedrado': 1.8,
+          'tipo_superficie': 'mixto',
+        },
+        ruta: const [PuntoRuta(-16.5, -68.19, 0, Superficie.empedrado)],
+      );
+      expect(body['km_empedrado'], 2.0);
+      expect(body['factor_empedrado_aplicado'], 1.8);
+      expect(body['ruta'], [
+        [-16.5, -68.19, 0, 2],
+      ]);
+    });
+
+    test('PuntoRuta conserva el empedrado al pasar por SQLite', () {
+      const p = PuntoRuta(-16.5, -68.19, 3, Superficie.empedrado);
+      final fila = p.paraSqlite('u', 0);
+      expect(fila['superficie'], 2);
+      expect(PuntoRuta.desdeSqlite(fila).superficie, Superficie.empedrado);
+    });
+  });
 }

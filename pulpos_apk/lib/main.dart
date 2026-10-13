@@ -15,6 +15,12 @@ void main() {
   runApp(const AplicacionTaximetro());
 }
 
+const _estiloSuperficie = {
+  Superficie.asfalto: ('Asfalto', Colors.blue),
+  Superficie.tierra: ('Tierra', Colors.orange),
+  Superficie.empedrado: ('Empedrado', Colors.deepPurple),
+};
+
 class AplicacionTaximetro extends StatelessWidget {
   const AplicacionTaximetro({super.key});
 
@@ -330,9 +336,11 @@ class _PantallaPruebaState extends State<PantallaPrueba>
       'distancia_km': recorrido.kmTotal,
       'km_asfalto': recorrido.kmAsfalto,
       'km_tierra': recorrido.kmTierra,
+      'km_empedrado': recorrido.kmEmpedrado,
       'tiempo_detencion_min': minutosDetencion,
       'factor_altitud': params.factorAltitud,
       'factor_superficie': params.factorSuperficie,
+      'factor_empedrado': params.factorEmpedrado,
       'tarifa_total': tarifaFinal,
       'estado_sincronizacion': 0,
       'fecha_hora': DateTime.now().toIso8601String(),
@@ -378,7 +386,6 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     final params = _params ?? ParametrosTopograficos.porDefecto;
 
     final tarifaEnVivo = recorrido.tarifa(params, minutosDetencion);
-    final enTierra = superficie == Superficie.tierra;
 
     return Scaffold(
       backgroundColor: enViaje ? Colors.black : Colors.grey[100],
@@ -514,10 +521,14 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                           color: enViaje ? Colors.white : Colors.black87,
                         ),
                       ),
-                      if (recorrido.kmTierra > 0)
+                      if (recorrido.tipo != 'asfalto')
                         Text(
-                          'Asfalto ${recorrido.kmAsfalto.toStringAsFixed(2)} km · '
-                          'Tierra ${recorrido.kmTierra.toStringAsFixed(2)} km',
+                          [
+                            for (final s in Superficie.values)
+                              if (recorrido.kmPor(s) > 0)
+                                '${_estiloSuperficie[s]!.$1} '
+                                    '${recorrido.kmPor(s).toStringAsFixed(2)} km',
+                          ].join(' · '),
                           style: TextStyle(
                             fontSize: 13,
                             color: enViaje ? Colors.grey[400] : Colors.grey[600],
@@ -533,55 +544,38 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 10,
+                        runSpacing: 8,
                         children: [
-                          ChoiceChip(
-                            label: const Text(
-                              'ASFALTO',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                          for (final s in Superficie.values)
+                            ChoiceChip(
+                              label: Text(
+                                _estiloSuperficie[s]!.$1.toUpperCase(),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              selected: superficie == s,
+                              onSelected: (_) => setState(() => superficie = s),
+                              selectedColor: _estiloSuperficie[s]!.$2[800],
+                              backgroundColor: enViaje
+                                  ? Colors.grey[800]
+                                  : Colors.grey[200],
+                              labelStyle: TextStyle(
+                                color: superficie == s
+                                    ? Colors.white
+                                    : (enViaje ? Colors.grey[300] : Colors.black),
+                              ),
                             ),
-                            selected: !enTierra,
-                            onSelected: (_) => setState(
-                              () => superficie = Superficie.asfalto,
-                            ),
-                            selectedColor: Colors.blue[800],
-                            backgroundColor: enViaje
-                                ? Colors.grey[800]
-                                : Colors.grey[200],
-                            labelStyle: TextStyle(
-                              color: !enTierra
-                                  ? Colors.white
-                                  : (enViaje ? Colors.grey[300] : Colors.black),
-                            ),
-                          ),
-                          const SizedBox(width: 15),
-                          ChoiceChip(
-                            label: const Text(
-                              'TIERRA / COMPLEJO',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            selected: enTierra,
-                            onSelected: (_) => setState(
-                              () => superficie = Superficie.tierra,
-                            ),
-                            selectedColor: Colors.orange[800],
-                            backgroundColor: enViaje
-                                ? Colors.grey[800]
-                                : Colors.grey[200],
-                            labelStyle: TextStyle(
-                              color: enTierra
-                                  ? Colors.white
-                                  : (enViaje ? Colors.grey[300] : Colors.black),
-                            ),
-                          ),
                         ],
                       ),
                       // Mostrar parámetros activos (transparencia para el tribunal)
                       if (!enViaje) ...[
                         const SizedBox(height: 16),
                         Text(
-                          'Cb: $_moneda ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · Ct: $_moneda ${params.costoMinutoDetencion}/min',
+                          'Cb: $_moneda ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · '
+                          'FR: ${params.factorSuperficie}× · FE: ${params.factorEmpedrado}× · '
+                          'Ct: $_moneda ${params.costoMinutoDetencion}/min',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.grey[400],

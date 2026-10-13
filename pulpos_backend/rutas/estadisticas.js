@@ -64,13 +64,14 @@ router.get('/api/admin/estadisticas', verificarToken, soloAdmin, async (req, res
                    extract(hour FROM v.fecha_hora_viaje)::int AS hora, count(*)::int AS viajes
             FROM rango r JOIN viajes_historial v ON ${EN_RANGO}
             GROUP BY 1, 2 ORDER BY 1, 2`, params),
-        // Un viaje mixto aporta a las dos superficies; la espera no se atribuye a ninguna
+        // Un viaje mixto aporta a cada superficie que recorrió; la espera no se atribuye a ninguna
         pool.query(`${RANGO}
             SELECT s.tipo, count(*) FILTER (WHERE s.km > 0)::int AS viajes, sum(s.km)::float AS km,
                    sum(s.km * s.fr * (v.costo_base_aplicado + v.consumo_litros_aplicado * v.precio_combustible_aplicado)
                        * v.factor_altitud_aplicado)::float AS recorrido
             FROM rango r JOIN viajes_historial v ON ${EN_RANGO}
-            CROSS JOIN LATERAL (VALUES ('asfalto', v.km_asfalto, 1.0), ('tierra', v.km_tierra, v.factor_superficie_aplicado)) s(tipo, km, fr)
+            CROSS JOIN LATERAL (VALUES ('asfalto', v.km_asfalto, 1.0), ('tierra', v.km_tierra, v.factor_superficie_aplicado),
+                ('empedrado', v.km_empedrado, v.factor_empedrado_aplicado)) s(tipo, km, fr)
             GROUP BY s.tipo HAVING sum(s.km) > 0 ORDER BY km DESC`, params),
     ]);
 

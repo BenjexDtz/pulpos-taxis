@@ -42,7 +42,7 @@ flutter analyze
 
 # Migrar una BD sin empresas (v3) a multiempresa
 psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
-# (luego 002 a 006 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación)
+# (luego 002 a 007 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación, 007 el empedrado)
 ```
 
 Versiones: SemVer única para todo el sistema. Al publicar, subir `version` en `pulpos_backend/package.json`, `pulpos_web_admin/package.json` (`npm version X.Y.Z --no-git-tag-version`) y `pulpos_apk/pubspec.yaml` (el `+N` sube en cada APK), anotar en `CHANGELOG.md` y crear la etiqueta anotada `vX.Y.Z`.
@@ -85,9 +85,9 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - La ruta llama a `asistente.llamarModelo` por el objeto del módulo: los tests lo reemplazan por un guion.
 
 ### Fórmula tarifaria (v4, por tramos) — está duplicada, mantener sincronizada
-`T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td`
+`T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td`
 
-Da/Dt: km en asfalto/tierra. La app suma cada tramo GPS a la superficie elegida en ese momento (`RecorridoPorSuperficie`); con una sola superficie se reduce a la v3. `viajes_historial` guarda `km_asfalto` y `km_tierra` (CHECK: suman `distancia_km`), `tipo_superficie` es `asfalto`/`tierra`/`mixto` y lo decide el servidor, y `factor_superficie_aplicado` es el FR de la tierra. Si la app no envía los km (versiones previas), `kmPorSuperficie()` asigna toda la distancia a su `tipo_superficie`.
+Da/Dt/De: km en asfalto/tierra/empedrado. La app suma cada tramo GPS a la superficie elegida en ese momento (`RecorridoPorSuperficie`); con una sola superficie se reduce a la v3. El código de superficie es el índice del enum `Superficie` (0 asfalto, 1 tierra, 2 empedrado; `SUPERFICIES` en `validacion.js`): no reordenar. `viajes_historial` guarda `km_asfalto`, `km_tierra` y `km_empedrado` (CHECK: suman `distancia_km`), `tipo_superficie` es `asfalto`/`tierra`/`empedrado`/`mixto` y lo decide el servidor; `factor_superficie_aplicado` es el FR de la tierra y `factor_empedrado_aplicado` el FE. En el panel, nombres y colores de cada superficie salen de `SUPERFICIES` en `utilidades.js`. Si la app no envía los km (versiones previas), `kmPorSuperficie()` asigna toda la distancia a su `tipo_superficie`.
 
 Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `RecorridoPorSuperficie`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js` (y el reparto por superficie de `rutas/estadisticas.js`), `tarifaV4` de `pulpos_backend/verificacion.js` (la usan la verificación de viajes y la herramienta `calcular_tarifa` del asistente) y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
 

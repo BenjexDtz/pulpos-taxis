@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -46,7 +46,9 @@ class BaseDatosLocal {
         $_columnasV3,
         uuid TEXT,
         km_asfalto REAL,
-        km_tierra REAL
+        km_tierra REAL,
+        km_empedrado REAL,
+        factor_empedrado REAL
       )
     ''');
     await _crearTablaPuntos(db);
@@ -97,6 +99,10 @@ class BaseDatosLocal {
       await db.execute('ALTER TABLE viajes ADD COLUMN km_tierra REAL');
     }
     if (oldVersion < 6) await _crearTablaPuntos(db);
+    if (oldVersion < 7) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN km_empedrado REAL');
+      await db.execute('ALTER TABLE viajes ADD COLUMN factor_empedrado REAL');
+    }
   }
 
   // Viaje y ruta en una sola transacción: o se guardan los dos o ninguno

@@ -23,16 +23,18 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
     } finally { setGuardandoParams(false); }
   };
 
-  // T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td, con un viaje de 5 km y 10 min de espera
-  const previewTarifa = (kmTierra) => {
+  // T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td, con un viaje de 5 km y 10 min de espera
+  const previewTarifa = (kmTierra, kmEmpedrado = 0) => {
     if (!formParams) return '0.00';
     const Cb = parseFloat(formParams.costo_base_km || 0);
     const Cl = parseFloat(formParams.consumo_litros_km || 0);
     const Pc = parseFloat(formParams.precio_combustible_bs || 0);
     const FH = parseFloat(formParams.factor_altitud || 0);
     const FR = parseFloat(formParams.factor_superficie || 1);
+    const FE = parseFloat(formParams.factor_empedrado || 1);
     const Ct = parseFloat(formParams.costo_minuto_detencion || 0);
-    return ((5 - kmTierra + kmTierra * FR) * (Cb + Cl * Pc) * FH + 10 * Ct).toFixed(2);
+    const kmPonderados = 5 - kmTierra - kmEmpedrado + kmTierra * FR + kmEmpedrado * FE;
+    return (kmPonderados * (Cb + Cl * Pc) * FH + 10 * Ct).toFixed(2);
   };
 
   const previewCostoCombustibleKm = () => {
@@ -91,7 +93,8 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
               ayuda: `Penalización por la altitud${empresa?.altitud_msnm ? ` (${empresa.altitud_msnm.toLocaleString('es-BO')} msnm)` : ''}.`,
               step: '0.01', min: 1, max: 3,
             })}
-            {campoParam('factor_superficie', { etiqueta: 'FR · factor tierra / barro', ayuda: 'Multiplicador para rutas sin asfalto.', step: '0.1', min: 1, max: 5 })}
+            {campoParam('factor_superficie', { etiqueta: 'FR · factor tierra / barro', ayuda: 'Multiplicador para calles de tierra.', step: '0.1', min: 1, max: 5 })}
+            {campoParam('factor_empedrado', { etiqueta: 'FE · factor empedrado / adoquín', ayuda: 'Multiplicador para calles empedradas.', step: '0.1', min: 1, max: 5 })}
             {campoParam('costo_minuto_detencion', { etiqueta: `Ct · costo por minuto de espera (${m})`, ayuda: 'Cobro por espera o tráfico.', step: '0.01', min: 0.1, max: 5 })}
           </div>
           <div className="mt-5 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-white/[0.03]">
@@ -111,11 +114,12 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
       <div className="space-y-6 xl:sticky xl:top-28 xl:self-start">
         <Tarjeta icono={Calculator} titulo="Fórmula tarifaria">
           <p className="rounded-lg bg-brand-50 px-4 py-3 text-center font-mono text-theme-sm font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-            T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td
+            T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td
           </p>
           <dl className="mt-4 space-y-1.5 text-theme-xs text-gray-500 dark:text-gray-400">
             <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Da</dt> <dd className="inline">km recorridos en asfalto</dd></div>
-            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Dt</dt> <dd className="inline">km recorridos en tierra; el chofer marca cada tramo en la app</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Dt</dt> <dd className="inline">km recorridos en tierra</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">De</dt> <dd className="inline">km recorridos en empedrado; el chofer marca cada tramo en la app</dd></div>
             <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Td</dt> <dd className="inline">minutos detenido o en tráfico</dd></div>
           </dl>
         </Tarjeta>
@@ -132,9 +136,16 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">Mixto</p>
-                <p className="text-theme-xs text-gray-500 dark:text-gray-400">3 km asfalto + 2 km tierra</p>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">2 km asfalto + 1 km tierra + 2 km empedrado</p>
               </div>
-              <span className="text-xl font-bold text-gray-800 dark:text-white/90">{formatoMoneda(previewTarifa(2), m)}</span>
+              <span className="text-xl font-bold text-gray-800 dark:text-white/90">{formatoMoneda(previewTarifa(1, 2), m)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">Empedrado</p>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">FE = {formatoNumero(formParams.factor_empedrado || 1, 1)}</p>
+              </div>
+              <span className="text-xl font-bold text-gray-800 dark:text-white/90">{formatoMoneda(previewTarifa(0, 5), m)}</span>
             </div>
             <div className="flex items-center justify-between">
               <div>

@@ -27,7 +27,7 @@ class PuntoRuta {
     (fila['lat'] as num).toDouble(),
     (fila['lng'] as num).toDouble(),
     fila['segundos'] as int,
-    fila['superficie'] == 1 ? Superficie.tierra : Superficie.asfalto,
+    Superficie.values[fila['superficie'] as int],
   );
 
   Map<String, Object> paraSqlite(String uuidViaje, int orden) => {
@@ -36,7 +36,7 @@ class PuntoRuta {
     'lat': lat,
     'lng': lng,
     'segundos': segundos,
-    'superficie': superficie == Superficie.tierra ? 1 : 0,
+    'superficie': superficie.index,
   };
 
   // 6 decimales ≈ 10 cm: no altera la distancia y achica el envío
@@ -44,7 +44,7 @@ class PuntoRuta {
     (lat * 1e6).round() / 1e6,
     (lng * 1e6).round() / 1e6,
     segundos,
-    superficie == Superficie.tierra ? 1 : 0,
+    superficie.index,
   ];
 }
 
@@ -64,12 +64,14 @@ Map<String, dynamic> viajeParaServidor(
     'distancia_km': viaje['distancia_km'],
     'km_asfalto': viaje['km_asfalto'],
     'km_tierra': viaje['km_tierra'],
+    'km_empedrado': viaje['km_empedrado'],
     'tiempo_detencion_min': viaje['tiempo_detencion_min'],
     'tarifa_cobrada': viaje['tarifa_total'],
     'fecha_hora_viaje': viaje['fecha_hora'],
     'tipo_superficie': tipoSuperficie,
     'factor_altitud_aplicado': viaje['factor_altitud'],
     'factor_superficie_aplicado': factorSuperficie,
+    'factor_empedrado_aplicado': viaje['factor_empedrado'],
     'costo_base_aplicado': viaje['costo_base_km'],
     'costo_minuto_aplicado': viaje['costo_minuto_detencion'],
     'consumo_litros_aplicado': viaje['consumo_litros_km'],

@@ -1,5 +1,5 @@
 const pool = require('./db');
-const { validarRangoDias, numeroEnRango } = require('./validacion');
+const { validarRangoDias, numeroEnRango, tipoSegunKm } = require('./validacion');
 const { tarifaV4 } = require('./verificacion');
 
 const DIAS_POR_DEFECTO = 30;
@@ -89,8 +89,9 @@ const HERRAMIENTAS = [
         {
             distancia_km: { type: 'number', description: 'Distancia en km (0.1 a 500).' },
             espera_min: { type: 'number', description: 'Minutos detenido (0 a 600, por defecto 0).' },
-            superficie: { type: 'string', enum: ['asfalto', 'tierra'], description: 'Si todo el viaje es de un tipo. Por defecto, asfalto.' },
-            km_tierra: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en tierra (el resto, asfalto).' },
+            superficie: { type: 'string', enum: ['asfalto', 'tierra', 'empedrado'], description: 'Si todo el viaje es de un tipo. Por defecto, asfalto.' },
+            km_tierra: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en tierra.' },
+            km_empedrado: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en empedrado. El resto de km_tierra y km_empedrado es asfalto.' },
         },
         ['distancia_km']),
     herramienta('viajes_con_diferencias',
@@ -183,23 +184,25 @@ const EJECUTORES = {
         const Td = numeroEnRango(args.espera_min ?? 0, 0, 600);
         if (D === null) return { error: 'distancia_km debe estar entre 0.1 y 500.' };
         if (Td === null) return { error: 'espera_min debe estar entre 0 y 600.' };
-        const Dt = args.km_tierra !== undefined ? numeroEnRango(args.km_tierra, 0, D)
-            : args.superficie === 'tierra' ? D : 0;
-        if (Dt === null) return { error: 'km_tierra debe estar entre 0 y distancia_km.' };
+        const mixto = args.km_tierra !== undefined || args.km_empedrado !== undefined;
+        const [Dt, De] = ['tierra', 'empedrado'].map(s =>
+            mixto ? numeroEnRango(args[`km_${s}`] ?? 0, 0, D) : args.superficie === s ? D : 0);
+        if (Dt === null || De === null || Dt + De > D + 1e-9)
+            return { error: 'km_tierra y km_empedrado deben ser positivos y no sumar más que distancia_km.' };
         const r = await pool.query(`SELECT * FROM parametros_topograficos WHERE empresa_id = $1`, [empresaId]);
         if (!r.rows.length) return { error: 'La empresa no tiene parámetros tarifarios.' };
         const p = r.rows[0];
         const [Cb, Cl, Pc, FH, Ct] = [p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
             p.factor_altitud, p.costo_minuto_detencion].map(parseFloat);
-        const FR = parseFloat(p.factor_superficie);
-        const Da = D - Dt;
-        const superficie = Dt === 0 ? 'asfalto' : Da === 0 ? 'tierra' : 'mixto';
+        const [FR, FE] = [p.factor_superficie, p.factor_empedrado].map(parseFloat);
+        const Da = Math.max(0, D - Dt - De);
+        const superficie = tipoSegunKm({ km_asfalto: Da, km_tierra: Dt, km_empedrado: De });
         const espera = Ct * Td;
-        const recorrido = tarifaV4({ km_asfalto: Da, km_tierra: Dt, Cb, Cl, Pc, FH, FR, Ct, Td }) - espera;
+        const recorrido = tarifaV4({ km_asfalto: Da, km_tierra: Dt, km_empedrado: De, Cb, Cl, Pc, FH, FR, FE, Ct, Td }) - espera;
         const r2 = (x) => Math.round(x * 100) / 100;
         return {
-            distancia_km: D, km_asfalto: r2(Da), km_tierra: r2(Dt), espera_min: Td, superficie,
-            parametros: { Cb, Cl, Pc, FH, FR, Ct },
+            distancia_km: D, km_asfalto: r2(Da), km_tierra: r2(Dt), km_empedrado: r2(De), espera_min: Td, superficie,
+            parametros: { Cb, Cl, Pc, FH, FR, FE, Ct },
             costo_recorrido: r2(recorrido), costo_espera: r2(espera), tarifa: r2(recorrido + espera),
         };
     },

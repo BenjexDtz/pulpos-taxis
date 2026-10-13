@@ -39,20 +39,15 @@ router.put('/api/admin/parametros', verificarToken, soloAdmin, async (req, res) 
         if (valores[campo] === null)
             return res.status(400).json({ error: `⚠️ ${campo} debe ser un número entre ${min} y ${max}.` });
     }
-    const { costo_base_km, consumo_litros_km, precio_combustible_bs,
-            factor_altitud, factor_superficie, costo_minuto_detencion } = valores;
-
+    // Los nombres de columna salen de RANGOS_PARAMETROS, nunca del body
+    const campos = Object.keys(valores);
     const r = await pool.query(
-        `WITH antes AS (SELECT * FROM parametros_topograficos WHERE empresa_id=$8 FOR UPDATE)
+        `WITH antes AS (SELECT * FROM parametros_topograficos WHERE empresa_id=$1 FOR UPDATE)
          UPDATE parametros_topograficos p
-         SET zona_ciudad=$1, costo_base_km=$2,
-             consumo_litros_km=$3, precio_combustible_bs=$4,
-             factor_altitud=$5, factor_superficie=$6,
-             costo_minuto_detencion=$7, fecha_actualizacion=NOW()
+         SET zona_ciudad=$2, ${campos.map((c, i) => `${c}=$${i + 3}`).join(', ')}, fecha_actualizacion=NOW()
          FROM antes WHERE p.id = antes.id
          RETURNING p.*, to_jsonb(antes) AS _antes, to_jsonb(p) AS _despues`,
-        [zona_ciudad, costo_base_km, consumo_litros_km, precio_combustible_bs,
-         factor_altitud, factor_superficie, costo_minuto_detencion, req.empresa.id]
+        [req.empresa.id, zona_ciudad, ...campos.map(c => valores[c])]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
     const { antes, despues, auditado } = separar(r.rows[0]);

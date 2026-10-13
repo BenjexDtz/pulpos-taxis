@@ -1,16 +1,15 @@
-const { distanciaKm } = require('./validacion');
+const { distanciaKm, SUPERFICIES } = require('./validacion');
 
 const MAX_PUNTOS = 20000;
-const SUPERFICIES = ['asfalto', 'tierra'];
 const TOLERANCIA_TARIFA = 0.02;
 
 const redondear = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 
-// Misma fórmula que calculadora.dart: T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td
-const tarifaV4 = ({ km_asfalto, km_tierra, Cb, Cl, Pc, FH, FR, Ct, Td }) =>
-    (km_asfalto + km_tierra * FR) * (Cb + Cl * Pc) * FH + Ct * Td;
+// Misma fórmula que calculadora.dart: T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td
+const tarifaV4 = ({ km_asfalto, km_tierra, km_empedrado = 0, Cb, Cl, Pc, FH, FR, FE = 1, Ct, Td }) =>
+    (km_asfalto + km_tierra * FR + km_empedrado * FE) * (Cb + Cl * Pc) * FH + Ct * Td;
 
-// La app envía [[lat, lng, segundos desde el inicio, superficie]] con superficie 0 = asfalto, 1 = tierra
+// La app envía [[lat, lng, segundos desde el inicio, superficie]] con superficie 0 = asfalto, 1 = tierra, 2 = empedrado
 const leerRuta = (ruta) => {
     if (!Array.isArray(ruta) || ruta.length < 1 || ruta.length > MAX_PUNTOS) return null;
     const puntos = [];
@@ -19,7 +18,7 @@ const leerRuta = (ruta) => {
         if (!Array.isArray(p) || p.length !== 4) return null;
         const [lat, lng, segundos, superficie] = p;
         if (![lat, lng].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-        if (!Number.isInteger(segundos) || segundos < segundosPrevios || ![0, 1].includes(superficie)) return null;
+        if (!Number.isInteger(segundos) || segundos < segundosPrevios || !Number.isInteger(superficie) || !SUPERFICIES[superficie]) return null;
         segundosPrevios = segundos;
         puntos.push({ lat, lng, segundos, superficie: SUPERFICIES[superficie] });
     }
@@ -28,10 +27,13 @@ const leerRuta = (ruta) => {
 
 // Cada tramo cuenta para la superficie del punto en que termina, como en la app
 const resumenRuta = (puntos) => {
-    const km = { asfalto: 0, tierra: 0 };
+    const km = Object.fromEntries(SUPERFICIES.map(s => [s, 0]));
     for (let i = 1; i < puntos.length; i++)
         km[puntos[i].superficie] += distanciaKm(puntos[i - 1].lat, puntos[i - 1].lng, puntos[i].lat, puntos[i].lng);
-    return { km_asfalto: km.asfalto, km_tierra: km.tierra, km: km.asfalto + km.tierra };
+    return {
+        km_asfalto: km.asfalto, km_tierra: km.tierra, km_empedrado: km.empedrado,
+        km: km.asfalto + km.tierra + km.empedrado,
+    };
 };
 
 // La app mide con otro radio terrestre y descarta lecturas imprecisas: se tolera 1 % o 20 m
@@ -42,6 +44,7 @@ const aplicadosDe = (b, km) => {
         Cb: b.costo_base_aplicado, Cl: b.consumo_litros_aplicado, Pc: b.precio_combustible_aplicado,
         FH: b.factor_altitud_aplicado, Ct: b.costo_minuto_aplicado, Td: b.tiempo_detencion_min,
         FR: km.km_tierra > 0 ? b.factor_superficie_aplicado : (b.factor_superficie_aplicado ?? 1),
+        FE: km.km_empedrado > 0 ? b.factor_empedrado_aplicado : (b.factor_empedrado_aplicado ?? 1),
     };
     return Object.values(v).every(x => typeof x === 'number' && Number.isFinite(x)) ? v : null;
 };
@@ -62,10 +65,12 @@ const verificarViaje = ({ cuerpo, km, ruta }) => {
     else if (ruta !== undefined) {
         const r = resumenRuta(ruta);
         distancia_ruta_km = redondear(r.km, 3);
-        if (!kmCoinciden(r.km, km.km_asfalto + km.km_tierra))
-            problemas.push(`la ruta mide ${r.km.toFixed(3)} km y el viaje declara ${(km.km_asfalto + km.km_tierra).toFixed(3)} km`);
-        else if (!kmCoinciden(r.km_tierra, km.km_tierra))
-            problemas.push(`la ruta tiene ${r.km_tierra.toFixed(3)} km en tierra y el viaje declara ${km.km_tierra.toFixed(3)} km`);
+        const declarados = km.km_asfalto + km.km_tierra + km.km_empedrado;
+        if (!kmCoinciden(r.km, declarados))
+            problemas.push(`la ruta mide ${r.km.toFixed(3)} km y el viaje declara ${declarados.toFixed(3)} km`);
+        else for (const s of ['tierra', 'empedrado'])
+            if (!kmCoinciden(r[`km_${s}`], km[`km_${s}`]))
+                problemas.push(`la ruta tiene ${r[`km_${s}`].toFixed(3)} km en ${s} y el viaje declara ${km[`km_${s}`].toFixed(3)} km`);
     }
 
     const estado = problemas.length ? 'diferencia'

@@ -30,20 +30,22 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
     const viaje = await enTransaccion(async (cliente) => {
         const r = await cliente.query(
             `INSERT INTO viajes_historial (
-                empresa_id, chofer_id, distancia_km, km_asfalto, km_tierra, tiempo_detencion_min, tarifa_cobrada,
-                tipo_superficie, factor_altitud_aplicado, factor_superficie_aplicado,
+                empresa_id, chofer_id, distancia_km, km_asfalto, km_tierra, km_empedrado,
+                tiempo_detencion_min, tarifa_cobrada, tipo_superficie,
+                factor_altitud_aplicado, factor_superficie_aplicado, factor_empedrado_aplicado,
                 costo_base_aplicado, costo_minuto_aplicado,
                 consumo_litros_aplicado, precio_combustible_aplicado,
                 fecha_hora_viaje, uuid,
                 distancia_ruta_km, tarifa_calculada, verificacion, verificacion_detalle
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
              ON CONFLICT (chofer_id, uuid) DO NOTHING
              RETURNING *`,
             [
-                req.empresa.id, req.usuario.id, distancia_km, km.km_asfalto, km.km_tierra,
+                req.empresa.id, req.usuario.id, distancia_km, km.km_asfalto, km.km_tierra, km.km_empedrado,
                 tiempo_detencion_min, tarifa_cobrada, km.tipo,
                 b.factor_altitud_aplicado ?? p.factor_altitud ?? 1,
                 b.factor_superficie_aplicado ?? (km.km_tierra > 0 ? p.factor_superficie : null) ?? 1,
+                b.factor_empedrado_aplicado ?? (km.km_empedrado > 0 ? p.factor_empedrado : null) ?? 1,
                 b.costo_base_aplicado ?? p.costo_base_km,
                 b.costo_minuto_aplicado ?? p.costo_minuto_detencion,
                 b.consumo_litros_aplicado ?? p.consumo_litros_km,

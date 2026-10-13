@@ -197,7 +197,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const pulpos = await loginAdmin('admin@pulpos.bo');
         const r = await pedir('PUT', '/api/admin/parametros', { token: pulpos, body: {
             zona_ciudad: 'El Alto', costo_base_km: 3, consumo_litros_km: 0.1, precio_combustible_bs: 6.96,
-            factor_altitud: 1.4, factor_superficie: 2.5, costo_minuto_detencion: 0.5,
+            factor_altitud: 1.4, factor_superficie: 2.5, factor_empedrado: 2, costo_minuto_detencion: 0.5,
         } });
         assert.equal(r.status, 200);
         const illimani = await loginAdmin('admin@illimani.bo');
@@ -252,7 +252,8 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const e = (await pedir('GET', '/api/admin/estadisticas', { token: pulpos })).json;
         const real = (await pool.query(
             `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total,
-                    sum(distancia_km)::float AS km, count(*) FILTER (WHERE tipo_superficie = 'mixto')::int AS mixtos
+                    sum(distancia_km)::float AS km, count(*) FILTER (WHERE tipo_superficie = 'mixto')::int AS mixtos,
+                    sum((km_asfalto > 0)::int + (km_tierra > 0)::int + (km_empedrado > 0)::int)::int AS tramos
              FROM viajes_historial v JOIN empresas em ON em.id = v.empresa_id
              WHERE em.codigo = 'pulpos' AND fecha_hora_viaje >= CURRENT_DATE - 29 AND fecha_hora_viaje < CURRENT_DATE + 1`)).rows[0];
         assert.ok(real.n >= 5);
@@ -262,9 +263,10 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal(e.por_dia.reduce((s, d) => s + d.viajes, 0), real.n);
         assert.equal(e.horas.reduce((s, h) => s + h.viajes, 0), real.n);
         assert.ok(real.mixtos >= 1);
-        assert.equal(e.superficie.reduce((s, x) => s + x.viajes, 0), real.n + real.mixtos);
+        assert.equal(e.superficie.reduce((s, x) => s + x.viajes, 0), real.tramos);
         assert.ok(Math.abs(e.superficie.reduce((s, x) => s + x.km, 0) - real.km) < 1e-6);
-        assert.ok(e.superficie.every(x => ['asfalto', 'tierra'].includes(x.tipo) && x.recorrido > 0));
+        assert.ok(e.superficie.every(x => ['asfalto', 'tierra', 'empedrado'].includes(x.tipo) && x.recorrido > 0));
+        assert.ok(e.superficie.some(x => x.tipo === 'empedrado'));
         assert.ok(e.choferes.every(c => c.placa !== '5678-ILL'));
 
         const i = (await pedir('GET', '/api/admin/estadisticas', { token: illimani })).json;

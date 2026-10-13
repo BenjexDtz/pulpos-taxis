@@ -43,12 +43,13 @@ const RANGOS_PARAMETROS = {
     precio_combustible_bs:  [1, 30],
     factor_altitud:         [1, 3],
     factor_superficie:      [1, 5],
+    factor_empedrado:       [1, 5],
     costo_minuto_detencion: [0.1, 5],
 };
 
 const PARAMETROS_INICIALES = {
     costo_base_km: 2.00, consumo_litros_km: 0.100, precio_combustible_bs: 6.96,
-    factor_altitud: 1.00, factor_superficie: 2.00, costo_minuto_detencion: 0.50,
+    factor_altitud: 1.00, factor_superficie: 2.00, factor_empedrado: 1.50, costo_minuto_detencion: 0.50,
 };
 
 const CAMPOS_EMPRESA = [
@@ -117,18 +118,29 @@ const distanciaKm = (lat1, lng1, lat2, lng2) => {
     return 2 * 6371 * Math.asin(Math.sqrt(a));
 };
 
+const SUPERFICIES = ['asfalto', 'tierra', 'empedrado'];
+
+const tipoSegunKm = (km) => {
+    const usadas = SUPERFICIES.filter(s => km[`km_${s}`] > 0);
+    return usadas.length > 1 ? 'mixto' : usadas[0] ?? 'asfalto';
+};
+
 // Apps anteriores a la v4 no envían km por superficie: el viaje entero era de un solo tipo
 const kmPorSuperficie = (b) => {
     const D = Number(b.distancia_km);
     if (!Number.isFinite(D) || D < 0) return null;
-    if (b.km_asfalto === undefined && b.km_tierra === undefined) {
-        const tierra = b.tipo_superficie === 'tierra';
-        return { km_asfalto: tierra ? 0 : D, km_tierra: tierra ? D : 0, tipo: tierra ? 'tierra' : 'asfalto' };
+    const campos = SUPERFICIES.map(s => `km_${s}`);
+    if (campos.every(c => b[c] === undefined)) {
+        const unica = SUPERFICIES.includes(b.tipo_superficie) ? b.tipo_superficie : 'asfalto';
+        const km = Object.fromEntries(SUPERFICIES.map(s => [`km_${s}`, s === unica ? D : 0]));
+        return { ...km, tipo: unica };
     }
-    const [a, t] = [b.km_asfalto ?? 0, b.km_tierra ?? 0];
-    if (![a, t].every(x => typeof x === 'number' && Number.isFinite(x) && x >= 0) || Math.abs(a + t - D) > 0.005)
+    const km = Object.fromEntries(campos.map(c => [c, b[c] ?? 0]));
+    const valores = Object.values(km);
+    if (!valores.every(x => typeof x === 'number' && Number.isFinite(x) && x >= 0) ||
+        Math.abs(valores.reduce((a, x) => a + x, 0) - D) > 0.005)
         return null;
-    return { km_asfalto: a, km_tierra: t, tipo: t === 0 ? 'asfalto' : a === 0 ? 'tierra' : 'mixto' };
+    return { ...km, tipo: tipoSegunKm(km) };
 };
 
 const conCostos = (p) => {
@@ -141,6 +153,7 @@ const conCostos = (p) => {
 };
 
 module.exports = {
-    validarRangoDias, filtroFechas, numeroEnRango, validarEmpresa, distanciaKm, kmPorSuperficie, conCostos,
+    validarRangoDias, filtroFechas, numeroEnRango, validarEmpresa, distanciaKm, kmPorSuperficie, tipoSegunKm, conCostos,
+    SUPERFICIES,
     RANGOS_PARAMETROS, PARAMETROS_INICIALES, CAMPOS_EMPRESA,
 };

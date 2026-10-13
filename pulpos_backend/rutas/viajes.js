@@ -18,17 +18,20 @@ router.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
             v.distancia_km,
             v.km_asfalto,
             v.km_tierra,
+            v.km_empedrado,
             v.tiempo_detencion_min,
             v.tarifa_cobrada             AS tarifa_total,
             v.tipo_superficie,
             v.factor_altitud_aplicado,
             v.factor_superficie_aplicado,
+            v.factor_empedrado_aplicado,
             v.costo_base_aplicado,
             v.costo_minuto_aplicado,
             v.consumo_litros_aplicado,
             v.precio_combustible_aplicado,
             ROUND((v.consumo_litros_aplicado * v.precio_combustible_aplicado
-                   * (v.km_asfalto + v.km_tierra * v.factor_superficie_aplicado)
+                   * (v.km_asfalto + v.km_tierra * v.factor_superficie_aplicado
+                      + v.km_empedrado * v.factor_empedrado_aplicado)
                    * v.factor_altitud_aplicado)::numeric, 2)
                 AS costo_combustible_total,
             v.tarifa_calculada,
@@ -50,7 +53,7 @@ router.get('/api/admin/viajes/:id/ruta', verificarToken, soloAdmin, async (req, 
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Viaje inválido.' });
     const viaje = (await pool.query(
-        `SELECT v.id_servidor AS id, v.distancia_km, v.km_asfalto, v.km_tierra, v.distancia_ruta_km,
+        `SELECT v.id_servidor AS id, v.distancia_km, v.km_asfalto, v.km_tierra, v.km_empedrado, v.distancia_ruta_km,
                 v.tarifa_cobrada AS tarifa_total, v.tarifa_calculada, v.verificacion, v.verificacion_detalle,
                 v.fecha_hora_viaje AS fecha_hora, c.nombre_completo AS chofer, c.placa_vehiculo
          FROM viajes_historial v
@@ -81,10 +84,12 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
             ROUND(v.distancia_km::numeric, 3),
             ROUND(v.km_asfalto::numeric, 3),
             ROUND(v.km_tierra::numeric, 3),
+            ROUND(v.km_empedrado::numeric, 3),
             ROUND(v.tiempo_detencion_min::numeric, 2),
             v.tipo_superficie,
             v.factor_altitud_aplicado,
             v.factor_superficie_aplicado,
+            v.factor_empedrado_aplicado,
             v.costo_base_aplicado,
             v.consumo_litros_aplicado,
             v.precio_combustible_aplicado,
@@ -110,7 +115,7 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
 
     const m = req.empresa.moneda_simbolo;
     const encabezados = [
-        'ID', 'Conductor', 'Placa', 'Km', 'Km asfalto', 'Km tierra', 'Min Espera', 'Superficie', 'FH', 'FR tierra',
+        'ID', 'Conductor', 'Placa', 'Km', 'Km asfalto', 'Km tierra', 'Km empedrado', 'Min Espera', 'Superficie', 'FH', 'FR tierra', 'FE empedrado',
         `Cb (${m}/km)`, 'Cl (L/km)', `Pc (${m}/L)`, `Cl×Pc (${m}/km)`, 'Cb+Cl×Pc',
         `Tarifa Total (${m})`, `Tarifa calculada (${m})`, 'Km ruta GPS', 'Verificación', 'Detalle verificación', 'Fecha',
     ];

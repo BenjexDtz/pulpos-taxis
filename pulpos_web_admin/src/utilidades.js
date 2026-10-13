@@ -17,6 +17,15 @@ export const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c 
 
 const MINUTOS_GPS_VIVO = 5;
 
+// El asfalto se dibuja con el color de la empresa
+export const SUPERFICIES = {
+  asfalto: { nombre: 'Asfalto', color: null },
+  tierra: { nombre: 'Tierra', color: '#f79009' },
+  empedrado: { nombre: 'Empedrado', color: '#7a5af8' },
+};
+
+export const colorSuperficie = (tipo, colorMarca) => SUPERFICIES[tipo]?.color ?? colorMarca;
+
 // YYYY-MM-DD en la hora del navegador (toISOString usaría UTC y cambiaría de día por la noche).
 export const fechaLocal = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -26,6 +35,12 @@ export const formatoMoneda = (valor, simbolo = 'Bs') =>
 
 export const formatoNumero = (valor, decimales = 0) =>
   Number(valor ?? 0).toLocaleString('es-BO', { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+
+// "1,20 asfalto · 0,80 empedrado": solo las superficies recorridas
+export const desgloseKm = (v) => Object.keys(SUPERFICIES)
+  .filter(s => Number(v[`km_${s}`]) > 0)
+  .map(s => `${formatoNumero(v[`km_${s}`], 2)} ${SUPERFICIES[s].nombre.toLowerCase()}`)
+  .join(' · ');
 
 export const minutosDesde = (fecha) => fecha ? Math.floor((new Date() - new Date(fecha)) / 60000) : null;
 

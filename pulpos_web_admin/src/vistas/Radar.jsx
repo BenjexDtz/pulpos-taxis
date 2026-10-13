@@ -76,6 +76,7 @@ export default function Radar({ choferes, viajes, params, empresa, cargandoChofe
                 {[
                   ['FH · altitud', `${params.factor_altitud}×`],
                   ['FR · tierra', `${params.factor_superficie}×`],
+                  ['FE · empedrado', `${params.factor_empedrado}×`],
                   ['Cb · costo base', `${m} ${params.costo_base_km}/km`],
                   ['Cl · consumo', `${params.consumo_litros_km} L/km`],
                   ['Pc · combustible', `${m} ${params.precio_combustible_bs}/L`],

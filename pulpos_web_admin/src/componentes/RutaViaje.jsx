@@ -5,9 +5,7 @@ import Insignia from './ui/Insignia.jsx';
 import Mensaje from './Mensaje.jsx';
 import useLeaflet from './useLeaflet.js';
 import { botonIcono, tarjeta } from './ui/estilos.js';
-import { formatoMoneda, formatoNumero, VERIFICACION } from '../utilidades.js';
-
-const COLOR_TIERRA = '#f79009';
+import { colorSuperficie, desgloseKm, formatoMoneda, formatoNumero, SUPERFICIES, VERIFICACION } from '../utilidades.js';
 
 // Puntos seguidos con la misma superficie forman una sola línea; cada tramo toma la superficie del punto final
 const tramos = (puntos) => {
@@ -54,7 +52,7 @@ export default function RutaViaje({ id, urlServidor, headers, manejarErrorApi, m
       maxZoom: 19,
     }).addTo(mapa);
     for (const t of tramos(datos.puntos))
-      L.polyline(t.coords, { color: t.superficie === 'tierra' ? COLOR_TIERRA : color, weight: 5, opacity: 0.9 }).addTo(mapa);
+      L.polyline(t.coords, { color: colorSuperficie(t.superficie, color), weight: 5, opacity: 0.9 }).addTo(mapa);
     const inicio = datos.puntos[0];
     const fin = datos.puntos.at(-1);
     L.circleMarker([inicio.lat, inicio.lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#16a34a', fillOpacity: 1 })
@@ -102,7 +100,7 @@ export default function RutaViaje({ id, urlServidor, headers, manejarErrorApi, m
             )}
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Dato etiqueta="Distancia cobrada" valor={`${formatoNumero(v.distancia_km, 3)} km`}
-                detalle={`${formatoNumero(v.km_asfalto, 2)} asfalto · ${formatoNumero(v.km_tierra, 2)} tierra`} />
+                detalle={desgloseKm(v)} />
               <Dato etiqueta="Medida por el servidor" valor={v.distancia_ruta_km != null ? `${formatoNumero(v.distancia_ruta_km, 3)} km` : '—'}
                 detalle="Haversine sobre la ruta GPS" />
               <Dato etiqueta="Tarifa cobrada" valor={formatoMoneda(v.tarifa_total, moneda)} />
@@ -113,8 +111,11 @@ export default function RutaViaje({ id, urlServidor, headers, manejarErrorApi, m
               <>
                 <div ref={mapRef} className="h-80 w-full overflow-hidden rounded-xl" />
                 <div className="mt-3 flex flex-wrap gap-4 text-theme-xs text-gray-600 dark:text-gray-400">
-                  <span className="flex items-center gap-2"><span className="h-1.5 w-5 rounded" style={{ background: color }} />Asfalto</span>
-                  <span className="flex items-center gap-2"><span className="h-1.5 w-5 rounded" style={{ background: COLOR_TIERRA }} />Tierra / complejo</span>
+                  {Object.entries(SUPERFICIES).map(([tipo, { nombre }]) => (
+                    <span key={tipo} className="flex items-center gap-2">
+                      <span className="h-1.5 w-5 rounded" style={{ background: colorSuperficie(tipo, color) }} />{nombre}
+                    </span>
+                  ))}
                   <span>{datos.puntos.length} puntos GPS</span>
                 </div>
               </>

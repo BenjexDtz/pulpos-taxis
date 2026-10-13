@@ -11,10 +11,9 @@ import GraficoSuperficie from '../componentes/tablero/GraficoSuperficie.jsx';
 import RankingChoferes from '../componentes/tablero/RankingChoferes.jsx';
 import MapaCalorHoras from '../componentes/tablero/MapaCalorHoras.jsx';
 import { botonIcono, botonSecundario, campo, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
-import { consultaFechas, fechaLocal, formatoMoneda, formatoNumero, resumenFlota, variacion, VERIFICACION } from '../utilidades.js';
+import { consultaFechas, desgloseKm, fechaLocal, formatoMoneda, formatoNumero, resumenFlota, SUPERFICIES, variacion, VERIFICACION } from '../utilidades.js';
 
 const PERIODOS = [[7, '7 días'], [30, '30 días'], [90, '90 días'], [365, '1 año']];
-const COLOR_TIERRA = '#f79009';
 
 const haceDias = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return fechaLocal(d); };
 
@@ -120,9 +119,9 @@ export default function Tablero({
             : 'Cargando...'}>
           <GraficoRecaudacion datos={estadisticas?.por_dia ?? []} color={color} moneda={m} />
         </Tarjeta>
-        <Tarjeta className="col-span-12 xl:col-span-4" icono={Layers} titulo="Asfalto vs tierra" subtitulo="Km recorridos por superficie">
-          <GraficoSuperficie datos={estadisticas?.superficie ?? []} colores={{ asfalto: color, tierra: COLOR_TIERRA }}
-            moneda={m} factorTierra={params?.factor_superficie} />
+        <Tarjeta className="col-span-12 xl:col-span-4" icono={Layers} titulo="Superficies" subtitulo="Km recorridos en asfalto, tierra y empedrado">
+          <GraficoSuperficie datos={estadisticas?.superficie ?? []} color={color}
+            moneda={m} factorTierra={params?.factor_superficie} factorEmpedrado={params?.factor_empedrado} />
         </Tarjeta>
         <Tarjeta className="col-span-12 xl:col-span-5" icono={Trophy} titulo="Ranking de choferes" subtitulo="Los que más recaudaron en el período">
           <RankingChoferes choferes={estadisticas?.choferes ?? []} moneda={m} />
@@ -174,14 +173,14 @@ export default function Tablero({
                     {formatoNumero(v.distancia_km, 2)} km
                     {v.tipo_superficie === 'mixto' && (
                       <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                        {formatoNumero(v.km_asfalto, 2)} asfalto · {formatoNumero(v.km_tierra, 2)} tierra
+                        {desgloseKm(v)}
                       </p>
                     )}
                   </td>
                   <td className={td}>{Math.floor(v.tiempo_detencion_min)} min</td>
                   <td className={td}>
                     <Insignia color={v.tipo_superficie === 'asfalto' ? 'neutro' : 'aviso'}>
-                      {{ tierra: 'Tierra', mixto: 'Mixto' }[v.tipo_superficie] ?? 'Asfalto'}
+                      {v.tipo_superficie === 'mixto' ? 'Mixto' : SUPERFICIES[v.tipo_superficie]?.nombre ?? 'Asfalto'}
                     </Insignia>
                   </td>
                   <td className={`${td} font-semibold text-gray-800 dark:text-white/90`}>{formatoMoneda(v.tarifa_total, m)}</td>

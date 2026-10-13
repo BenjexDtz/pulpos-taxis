@@ -1,23 +1,23 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { formatoMoneda, formatoNumero } from '../../utilidades.js';
+import { colorSuperficie, formatoMoneda, formatoNumero, SUPERFICIES } from '../../utilidades.js';
 
-const NOMBRES = { asfalto: 'Asfalto', tierra: 'Tierra' };
+const nombre = (tipo) => SUPERFICIES[tipo]?.nombre ?? tipo;
 
 function Detalle({ active, payload, moneda }) {
   if (!active || !payload?.length) return null;
   const { tipo, viajes, km, recorrido } = payload[0].payload;
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3 text-theme-xs shadow-theme-sm dark:border-gray-800 dark:bg-gray-900">
-      <p className="font-medium text-gray-800 dark:text-white/90">{NOMBRES[tipo] ?? tipo}</p>
+      <p className="font-medium text-gray-800 dark:text-white/90">{nombre(tipo)}</p>
       <p className="text-gray-500 dark:text-gray-400">{formatoNumero(km, 1)} km en {viajes} viajes · {formatoMoneda(recorrido, moneda)}</p>
     </div>
   );
 }
 
-export default function GraficoSuperficie({ datos, colores, moneda, factorTierra }) {
+export default function GraficoSuperficie({ datos, color, moneda, factorTierra, factorEmpedrado }) {
   const totalKm = datos.reduce((s, d) => s + d.km, 0);
   const totalRecorrido = datos.reduce((s, d) => s + d.recorrido, 0);
-  const colorDe = (tipo) => (tipo === 'tierra' ? colores.tierra : colores.asfalto);
+  const colorDe = (tipo) => colorSuperficie(tipo, color);
 
   if (!totalKm) return <p className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">Sin viajes en el período.</p>;
 
@@ -44,7 +44,7 @@ export default function GraficoSuperficie({ datos, colores, moneda, factorTierra
             <li key={d.tipo} className="flex items-center justify-between gap-3 text-theme-sm">
               <span className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorDe(d.tipo) }} />
-                {NOMBRES[d.tipo] ?? d.tipo}
+                {nombre(d.tipo)}
               </span>
               <span className="text-right text-gray-500 dark:text-gray-400">
                 {formatoNumero(d.km, 1)} km · <span className="font-medium text-gray-800 dark:text-white/90">{parte.toFixed(0)}%</span> del cobro por recorrido
@@ -55,7 +55,8 @@ export default function GraficoSuperficie({ datos, colores, moneda, factorTierra
       </ul>
       {factorTierra && (
         <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-theme-xs text-gray-500 dark:bg-white/[0.03] dark:text-gray-400">
-          Cada km en tierra se cobra × FR = {Number(factorTierra).toFixed(2)}; un viaje mixto suma en las dos superficies.
+          Cada km en tierra se cobra × FR = {Number(factorTierra).toFixed(2)}
+          {factorEmpedrado && <> y en empedrado × FE = {Number(factorEmpedrado).toFixed(2)}</>}; un viaje mixto suma en cada superficie que recorrió.
         </p>
       )}
     </div>
