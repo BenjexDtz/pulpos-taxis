@@ -433,50 +433,11 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   // Opcional: sirve para comparar la tarifa con la negociación de palabra
   Future<double?> _preguntarTarifaTradicional(double tarifa) async {
     if (!mounted) return null;
-    final controlador = TextEditingController();
-    final monto = await showDialog<double>(
+    return showDialog<double>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Text('Total: $_moneda ${tarifa.toStringAsFixed(2)}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '¿Cuánto habrías cobrado este viaje sin el taxímetro? '
-              'Es opcional y solo sirve para comparar.',
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controlador,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                prefixText: '$_moneda ',
-                hintText: 'Ej. 15',
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OMITIR'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              ctx,
-              leerMonto(controlador.text),
-            ),
-            child: const Text('GUARDAR'),
-          ),
-        ],
-      ),
+      builder: (_) => DialogoTarifaTradicional(tarifa: tarifa, moneda: _moneda),
     );
-    controlador.dispose();
-    return monto;
   }
 
   void _elegirSuperficie(Superficie s) => setState(() {
@@ -836,6 +797,69 @@ class _PantallaPruebaState extends State<PantallaPrueba>
           ),
         ),
       ),
+    );
+  }
+}
+
+class DialogoTarifaTradicional extends StatefulWidget {
+  const DialogoTarifaTradicional({
+    super.key,
+    required this.tarifa,
+    required this.moneda,
+  });
+
+  final double tarifa;
+  final String moneda;
+
+  @override
+  State<DialogoTarifaTradicional> createState() =>
+      _DialogoTarifaTradicionalState();
+}
+
+class _DialogoTarifaTradicionalState extends State<DialogoTarifaTradicional> {
+  final _controlador = TextEditingController();
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Total: ${widget.moneda} ${widget.tarifa.toStringAsFixed(2)}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '¿Cuánto habrías cobrado este viaje sin el taxímetro? '
+            'Es opcional y solo sirve para comparar.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controlador,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              prefixText: '${widget.moneda} ',
+              hintText: 'Ej. 15',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OMITIR'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, leerMonto(_controlador.text)),
+          child: const Text('GUARDAR'),
+        ),
+      ],
     );
   }
 }
