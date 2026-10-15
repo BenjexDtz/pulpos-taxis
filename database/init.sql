@@ -78,16 +78,19 @@ CREATE TABLE IF NOT EXISTS mfa_codigos_respaldo (
 -- ── 4. PARÁMETROS TOPOGRÁFICOS ────────────────────────────────────────────────
 --
 -- Fórmula completa:
---   T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+--   T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td
 --
 -- Cb  = costo_base_km           — ganancia del conductor + depreciación
 -- Cl  = consumo_litros_km       — cuántos litros gasta el taxi por km
 -- Pc  = precio_combustible_bs   — precio actual del litro de combustible
 -- FH  = factor_altitud          — penalización por la altitud de operación
--- FR  = factor_superficie       — asfalto (1.0) o tierra/barro (2.5)
+-- FR  = factor_superficie       — tierra/barro (2.5); el asfalto vale 1.0
+-- FE  = factor_empedrado        — empedrado o adoquín
 -- Ct  = costo_minuto_detencion  — cobro por tiempo en tráfico o espera
 -- Td  = tiempo detención (min)  — medido por GPS en tiempo real
--- D   = distancia (km)          — medida por GPS en tiempo real
+-- Da  = km en asfalto           — tramos GPS con asfalto seleccionado
+-- Dt  = km en tierra            — tramos GPS con tierra seleccionada
+-- De  = km en empedrado         — tramos GPS con empedrado seleccionado
 --
 CREATE TABLE IF NOT EXISTS parametros_topograficos (
     id                      SERIAL PRIMARY KEY,
@@ -98,6 +101,7 @@ CREATE TABLE IF NOT EXISTS parametros_topograficos (
     precio_combustible_bs   NUMERIC(6, 2) NOT NULL DEFAULT 6.96,
     factor_altitud          NUMERIC(4, 2) NOT NULL,
     factor_superficie       NUMERIC(4, 2) NOT NULL,
+    factor_empedrado        NUMERIC(4, 2) NOT NULL DEFAULT 1.50,
     costo_minuto_detencion  NUMERIC(5, 2) NOT NULL,
     fecha_actualizacion     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -111,12 +115,16 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     chofer_id                    INTEGER NOT NULL,
 
     distancia_km                 NUMERIC(8, 3) NOT NULL,
+    km_asfalto                   NUMERIC(8, 3) NOT NULL DEFAULT 0,
+    km_tierra                    NUMERIC(8, 3) NOT NULL DEFAULT 0,
+    km_empedrado                 NUMERIC(8, 3) NOT NULL DEFAULT 0,
     tiempo_detencion_min         NUMERIC(8, 2) NOT NULL,
     tarifa_cobrada               NUMERIC(8, 2) NOT NULL,
 
     tipo_superficie              VARCHAR(20)   NOT NULL DEFAULT 'asfalto',
     factor_altitud_aplicado      NUMERIC(4, 2) NOT NULL DEFAULT 1.40,
     factor_superficie_aplicado   NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
+    factor_empedrado_aplicado    NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     costo_base_aplicado          NUMERIC(5, 2) NOT NULL DEFAULT 2.00,
     costo_minuto_aplicado        NUMERIC(5, 2) NOT NULL DEFAULT 0.50,
     consumo_litros_aplicado      NUMERIC(5, 3) NOT NULL DEFAULT 0.100,
@@ -126,12 +134,48 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     fecha_sincronizacion         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     uuid                         UUID,
 
+    -- El servidor recalcula la tarifa y mide la ruta; un viaje no se rechaza, se marca
+    distancia_ruta_km            NUMERIC(8, 3),
+    tarifa_calculada             NUMERIC(8, 2),
+    verificacion                 VARCHAR(15)   NOT NULL DEFAULT 'sin_verificar',
+    verificacion_detalle         TEXT,
+
+    -- Vibración (RMS, m/s²) medida por el acelerómetro: ¿la tierra o el empedrado marcados vibraron como tales?
+    vibracion_referencia         NUMERIC(5, 2),
+    vibracion_irregular          NUMERIC(5, 2),
+    superficie_respaldo          VARCHAR(12),
+
+    -- Opcional: lo que el chofer habría cobrado negociando de palabra (comparación con el sistema)
+    tarifa_tradicional           NUMERIC(8, 2),
+
     CONSTRAINT viajes_chofer_uuid_key UNIQUE (chofer_id, uuid),
+    CONSTRAINT viajes_verificacion_check
+        CHECK (verificacion IN ('ok', 'sin_ruta', 'diferencia', 'sin_verificar')),
+    CONSTRAINT viajes_superficie_respaldo_check
+        CHECK (superficie_respaldo IN ('respaldada', 'dudosa', 'sin_datos')),
+    CONSTRAINT viajes_tarifa_tradicional_check CHECK (tarifa_tradicional > 0),
+    CONSTRAINT viajes_km_asfalto_check CHECK (km_asfalto >= 0),
+    CONSTRAINT viajes_km_tierra_check  CHECK (km_tierra >= 0),
+    CONSTRAINT viajes_km_empedrado_check CHECK (km_empedrado >= 0),
+    CONSTRAINT viajes_km_por_superficie_check
+        CHECK (abs(km_asfalto + km_tierra + km_empedrado - distancia_km) <= 0.01),
     CONSTRAINT viajes_chofer_misma_empresa_fk
         FOREIGN KEY (chofer_id, empresa_id) REFERENCES choferes(id, empresa_id)
 );
 
 CREATE INDEX IF NOT EXISTS viajes_empresa_fecha_idx ON viajes_historial (empresa_id, fecha_hora_viaje DESC);
+
+-- Puntos GPS con los que la app calculó la tarifa; superficie = la marcada al llegar a ese punto
+CREATE TABLE IF NOT EXISTS viajes_puntos (
+    viaje_id    INTEGER NOT NULL REFERENCES viajes_historial(id_servidor) ON DELETE CASCADE,
+    orden       INTEGER NOT NULL,
+    lat         DOUBLE PRECISION NOT NULL,
+    lng         DOUBLE PRECISION NOT NULL,
+    segundos    INTEGER NOT NULL,
+    superficie  VARCHAR(10) NOT NULL CHECK (superficie IN ('asfalto', 'tierra', 'empedrado')),
+    vibracion   REAL CHECK (vibracion >= 0),
+    PRIMARY KEY (viaje_id, orden)
+);
 CREATE INDEX IF NOT EXISTS choferes_empresa_idx     ON choferes (empresa_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -147,13 +191,13 @@ ON CONFLICT (codigo) DO NOTHING;
 
 INSERT INTO parametros_topograficos (
     empresa_id, zona_ciudad, costo_base_km, consumo_litros_km, precio_combustible_bs,
-    factor_altitud, factor_superficie, costo_minuto_detencion
+    factor_altitud, factor_superficie, factor_empedrado, costo_minuto_detencion
 )
-SELECT e.id, v.zona, v.cb, v.cl, v.pc, v.fh, v.fr, v.ct
+SELECT e.id, v.zona, v.cb, v.cl, v.pc, v.fh, v.fr, v.fe, v.ct
 FROM (VALUES
-    ('pulpos',   'El Alto - Topografía Compleja', 2.00, 0.100, 6.96, 1.40, 2.50, 0.50),
-    ('illimani', 'La Paz - Laderas',              2.50, 0.110, 6.96, 1.30, 2.00, 0.60)
-) AS v(codigo, zona, cb, cl, pc, fh, fr, ct)
+    ('pulpos',   'El Alto - Topografía Compleja', 2.00, 0.100, 6.96, 1.40, 2.50, 2.00, 0.50),
+    ('illimani', 'La Paz - Laderas',              2.50, 0.110, 6.96, 1.30, 2.00, 1.80, 0.60)
+) AS v(codigo, zona, cb, cl, pc, fh, fr, fe, ct)
 JOIN empresas e ON e.codigo = v.codigo
 ON CONFLICT (empresa_id) DO NOTHING;
 
@@ -181,8 +225,8 @@ JOIN empresas e ON e.codigo = v.codigo
 ON CONFLICT (empresa_id, placa_vehiculo) DO NOTHING;
 
 INSERT INTO viajes_historial (
-    empresa_id, chofer_id, distancia_km, tiempo_detencion_min, tarifa_cobrada,
-    tipo_superficie, factor_altitud_aplicado, factor_superficie_aplicado,
+    empresa_id, chofer_id, distancia_km, km_asfalto, km_tierra, km_empedrado, tiempo_detencion_min, tarifa_cobrada,
+    tipo_superficie, factor_altitud_aplicado, factor_superficie_aplicado, factor_empedrado_aplicado,
     costo_base_aplicado, costo_minuto_aplicado,
     consumo_litros_aplicado, precio_combustible_aplicado,
     fecha_hora_viaje
@@ -190,23 +234,29 @@ INSERT INTO viajes_historial (
 SELECT
     c.empresa_id,
     c.id,
-    v.dist,
+    v.asf + v.tie + v.emp,
+    v.asf,
+    v.tie,
+    v.emp,
     v.deten,
-    ROUND((v.dist * (p.costo_base_km + p.consumo_litros_km * p.precio_combustible_bs)
-           * p.factor_altitud * fr.valor + v.deten * p.costo_minuto_detencion)::numeric, 2),
-    v.sup, p.factor_altitud, fr.valor, p.costo_base_km, p.costo_minuto_detencion,
+    ROUND(((v.asf + v.tie * p.factor_superficie + v.emp * p.factor_empedrado)
+           * (p.costo_base_km + p.consumo_litros_km * p.precio_combustible_bs)
+           * p.factor_altitud + v.deten * p.costo_minuto_detencion)::numeric, 2),
+    CASE WHEN v.tie = 0 AND v.emp = 0 THEN 'asfalto' WHEN v.asf = 0 AND v.emp = 0 THEN 'tierra'
+         WHEN v.asf = 0 AND v.tie = 0 THEN 'empedrado' ELSE 'mixto' END,
+    p.factor_altitud, p.factor_superficie, p.factor_empedrado, p.costo_base_km, p.costo_minuto_detencion,
     p.consumo_litros_km, p.precio_combustible_bs,
     NOW() - (random() * interval '7 days')
 FROM choferes c
 JOIN parametros_topograficos p ON p.empresa_id = c.empresa_id
 CROSS JOIN (VALUES
-    (5.200, 12.00, 'asfalto'),
-    (2.100,  0.00, 'asfalto'),
-    (3.500,  8.50, 'tierra'),
-    (1.800,  5.00, 'asfalto'),
-    (4.200, 15.00, 'tierra')
-) AS v(dist, deten, sup)
-CROSS JOIN LATERAL (SELECT CASE WHEN v.sup = 'tierra' THEN p.factor_superficie ELSE 1.00 END AS valor) fr
+    (5.200, 0.000, 0.000, 12.00),
+    (2.100, 0.000, 0.000,  0.00),
+    (0.000, 3.500, 0.000,  8.50),
+    (1.000, 0.000, 0.800,  5.00),
+    (0.000, 4.200, 0.000, 15.00),
+    (2.400, 1.400, 1.200,  6.00)
+) AS v(asf, tie, emp, deten)
 WHERE c.placa_vehiculo IN ('1234-KKK', '5678-ILL')
   AND NOT EXISTS (SELECT 1 FROM viajes_historial vh WHERE vh.chofer_id = c.id);
 

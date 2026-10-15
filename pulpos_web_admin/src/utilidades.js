@@ -17,6 +17,15 @@ export const escaparHtml = (texto) => String(texto ?? '').replace(/[&<>"']/g, c 
 
 const MINUTOS_GPS_VIVO = 5;
 
+// El asfalto se dibuja con el color de la empresa
+export const SUPERFICIES = {
+  asfalto: { nombre: 'Asfalto', color: null },
+  tierra: { nombre: 'Tierra', color: '#f79009' },
+  empedrado: { nombre: 'Empedrado', color: '#7a5af8' },
+};
+
+export const colorSuperficie = (tipo, colorMarca) => SUPERFICIES[tipo]?.color ?? colorMarca;
+
 // YYYY-MM-DD en la hora del navegador (toISOString usaría UTC y cambiaría de día por la noche).
 export const fechaLocal = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -26,6 +35,12 @@ export const formatoMoneda = (valor, simbolo = 'Bs') =>
 
 export const formatoNumero = (valor, decimales = 0) =>
   Number(valor ?? 0).toLocaleString('es-BO', { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+
+// "1,20 asfalto · 0,80 empedrado": solo las superficies recorridas
+export const desgloseKm = (v) => Object.keys(SUPERFICIES)
+  .filter(s => Number(v[`km_${s}`]) > 0)
+  .map(s => `${formatoNumero(v[`km_${s}`], 2)} ${SUPERFICIES[s].nombre.toLowerCase()}`)
+  .join(' · ');
 
 export const minutosDesde = (fecha) => fecha ? Math.floor((new Date() - new Date(fecha)) / 60000) : null;
 
@@ -54,3 +69,26 @@ export const variacion = (actual, anterior) => {
   if (!b) return null;
   return ((a - b) / b) * 100;
 };
+
+// Resultado de la verificación que hace el servidor al recibir cada viaje
+export const VERIFICACION = {
+  ok: { texto: 'Verificado', color: 'exito', ayuda: 'La tarifa sale de la fórmula y la ruta GPS coincide con los km cobrados.' },
+  sin_ruta: { texto: 'Sin ruta', color: 'neutro', ayuda: 'La tarifa sale de la fórmula, pero la app no envió la ruta (versión anterior).' },
+  diferencia: { texto: 'Diferencia', color: 'error', ayuda: 'La tarifa o los km no coinciden con lo que registró el GPS.' },
+  sin_verificar: { texto: 'Sin verificar', color: 'neutro', ayuda: 'Viaje anterior a la verificación o sin los parámetros aplicados.' },
+};
+
+// Lo marcado como tierra o empedrado, ¿vibró como tal? (acelerómetro del teléfono; no cambia la tarifa)
+export const RESPALDO_SUPERFICIE = {
+  respaldada: { texto: 'Superficie respaldada', color: 'exito', ayuda: 'Lo marcado como tierra o empedrado vibró al menos 1,5 veces más que el asfalto.' },
+  dudosa: { texto: 'Superficie dudosa', color: 'aviso', ayuda: 'Lo marcado como tierra o empedrado vibró casi como el asfalto: conviene revisarlo con el chofer.' },
+  sin_datos: { texto: 'Sin datos de vibración', color: 'neutro', ayuda: 'Hubo pocas lecturas del acelerómetro para comparar.' },
+};
+
+// Color de un tramo según cuántas veces vibró más que el asfalto
+export const NIVELES_VIBRACION = [
+  { hasta: 1.5, texto: 'Liso (< 1,5×)', color: '#12b76a' },
+  { hasta: 2.5, texto: 'Irregular (1,5–2,5×)', color: '#f79009' },
+  { hasta: Infinity, texto: 'Muy irregular (> 2,5×)', color: '#f04438' },
+];
+export const COLOR_SIN_VIBRACION = '#98a2b3';

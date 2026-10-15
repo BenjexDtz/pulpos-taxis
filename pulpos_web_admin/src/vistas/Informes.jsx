@@ -1,27 +1,33 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Activity, Car, Clock, Coins, Download, Flame, Layers, RefreshCw, Route, Search, Trophy, TrendingUp } from 'lucide-react';
+import { Clock, Download, Flame, Layers, MapPinned, RefreshCw, Scale, Search, Trophy, TrendingUp } from 'lucide-react';
 import Tarjeta from '../componentes/ui/Tarjeta.jsx';
 import Insignia from '../componentes/ui/Insignia.jsx';
 import Mensaje from '../componentes/Mensaje.jsx';
-import TarjetaMetrica from '../componentes/tablero/TarjetaMetrica.jsx';
+import RutaViaje from '../componentes/RutaViaje.jsx';
+import Visor from '../componentes/tablero/Visor.jsx';
 import GraficoRecaudacion from '../componentes/tablero/GraficoRecaudacion.jsx';
 import GraficoSuperficie from '../componentes/tablero/GraficoSuperficie.jsx';
 import RankingChoferes from '../componentes/tablero/RankingChoferes.jsx';
 import MapaCalorHoras from '../componentes/tablero/MapaCalorHoras.jsx';
-import { botonSecundario, campo, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
-import { consultaFechas, fechaLocal, formatoMoneda, formatoNumero, resumenFlota, variacion } from '../utilidades.js';
+import ComparacionTradicional from '../componentes/tablero/ComparacionTradicional.jsx';
+import { botonIcono, botonSecundario, campo, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
+import {
+  consultaFechas, desgloseKm, fechaLocal, formatoMoneda, formatoNumero, RESPALDO_SUPERFICIE, SUPERFICIES,
+  variacion, VERIFICACION,
+} from '../utilidades.js';
 
 const PERIODOS = [[7, '7 días'], [30, '30 días'], [90, '90 días'], [365, '1 año']];
-const COLOR_TIERRA = '#f79009';
 
 const haceDias = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return fechaLocal(d); };
 
-export default function Tablero({
-  viajes, choferes, empresa, params, cargando, errorDashboard, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta,
-  cargarReporte, cargarChoferes, urlServidor, headers, manejarErrorApi,
+export default function Informes({
+  viajes, empresa, params, cargando, errorDashboard, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta,
+  cargarReporte, urlServidor, headers, manejarErrorApi,
 }) {
   const [filtroChofer, setFiltroChofer] = useState('');
+  const [soloDiferencias, setSoloDiferencias] = useState(false);
+  const [rutaAbierta, setRutaAbierta] = useState(null);
   const [errorCsv, setErrorCsv] = useState(null);
   const [estadisticas, setEstadisticas] = useState(null);
   const [errorEstadisticas, setErrorEstadisticas] = useState('');
@@ -37,7 +43,6 @@ export default function Tablero({
   }, [urlServidor, headers, manejarErrorApi, fechaDesde, fechaHasta]);
 
   useEffect(() => { cargarReporte(); }, [cargarReporte]);
-  useEffect(() => { cargarChoferes(); }, [cargarChoferes]);
 
   const elegirPeriodo = (dias) => { setFechaDesde(haceDias(dias - 1)); setFechaHasta(haceDias(0)); };
   const periodoActivo = PERIODOS.find(([dias]) => fechaDesde === haceDias(dias - 1) && fechaHasta === haceDias(0))?.[0];
@@ -61,13 +66,18 @@ export default function Tablero({
 
   const texto = filtroChofer.toLowerCase();
   const viajesFiltrados = viajes.filter(v =>
-    v.chofer?.toLowerCase().includes(texto) || v.placa_vehiculo?.toLowerCase().includes(texto));
-  const { activosCount, conGPSVivo } = resumenFlota(choferes);
+    (v.chofer?.toLowerCase().includes(texto) || v.placa_vehiculo?.toLowerCase().includes(texto)) &&
+    (!soloDiferencias || v.verificacion === 'diferencia'));
+  const conDiferencia = viajes.filter(v => v.verificacion === 'diferencia').length;
   const r = estadisticas?.resumen;
   const a = estadisticas?.anterior;
 
   return (
     <div className="space-y-6">
+      {rutaAbierta && (
+        <RutaViaje id={rutaAbierta} urlServidor={urlServidor} headers={headers} manejarErrorApi={manejarErrorApi}
+          moneda={m} color={color} onCerrar={() => setRutaAbierta(null)} />
+      )}
       {/* Período */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900" role="group" aria-label="Período">
@@ -89,19 +99,16 @@ export default function Tablero({
 
       <Mensaje texto={errorEstadisticas} />
 
-      {/* Indicadores */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-6">
-        <TarjetaMetrica icono={Coins} etiqueta="Recaudación" valor={formatoMoneda(r?.recaudado, m)}
-          cambio={r && variacion(r.recaudado, a?.recaudado)}
-          detalle={a?.viajes ? `Período anterior: ${formatoMoneda(a.recaudado, m)}` : 'Sin viajes en el período anterior'} />
-        <TarjetaMetrica icono={Activity} etiqueta="Viajes" valor={formatoNumero(r?.viajes)}
-          cambio={r && variacion(r.viajes, a?.viajes)}
-          detalle={r?.viajes ? `Tarifa promedio ${formatoMoneda(r.recaudado / r.viajes, m)}` : null} />
-        <TarjetaMetrica icono={Route} etiqueta="Kilómetros recorridos" valor={formatoNumero(r?.km, 1)}
-          cambio={r && variacion(r.km, a?.km)} detalle={r ? `${formatoNumero(r.espera_min)} min de espera cobrados` : null} />
-        <TarjetaMetrica icono={Car} etiqueta="Flota activa" valor={activosCount}
-          detalle={`${conGPSVivo} con GPS en vivo · ${choferes.length} registrados`} />
-      </div>
+      <Visor titulo={`Período · ${new Date(`${fechaDesde}T00:00`).toLocaleDateString('es-BO')} al ${new Date(`${fechaHasta}T00:00`).toLocaleDateString('es-BO')}`}
+        nota={a?.viajes ? 'Variación frente al período anterior de igual duración' : null}
+        cifras={[
+          { etiqueta: 'Recaudación', valor: formatoMoneda(r?.recaudado, m), cambio: r && variacion(r.recaudado, a?.recaudado),
+            detalle: a?.viajes ? `antes ${formatoMoneda(a.recaudado, m)}` : 'sin período anterior' },
+          { etiqueta: 'Viajes', valor: formatoNumero(r?.viajes), cambio: r && variacion(r.viajes, a?.viajes),
+            detalle: r?.viajes ? `promedio ${formatoMoneda(r.recaudado / r.viajes, m)}` : null },
+          { etiqueta: 'Kilómetros', valor: formatoNumero(r?.km, 1), cambio: r && variacion(r.km, a?.km) },
+          { etiqueta: 'Espera cobrada', valor: `${formatoNumero(r?.espera_min)} min`, cambio: r && variacion(r.espera_min, a?.espera_min) },
+        ]} />
 
       {/* Gráficos */}
       <div className="grid grid-cols-12 gap-4 md:gap-6">
@@ -111,15 +118,19 @@ export default function Tablero({
             : 'Cargando...'}>
           <GraficoRecaudacion datos={estadisticas?.por_dia ?? []} color={color} moneda={m} />
         </Tarjeta>
-        <Tarjeta className="col-span-12 xl:col-span-4" icono={Layers} titulo="Asfalto vs tierra" subtitulo="Viajes por tipo de superficie">
-          <GraficoSuperficie datos={estadisticas?.superficie ?? []} colores={{ asfalto: color, tierra: COLOR_TIERRA }}
-            moneda={m} factorTierra={params?.factor_superficie} />
+        <Tarjeta className="col-span-12 xl:col-span-4" icono={Layers} titulo="Superficies" subtitulo="Km recorridos en asfalto, tierra y empedrado">
+          <GraficoSuperficie datos={estadisticas?.superficie ?? []} color={color}
+            moneda={m} factorTierra={params?.factor_superficie} factorEmpedrado={params?.factor_empedrado} />
         </Tarjeta>
         <Tarjeta className="col-span-12 xl:col-span-5" icono={Trophy} titulo="Ranking de choferes" subtitulo="Los que más recaudaron en el período">
           <RankingChoferes choferes={estadisticas?.choferes ?? []} moneda={m} />
         </Tarjeta>
         <Tarjeta className="col-span-12 xl:col-span-7" icono={Flame} titulo="Horas pico" subtitulo="Viajes por día de la semana y hora">
           <MapaCalorHoras horas={estadisticas?.horas ?? []} />
+        </Tarjeta>
+        <Tarjeta className="col-span-12" icono={Scale} titulo="Taxímetro vs. negociación de palabra"
+          subtitulo="Tarifa del sistema frente a lo que el chofer habría cobrado sin taxímetro">
+          <ComparacionTradicional datos={estadisticas?.comparacion ?? []} moneda={m} />
         </Tarjeta>
       </div>
 
@@ -132,6 +143,11 @@ export default function Tablero({
               <input type="search" placeholder="Conductor o placa..." aria-label="Buscar conductor o placa"
                 value={filtroChofer} onChange={e => setFiltroChofer(e.target.value)} className={`${campo} w-56 pl-9`} />
             </div>
+            <label className="flex items-center gap-2 text-theme-sm text-gray-600 dark:text-gray-400">
+              <input type="checkbox" checked={soloDiferencias} onChange={e => setSoloDiferencias(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 accent-brand-500" />
+              Solo con diferencia{conDiferencia > 0 && ` (${conDiferencia})`}
+            </label>
             <button onClick={exportarCSV} className={botonSecundario}><Download className="h-4 w-4" />CSV</button>
             <button onClick={cargarReporte} disabled={cargando} className={botonSecundario}>
               <RefreshCw className={`h-4 w-4 ${cargando ? 'animate-spin' : ''}`} />Actualizar
@@ -143,12 +159,12 @@ export default function Tablero({
           <table className="w-full">
             <thead className="sticky top-0 bg-white dark:bg-gray-900">
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Conductor / unidad', 'Distancia', 'Espera', 'Superficie', 'Tarifa', 'Fecha'].map(h => <th key={h} className={th}>{h}</th>)}
+                {['Conductor / unidad', 'Distancia', 'Espera', 'Superficie', 'Tarifa', 'Verificación', 'Fecha'].map(h => <th key={h} className={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {!cargando && viajesFiltrados.length === 0 && (
-                <tr><td colSpan={6} className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">Sin viajes en el período.</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">Sin viajes en el período.</td></tr>
               )}
               {viajesFiltrados.map(v => (
                 <tr key={v.id} className={filaTabla}>
@@ -156,12 +172,37 @@ export default function Tablero({
                     <p className="font-medium text-gray-800 dark:text-white/90">{v.chofer}</p>
                     <p className="text-theme-xs text-gray-500 dark:text-gray-400">{v.placa_vehiculo}</p>
                   </td>
-                  <td className={td}>{formatoNumero(v.distancia_km, 2)} km</td>
+                  <td className={td}>
+                    {formatoNumero(v.distancia_km, 2)} km
+                    {v.tipo_superficie === 'mixto' && (
+                      <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                        {desgloseKm(v)}
+                      </p>
+                    )}
+                  </td>
                   <td className={td}>{Math.floor(v.tiempo_detencion_min)} min</td>
                   <td className={td}>
-                    <Insignia color={v.tipo_superficie === 'tierra' ? 'aviso' : 'neutro'}>{v.tipo_superficie === 'tierra' ? 'Tierra' : 'Asfalto'}</Insignia>
+                    <Insignia color={v.tipo_superficie === 'asfalto' ? 'neutro' : 'aviso'}>
+                      {v.tipo_superficie === 'mixto' ? 'Mixto' : SUPERFICIES[v.tipo_superficie]?.nombre ?? 'Asfalto'}
+                    </Insignia>
                   </td>
                   <td className={`${td} font-semibold text-gray-800 dark:text-white/90`}>{formatoMoneda(v.tarifa_total, m)}</td>
+                  <td className={td}>
+                    <div className="flex items-center gap-2">
+                      <span title={v.verificacion_detalle || VERIFICACION[v.verificacion]?.ayuda}>
+                        <Insignia color={VERIFICACION[v.verificacion]?.color}>{VERIFICACION[v.verificacion]?.texto ?? 'Sin verificar'}</Insignia>
+                      </span>
+                      {v.superficie_respaldo === 'dudosa' && (
+                        <span title={RESPALDO_SUPERFICIE.dudosa.ayuda}>
+                          <Insignia color="aviso">{RESPALDO_SUPERFICIE.dudosa.texto}</Insignia>
+                        </span>
+                      )}
+                      <button onClick={() => setRutaAbierta(v.id)} className={`${botonIcono} h-8 w-8`}
+                        aria-label={`Ver ruta del viaje ${v.id}`} title={v.tiene_ruta ? 'Ver ruta en el mapa' : 'Ver detalle (sin ruta GPS)'}>
+                        <MapPinned className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
                   <td className={td}>{new Date(v.fecha_hora).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                 </tr>
               ))}

@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'calculadora.dart';
+
 final _azar = Random.secure();
 
 // UUID v4: identifica el viaje para que el servidor ignore reenvíos
@@ -12,7 +14,55 @@ String nuevoUuid() {
       '${h.substring(16, 20)}-${h.substring(20)}';
 }
 
-Map<String, dynamic> viajeParaServidor(Map<String, dynamic> viaje) {
+// Punto GPS que entró en el cálculo; la superficie es la marcada al llegar a él
+// y la vibración (RMS en m/s²) la medida por el acelerómetro desde el punto anterior
+class PuntoRuta {
+  const PuntoRuta(this.lat, this.lng, this.segundos, this.superficie, [this.vibracion]);
+
+  final double lat;
+  final double lng;
+  final int segundos;
+  final Superficie superficie;
+  final double? vibracion;
+
+  factory PuntoRuta.desdeSqlite(Map<String, dynamic> fila) => PuntoRuta(
+    (fila['lat'] as num).toDouble(),
+    (fila['lng'] as num).toDouble(),
+    fila['segundos'] as int,
+    Superficie.values[fila['superficie'] as int],
+    (fila['vibracion'] as num?)?.toDouble(),
+  );
+
+  Map<String, Object?> paraSqlite(String uuidViaje, int orden) => {
+    'viaje_uuid': uuidViaje,
+    'orden': orden,
+    'lat': lat,
+    'lng': lng,
+    'segundos': segundos,
+    'superficie': superficie.index,
+    'vibracion': vibracion,
+  };
+
+  // 6 decimales ≈ 10 cm: no altera la distancia y achica el envío
+  List<Object> paraServidor() => [
+    (lat * 1e6).round() / 1e6,
+    (lng * 1e6).round() / 1e6,
+    segundos,
+    superficie.index,
+    if (vibracion != null) (vibracion! * 100).round() / 100,
+  ];
+}
+
+// Acepta coma decimal; null si está vacío, no es número o no es positivo
+double? leerMonto(String texto) {
+  final n = double.tryParse(texto.trim().replaceAll(',', '.'));
+  return n != null && n > 0 && n <= 10000 ? n : null;
+}
+
+Map<String, dynamic> viajeParaServidor(
+  Map<String, dynamic> viaje, {
+  List<PuntoRuta> ruta = const [],
+}) {
   final factorSuperficie = viaje['factor_superficie'];
   final tipoSuperficie =
       viaje['tipo_superficie'] ??
@@ -23,17 +73,24 @@ Map<String, dynamic> viajeParaServidor(Map<String, dynamic> viaje) {
   final body = <String, dynamic>{
     'uuid': viaje['uuid'],
     'distancia_km': viaje['distancia_km'],
+    'km_asfalto': viaje['km_asfalto'],
+    'km_tierra': viaje['km_tierra'],
+    'km_empedrado': viaje['km_empedrado'],
     'tiempo_detencion_min': viaje['tiempo_detencion_min'],
     'tarifa_cobrada': viaje['tarifa_total'],
     'fecha_hora_viaje': viaje['fecha_hora'],
     'tipo_superficie': tipoSuperficie,
     'factor_altitud_aplicado': viaje['factor_altitud'],
     'factor_superficie_aplicado': factorSuperficie,
+    'factor_empedrado_aplicado': viaje['factor_empedrado'],
+    'vibracion_referencia': viaje['vibracion_referencia'],
+    'tarifa_tradicional': viaje['tarifa_tradicional'],
     'costo_base_aplicado': viaje['costo_base_km'],
     'costo_minuto_aplicado': viaje['costo_minuto_detencion'],
     'consumo_litros_aplicado': viaje['consumo_litros_km'],
     'precio_combustible_aplicado': viaje['precio_combustible_bs'],
   };
   body.removeWhere((_, valor) => valor == null);
+  if (ruta.isNotEmpty) body['ruta'] = ruta.map((p) => p.paraServidor()).toList();
   return body;
 }

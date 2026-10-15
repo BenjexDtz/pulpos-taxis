@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api_sync.dart';
 import 'detector_detencion.dart';
 import 'motor_gps.dart';
@@ -8,14 +11,19 @@ import 'calculadora.dart';
 import 'base_datos.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_login.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'config.dart';
+import 'rugosidad.dart';
 import 'sesion.dart';
+import 'sincronizador.dart';
 
 void main() {
   runApp(const AplicacionTaximetro());
 }
+
+const _estiloSuperficie = {
+  Superficie.asfalto: ('Asfalto', Colors.blue),
+  Superficie.tierra: ('Tierra', Colors.orange),
+  Superficie.empedrado: ('Empedrado', Colors.deepPurple),
+};
 
 class AplicacionTaximetro extends StatelessWidget {
   const AplicacionTaximetro({super.key});
@@ -69,9 +77,12 @@ class PantallaPrueba extends StatefulWidget {
   State<PantallaPrueba> createState() => _PantallaPruebaState();
 }
 
-class _PantallaPruebaState extends State<PantallaPrueba> {
+class _PantallaPruebaState extends State<PantallaPrueba>
+    with WidgetsBindingObserver {
   // ── GPS y métricas del viaje ───────────────────────────────────────────────
-  double distanciaTotalKm = 0.0;
+  RecorridoPorSuperficie recorrido = RecorridoPorSuperficie();
+  List<PuntoRuta> _ruta = [];
+  DateTime _inicioViaje = DateTime.now();
   Position? posicionAnterior;
   bool enViaje = false;
   StreamSubscription<Position>? suscripcionGPS;
@@ -80,19 +91,45 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   Timer? relojDetencion;
   bool estaDetenido = false;
 
+  // ── Rugosidad del camino (acelerómetro) ────────────────────────────────────
+  static const _claveReferencia = 'vibracion_referencia';
+  // Bajo ~7 km/h la vibración es del motor, no del camino
+  static const _velocidadMinimaVibracion = 2.0;
+  final _medidor = MedidorVibracion();
+  SugerenciaSuperficie _sugeridor = SugerenciaSuperficie();
+  StreamSubscription<AccelerometerEvent>? _suscripcionSensor;
+  Sugerencia _sugerencia = Sugerencia.ninguna;
+  DateTime _ultimoPunto = DateTime.now();
+  // Mientras el chofer responde, el viaje no se sincroniza para no perder el monto
+  bool _preguntandoMonto = false;
+
   // ── Parámetros topográficos (desde servidor) ───────────────────────────────
   ParametrosTopograficos? _params;
   EmpresaActual? _empresa;
   String get _moneda => _empresa?.monedaSimbolo ?? 'Bs';
   bool _cargandoParams = true;
 
-  // Factor de superficie elegido por el conductor (1.0 asfalto / 2.5 tierra)
-  double fSuperficie = 1.0;
+  Superficie superficie = Superficie.asfalto;
+
+  final _sincronizador = Sincronizador.local();
+  Timer? _relojSincronizacion;
+  int _pendientes = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _cargarParametros();
+    _sincronizarEnSegundoPlano();
+    _relojSincronizacion = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _sincronizarEnSegundoPlano(),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.resumed) _sincronizarEnSegundoPlano();
   }
 
   // 🔥 Descarga los parámetros del servidor al iniciar la pantalla
@@ -109,84 +146,91 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   }
 
   // ── Sincronización de viajes ───────────────────────────────────────────────
-  Future<void> sincronizarViajesPendientes() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🔄 Sincronizando viajes con la central...'),
-      ),
-    );
+  Future<void> _actualizarPendientes() async {
+    final choferId = await Sesion.choferId();
+    if (choferId == null) return;
+    final n = (await BaseDatosLocal.instancia.viajesPendientes(choferId)).length;
+    if (mounted) setState(() => _pendientes = n);
+  }
 
-    final db = await BaseDatosLocal.instancia.database;
+  // Al terminar un viaje, al abrir la app y cada 2 minutos; sin red no avisa nada
+  Future<void> _sincronizarEnSegundoPlano() async {
+    if (enViaje || _preguntandoMonto) return;
+    final token = await Sesion.tokenValido();
+    final choferId = await Sesion.choferId();
+    if (token == null || choferId == null) return;
+    final r = await _sincronizador.ejecutar(token: token, choferId: choferId);
+    await _actualizarPendientes();
+    if (r == null || !mounted) return;
+    if (r.sesionRechazada) {
+      await _sesionRechazada();
+      return;
+    }
+    if (r.enviados > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('☁️ ${r.enviados} viaje(s) enviados a la central.'),
+          backgroundColor: Colors.green[700],
+        ),
+      );
+    }
+  }
+
+  Future<void> sincronizarViajesPendientes() async {
+    final mensajero = ScaffoldMessenger.of(context);
     final token = await Sesion.tokenValido();
     final choferId = await Sesion.choferId();
     if (token == null || choferId == null) {
       if (mounted) await irAlLogin(context);
       return;
     }
-    final pendientes = await BaseDatosLocal.instancia.viajesPendientes(choferId);
-
-    if (pendientes.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Todo al día. No hay viajes pendientes.'),
-          ),
-        );
-      }
-      return;
-    }
-
-    int enviados = 0;
-    bool sesionRechazada = false;
-    for (var viaje in pendientes) {
-      try {
-        final response = await http.post(
-          Uri.parse('$urlServidor/api/viajes/sincronizar'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          body: jsonEncode(viajeParaServidor(viaje)),
-        );
-        // 200: el servidor ya tenía este viaje (reintento)
-        if (response.statusCode == 201 || response.statusCode == 200) {
-          await db.update(
-            'viajes',
-            {'estado_sincronizacion': 1},
-            where: 'id = ?',
-            whereArgs: [viaje['id']],
-          );
-          enviados++;
-        } else if (response.statusCode == 401 || response.statusCode == 403) {
-          sesionRechazada = true;
-          break;
-        }
-      } catch (e) {
-        debugPrint("Error de red: $e");
-      }
-    }
-
-    if (mounted && sesionRechazada) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            '🔒 Sesión no válida o cuenta desactivada. Vuelve a iniciar sesión.',
-          ),
-          backgroundColor: Colors.red[800],
-        ),
+    mensajero.showSnackBar(
+      const SnackBar(content: Text('🔄 Sincronizando viajes con la central...')),
+    );
+    final r = await _sincronizador.ejecutar(token: token, choferId: choferId);
+    await _actualizarPendientes();
+    if (!mounted) return;
+    mensajero.hideCurrentSnackBar();
+    if (r == null) {
+      mensajero.showSnackBar(
+        const SnackBar(content: Text('⏳ Ya se están enviando los viajes.')),
       );
-      await irAlLogin(context);
-      return;
-    }
-
-    if (mounted && enviados > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    } else if (r.sesionRechazada) {
+      await _sesionRechazada();
+    } else if (r.pendientes == 0) {
+      mensajero.showSnackBar(
         SnackBar(
-          content: Text('📡 Éxito: $enviados viaje(s) subidos a gerencia.'),
+          content: Text(
+            r.enviados == 0
+                ? '✅ Todo al día. No hay viajes pendientes.'
+                : '📡 Éxito: ${r.enviados} viaje(s) subidos a gerencia.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
+    } else {
+      mensajero.showSnackBar(
+        SnackBar(
+          content: Text(
+            '📶 Sin conexión con la central: ${r.pendientes} viaje(s) quedan '
+            'guardados y se enviarán solos al recuperar la señal.',
+          ),
+          backgroundColor: Colors.orange[800],
+        ),
+      );
     }
+  }
+
+  Future<void> _sesionRechazada() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          '🔒 Sesión no válida o cuenta desactivada. Vuelve a iniciar sesión.',
+        ),
+        backgroundColor: Colors.red[800],
+      ),
+    );
+    await irAlLogin(context);
   }
 
   Future<void> _confirmarCierreSesion() async {
@@ -240,8 +284,20 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     if (posInicial == null) return;
 
     MotorGPS.resetContador();
+    final prefs = await SharedPreferences.getInstance();
+    _sugeridor = SugerenciaSuperficie(referencia: prefs.getDouble(_claveReferencia));
+    _medidor.tomar();
+    _suscripcionSensor = accelerometerEventStream(
+      samplingPeriod: SensorInterval.gameInterval,
+    ).listen((e) => _medidor.registrar(e.x, e.y, e.z), onError: (_) {});
     setState(() {
-      distanciaTotalKm = 0.0;
+      _sugerencia = Sugerencia.ninguna;
+      _ultimoPunto = DateTime.now();
+      recorrido = RecorridoPorSuperficie();
+      _inicioViaje = DateTime.now();
+      _ruta = [
+        PuntoRuta(posInicial.latitude, posInicial.longitude, 0, superficie),
+      ];
       _detector = DetectorDetencion(
         inicio: DateTime.now(),
         velocidadInicial: posInicial.speed,
@@ -263,13 +319,30 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           nuevaPosicion.latitude,
           nuevaPosicion.longitude,
         );
+        final ahora = DateTime.now();
         _detector?.registrarPosicion(
-          DateTime.now(),
+          ahora,
           velocidadReportada: nuevaPosicion.speed,
           metros: metros,
         );
+        final segundos = ahora.difference(_ultimoPunto).inMilliseconds / 1000;
+        _ultimoPunto = ahora;
+        final velocidad = max(nuevaPosicion.speed, segundos > 0 ? metros / segundos : 0.0);
+        final rms = _medidor.tomar();
+        final vibracion = velocidad >= _velocidadMinimaVibracion ? rms : null;
+        _ruta.add(
+          PuntoRuta(
+            nuevaPosicion.latitude,
+            nuevaPosicion.longitude,
+            ahora.difference(_inicioViaje).inSeconds,
+            superficie,
+            vibracion,
+          ),
+        );
+        final sugerencia = _sugeridor.registrar(vibracion, superficie);
         setState(() {
-          distanciaTotalKm += (metros / 1000);
+          recorrido.sumar(metros / 1000, superficie);
+          if (sugerencia != Sugerencia.ninguna) _sugerencia = sugerencia;
         });
       }
       posicionAnterior = nuevaPosicion;
@@ -279,6 +352,10 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
   void detenerRastreo() async {
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
+    _suscripcionSensor?.cancel();
+    _suscripcionSensor = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_claveReferencia, _sugeridor.referencia);
     _detector?.tick(DateTime.now());
 
     // Enviar última posición al servidor
@@ -289,39 +366,44 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
     // Usar parámetros del servidor (o por defecto si no cargaron)
     final params = _params ?? ParametrosTopograficos.porDefecto;
 
-    double tarifaFinal = calcularTarifa(
-      distanciaKm: distanciaTotalKm,
-      costoBaseKm: params.costoBaseKm,
-      consumoLitrosKm: params.consumoLitrosKm, // ← agregar
-      precioCombustibleBs: params.precioCombustibleBs, // ← agregar
-      factorAltitud: params.factorAltitud,
-      factorSuperficie: fSuperficie,
-      tiempoDetencionMin: minutosDetencion,
-      costoMinutoDetencion: params.costoMinutoDetencion,
-    );
+    final tarifaFinal = recorrido.tarifa(params, minutosDetencion);
 
     final idChofer = await Sesion.choferId();
 
-    await BaseDatosLocal.instancia.insertarViaje({
+    final idViaje = await BaseDatosLocal.instancia.insertarViaje(ruta: _ruta, {
       'chofer_id': idChofer,
-      'distancia_km': distanciaTotalKm,
+      'distancia_km': recorrido.kmTotal,
+      'km_asfalto': recorrido.kmAsfalto,
+      'km_tierra': recorrido.kmTierra,
+      'km_empedrado': recorrido.kmEmpedrado,
       'tiempo_detencion_min': minutosDetencion,
       'factor_altitud': params.factorAltitud,
-      'factor_superficie': fSuperficie,
+      'factor_superficie': params.factorSuperficie,
+      'factor_empedrado': params.factorEmpedrado,
       'tarifa_total': tarifaFinal,
       'estado_sincronizacion': 0,
       'fecha_hora': DateTime.now().toIso8601String(),
-      'tipo_superficie': fSuperficie == 1.0 ? 'asfalto' : 'tierra',
+      'tipo_superficie': recorrido.tipo,
       'costo_base_km': params.costoBaseKm,
       'costo_minuto_detencion': params.costoMinutoDetencion,
       'consumo_litros_km': params.consumoLitrosKm,
       'precio_combustible_bs': params.precioCombustibleBs,
+      'vibracion_referencia': _sugeridor.referencia,
     });
+    _ruta = [];
 
     setState(() {
       enViaje = false;
-      fSuperficie = 1.0;
+      superficie = Superficie.asfalto;
+      _sugerencia = Sugerencia.ninguna;
+      _preguntandoMonto = true;
     });
+
+    final tradicional = await _preguntarTarifaTradicional(tarifaFinal);
+    if (tradicional != null) {
+      await BaseDatosLocal.instancia.guardarTarifaTradicional(idViaje, tradicional);
+    }
+    _preguntandoMonto = false;
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -334,29 +416,101 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
         ),
       );
     }
+    await _actualizarPendientes();
+    _sincronizarEnSegundoPlano();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _relojSincronizacion?.cancel();
     suscripcionGPS?.cancel();
     relojDetencion?.cancel();
+    _suscripcionSensor?.cancel();
     super.dispose();
+  }
+
+  // Opcional: sirve para comparar la tarifa con la negociación de palabra
+  Future<double?> _preguntarTarifaTradicional(double tarifa) async {
+    if (!mounted) return null;
+    return showDialog<double>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DialogoTarifaTradicional(tarifa: tarifa, moneda: _moneda),
+    );
+  }
+
+  void _elegirSuperficie(Superficie s) => setState(() {
+    superficie = s;
+    _sugerencia = Sugerencia.ninguna;
+  });
+
+  void _descartarSugerencia() {
+    _sugeridor.descartar();
+    setState(() => _sugerencia = Sugerencia.ninguna);
+  }
+
+  Widget _avisoSuperficie() {
+    final irregular = _sugerencia == Sugerencia.caminoIrregular;
+    final opciones = irregular
+        ? [Superficie.tierra, Superficie.empedrado]
+        : [Superficie.asfalto];
+    return Container(
+      margin: const EdgeInsets.only(top: 14, left: 12, right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.vibration, color: Colors.amber),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  irregular
+                      ? 'El camino vibra más que el asfalto. ¿Es tierra o empedrado?'
+                      : 'El camino parece liso. ¿Volviste al asfalto?',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            children: [
+              for (final s in opciones)
+                FilledButton(
+                  onPressed: () => _elegirSuperficie(s),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _estiloSuperficie[s]!.$2[800],
+                  ),
+                  child: Text(_estiloSuperficie[s]!.$1.toUpperCase()),
+                ),
+              TextButton(
+                onPressed: _descartarSugerencia,
+                child: const Text(
+                  'NO, SEGUIR',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final params = _params ?? ParametrosTopograficos.porDefecto;
 
-    double tarifaEnVivo = calcularTarifa(
-      distanciaKm: distanciaTotalKm,
-      costoBaseKm: params.costoBaseKm,
-      consumoLitrosKm: params.consumoLitrosKm, // ← agregar
-      precioCombustibleBs: params.precioCombustibleBs, // ← agregar
-      factorAltitud: params.factorAltitud,
-      factorSuperficie: fSuperficie,
-      tiempoDetencionMin: minutosDetencion,
-      costoMinutoDetencion: params.costoMinutoDetencion,
-    );
+    final tarifaEnVivo = recorrido.tarifa(params, minutosDetencion);
 
     return Scaffold(
       backgroundColor: enViaje ? Colors.black : Colors.grey[100],
@@ -485,13 +639,26 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                         ),
                       ),
                       Text(
-                        '${distanciaTotalKm.toStringAsFixed(3)} KM',
+                        '${recorrido.kmTotal.toStringAsFixed(3)} KM',
                         style: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
                           color: enViaje ? Colors.white : Colors.black87,
                         ),
                       ),
+                      if (recorrido.tipo != 'asfalto')
+                        Text(
+                          [
+                            for (final s in Superficie.values)
+                              if (recorrido.kmPor(s) > 0)
+                                '${_estiloSuperficie[s]!.$1} '
+                                    '${recorrido.kmPor(s).toStringAsFixed(2)} km',
+                          ].join(' · '),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: enViaje ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
                       const SizedBox(height: 20),
                       Text(
                         'TIPO DE RUTA',
@@ -502,54 +669,48 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 10,
+                        runSpacing: 8,
                         children: [
-                          ChoiceChip(
-                            label: const Text(
-                              'ASFALTO',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                          for (final s in Superficie.values)
+                            ChoiceChip(
+                              label: Text(
+                                _estiloSuperficie[s]!.$1.toUpperCase(),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              selected: superficie == s,
+                              onSelected: (_) => _elegirSuperficie(s),
+                              selectedColor: _estiloSuperficie[s]!.$2[800],
+                              backgroundColor: enViaje
+                                  ? Colors.grey[800]
+                                  : Colors.grey[200],
+                              labelStyle: TextStyle(
+                                color: superficie == s
+                                    ? Colors.white
+                                    : (enViaje ? Colors.grey[300] : Colors.black),
+                              ),
                             ),
-                            selected: fSuperficie == 1.0,
-                            onSelected: (_) =>
-                                setState(() => fSuperficie = 1.0),
-                            selectedColor: Colors.blue[800],
-                            backgroundColor: enViaje
-                                ? Colors.grey[800]
-                                : Colors.grey[200],
-                            labelStyle: TextStyle(
-                              color: fSuperficie == 1.0
-                                  ? Colors.white
-                                  : (enViaje ? Colors.grey[300] : Colors.black),
-                            ),
-                          ),
-                          const SizedBox(width: 15),
-                          ChoiceChip(
-                            label: const Text(
-                              'TIERRA / COMPLEJO',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            selected: fSuperficie != 1.0,
-                            onSelected: (_) => setState(
-                              () => fSuperficie = params.factorSuperficie,
-                            ),
-                            selectedColor: Colors.orange[800],
-                            backgroundColor: enViaje
-                                ? Colors.grey[800]
-                                : Colors.grey[200],
-                            labelStyle: TextStyle(
-                              color: fSuperficie != 1.0
-                                  ? Colors.white
-                                  : (enViaje ? Colors.grey[300] : Colors.black),
-                            ),
-                          ),
                         ],
                       ),
+                      if (enViaje && _sugerencia != Sugerencia.ninguna)
+                        _avisoSuperficie(),
+                      if (enViaje && _sugeridor.vibracionReciente != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Vibración del camino: '
+                          '${(_sugeridor.vibracionReciente! / _sugeridor.referencia).toStringAsFixed(1)}× la del asfalto',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                        ),
+                      ],
                       // Mostrar parámetros activos (transparencia para el tribunal)
                       if (!enViaje) ...[
                         const SizedBox(height: 16),
                         Text(
-                          'Cb: $_moneda ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · Ct: $_moneda ${params.costoMinutoDetencion}/min',
+                          'Cb: $_moneda ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · '
+                          'FR: ${params.factorSuperficie}× · FE: ${params.factorEmpedrado}× · '
+                          'Ct: $_moneda ${params.costoMinutoDetencion}/min',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.grey[400],
@@ -586,7 +747,11 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
                     Expanded(
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.cloud_upload),
-                        label: const Text('SINC. NUBE'),
+                        label: Text(
+                          _pendientes > 0
+                              ? 'SINC. NUBE ($_pendientes)'
+                              : 'SINC. NUBE',
+                        ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           foregroundColor: Colors.green[700],
@@ -632,6 +797,69 @@ class _PantallaPruebaState extends State<PantallaPrueba> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class DialogoTarifaTradicional extends StatefulWidget {
+  const DialogoTarifaTradicional({
+    super.key,
+    required this.tarifa,
+    required this.moneda,
+  });
+
+  final double tarifa;
+  final String moneda;
+
+  @override
+  State<DialogoTarifaTradicional> createState() =>
+      _DialogoTarifaTradicionalState();
+}
+
+class _DialogoTarifaTradicionalState extends State<DialogoTarifaTradicional> {
+  final _controlador = TextEditingController();
+
+  @override
+  void dispose() {
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Total: ${widget.moneda} ${widget.tarifa.toStringAsFixed(2)}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '¿Cuánto habrías cobrado este viaje sin el taxímetro? '
+            'Es opcional y solo sirve para comparar.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controlador,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              prefixText: '${widget.moneda} ',
+              hintText: 'Ej. 15',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OMITIR'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, leerMonto(_controlador.text)),
+          child: const Text('GUARDAR'),
+        ),
+      ],
     );
   }
 }

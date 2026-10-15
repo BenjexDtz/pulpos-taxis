@@ -2,6 +2,7 @@ const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { distanciaKm } = require('../validacion');
 
 const activo = process.env.PG_INTEGRACION === '1';
 const sufijo = `${Date.now()}_${process.pid}`;
@@ -79,7 +80,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.deepEqual(choferesI.map(c => c.placa_vehiculo), ['5678-ILL']);
 
         const viajesP = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json;
-        assert.equal(viajesP.length, 5);
+        assert.equal(viajesP.length, 6);
         assert.ok(viajesP.every(v => v.placa_vehiculo === '1234-KKK'));
     });
 
@@ -125,6 +126,62 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.ok(!ids.includes(r.json.id_servidor));
     });
 
+    test('viaje mixto: guarda los km por superficie y la base rechaza km que no suman la distancia', async () => {
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+            distancia_km: 5, km_asfalto: 3, km_tierra: 2, tiempo_detencion_min: 10, tarifa_cobrada: 35.20,
+            factor_superficie_aplicado: 2.5, fecha_hora_viaje: '2026-10-09T09:00:00',
+        } });
+        assert.equal(r.status, 201);
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const v = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json.find(x => x.id === r.json.id_servidor);
+        assert.deepEqual([v.km_asfalto, v.km_tierra, v.tipo_superficie], ['3.000', '2.000', 'mixto']);
+        // Cl × Pc × (Da + Dt × FR) × FH = 0.696 × 8 × 1.4
+        assert.equal(v.costo_combustible_total, '7.80');
+
+        assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+            distancia_km: 5, km_asfalto: 1, km_tierra: 1, tiempo_detencion_min: 0, tarifa_cobrada: 1, fecha_hora_viaje: '2026-10-09T09:00:00',
+        } })).status, 400);
+        await assert.rejects(pool.query(
+            `UPDATE viajes_historial SET km_tierra = km_tierra + 1 WHERE id_servidor = $1`, [r.json.id_servidor]),
+            /viajes_km_por_superficie_check/);
+    });
+
+    test('viaje con ruta: el servidor la mide, verifica la tarifa y solo la empresa del viaje la ve', async () => {
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        // 2 km hacia el este: 30 tramos en asfalto y 10 en tierra, de 50 m cada uno; la tierra vibra el triple
+        const paso = 0.05 / distanciaKm(-16.5, -68.19, -16.5, -68.18) * 0.01;
+        const ruta = Array.from({ length: 41 }, (_, i) =>
+            [-16.5, -68.19 + i * paso, i * 5, i > 30 ? 1 : 0, ...(i === 0 ? [] : [i > 30 ? 1.5 : 0.5])]);
+        const body = {
+            distancia_km: 2, km_asfalto: 1.5, km_tierra: 0.5, tiempo_detencion_min: 0, tarifa_cobrada: 10.38,
+            costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
+            factor_altitud_aplicado: 1.4, factor_superficie_aplicado: 2.5, costo_minuto_aplicado: 0.5,
+            fecha_hora_viaje: '2026-10-09T10:00:00', uuid: '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d', ruta,
+        };
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token, body });
+        assert.equal(r.status, 201);
+        assert.equal(r.json.verificacion, 'ok');
+
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const detalle = (await pedir('GET', `/api/admin/viajes/${r.json.id_servidor}/ruta`, { token: pulpos })).json;
+        assert.equal(detalle.puntos.length, 41);
+        assert.deepEqual([detalle.viaje.verificacion, detalle.viaje.distancia_ruta_km, detalle.viaje.tarifa_calculada], ['ok', '2.000', '10.38']);
+        assert.equal(detalle.puntos.filter(p => p.superficie === 'tierra').length, 10);
+        assert.deepEqual([detalle.puntos[0].vibracion, detalle.puntos[40].vibracion], [null, 1.5]);
+        assert.deepEqual([detalle.viaje.superficie_respaldo, detalle.viaje.vibracion_referencia, detalle.viaje.vibracion_irregular],
+            ['respaldada', '0.50', '1.50']);
+        const fila = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json.find(x => x.id === r.json.id_servidor);
+        assert.equal(fila.tiene_ruta, true);
+
+        const illimani = await loginAdmin('admin@illimani.bo');
+        assert.equal((await pedir('GET', `/api/admin/viajes/${r.json.id_servidor}/ruta`, { token: illimani })).status, 404);
+
+        assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body })).status, 200);
+        const { rows } = await pool.query('SELECT count(*)::int AS n FROM viajes_puntos WHERE viaje_id = $1', [r.json.id_servidor]);
+        assert.equal(rows[0].n, 41);
+    });
+
     test('reenviar el mismo viaje (también en paralelo) no lo duplica', async () => {
         const { token } = await loginChofer('pulpos', '1234-KKK');
         const body = { distancia_km: 1, tiempo_detencion_min: 0, tarifa_cobrada: 5, fecha_hora_viaje: '2026-10-08T08:00:00',
@@ -144,7 +201,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const pulpos = await loginAdmin('admin@pulpos.bo');
         const r = await pedir('PUT', '/api/admin/parametros', { token: pulpos, body: {
             zona_ciudad: 'El Alto', costo_base_km: 3, consumo_litros_km: 0.1, precio_combustible_bs: 6.96,
-            factor_altitud: 1.4, factor_superficie: 2.5, costo_minuto_detencion: 0.5,
+            factor_altitud: 1.4, factor_superficie: 2.5, factor_empedrado: 2, costo_minuto_detencion: 0.5,
         } });
         assert.equal(r.status, 200);
         const illimani = await loginAdmin('admin@illimani.bo');
@@ -194,11 +251,34 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal((await pedir('GET', '/api/admin/choferes', { token: gerente })).status, 200);
     });
 
+    test('estadísticas: comparan la tarifa del sistema con la que se habría cobrado sin taxímetro', async () => {
+        const { token } = await loginChofer('illimani', '5678-ILL');
+        const base = { tiempo_detencion_min: 0, fecha_hora_viaje: new Date().toISOString().slice(0, 19) };
+        for (const [km, cobrada, tradicional, tipo] of [[2, 10, 15, 'asfalto'], [3, 30, 20, 'tierra'], [1, 5, undefined, 'asfalto']])
+            assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+                ...base, distancia_km: km, tipo_superficie: tipo, tarifa_cobrada: cobrada, tarifa_tradicional: tradicional } })).status, 201);
+        const illimani = await loginAdmin('admin@illimani.bo');
+        const c = (await pedir('GET', '/api/admin/estadisticas', { token: illimani })).json.comparacion;
+        const total = c.find(x => x.tipo === 'total');
+        // (10 - 15) / 15 = -33,3 % y (30 - 20) / 20 = +50 %
+        assert.equal(total.viajes, 2);
+        assert.deepEqual([total.sistema, total.tradicional, total.sistema_menor], [20, 17.5, 1]);
+        assert.ok(Math.abs(total.diferencia_pct - (50 - 100 / 3) / 2) < 1e-9);
+        assert.ok(Math.abs(total.diferencia_abs_pct - (50 + 100 / 3) / 2) < 1e-9);
+        assert.deepEqual(c.filter(x => x.tipo !== 'total').map(x => [x.tipo, x.viajes]).sort(), [['asfalto', 1], ['tierra', 1]]);
+
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const p = (await pedir('GET', '/api/admin/estadisticas', { token: pulpos })).json.comparacion;
+        assert.equal(p.find(x => x.tipo === 'total').viajes, 0);
+    });
+
     test('estadísticas: cuadran con los viajes de la base y no mezclan empresas', async () => {
         const [pulpos, illimani] = await Promise.all([loginAdmin('admin@pulpos.bo'), loginAdmin('admin@illimani.bo')]);
         const e = (await pedir('GET', '/api/admin/estadisticas', { token: pulpos })).json;
         const real = (await pool.query(
-            `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total
+            `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total,
+                    sum(distancia_km)::float AS km, count(*) FILTER (WHERE tipo_superficie = 'mixto')::int AS mixtos,
+                    sum((km_asfalto > 0)::int + (km_tierra > 0)::int + (km_empedrado > 0)::int)::int AS tramos
              FROM viajes_historial v JOIN empresas em ON em.id = v.empresa_id
              WHERE em.codigo = 'pulpos' AND fecha_hora_viaje >= CURRENT_DATE - 29 AND fecha_hora_viaje < CURRENT_DATE + 1`)).rows[0];
         assert.ok(real.n >= 5);
@@ -207,8 +287,11 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal(e.por_dia.length, 30);
         assert.equal(e.por_dia.reduce((s, d) => s + d.viajes, 0), real.n);
         assert.equal(e.horas.reduce((s, h) => s + h.viajes, 0), real.n);
-        assert.equal(e.superficie.reduce((s, x) => s + x.viajes, 0), real.n);
-        assert.ok(e.superficie.every(x => ['asfalto', 'tierra'].includes(x.tipo)));
+        assert.ok(real.mixtos >= 1);
+        assert.equal(e.superficie.reduce((s, x) => s + x.viajes, 0), real.tramos);
+        assert.ok(Math.abs(e.superficie.reduce((s, x) => s + x.km, 0) - real.km) < 1e-6);
+        assert.ok(e.superficie.every(x => ['asfalto', 'tierra', 'empedrado'].includes(x.tipo) && x.recorrido > 0));
+        assert.ok(e.superficie.some(x => x.tipo === 'empedrado'));
         assert.ok(e.choferes.every(c => c.placa !== '5678-ILL'));
 
         const i = (await pedir('GET', '/api/admin/estadisticas', { token: illimani })).json;

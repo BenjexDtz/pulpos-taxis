@@ -11,7 +11,7 @@ Tres módulos + PostgreSQL:
 | Carpeta | Stack | Rol |
 |---|---|---|
 | `pulpos_backend/` | Node 22+, Express **5**, `pg`, JWT | API REST: `app.js` (Express y orden de rutas), `rutas/` (un router por área), `middlewares/`, `utilidades.js` (auditar, transacciones), `validacion.js`; `index.js` solo arranca |
-| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 + react-router + Recharts | Panel con diseño adaptado de TailAdmin: `src/App.jsx` (sesión, rutas, carga de datos), `vistas/` (una por ruta, carga diferida), `componentes/` (`layout/`, `tablero/`, `ui/`, Login, SegundoFactor…), `contexto/` (tema y menú), `utilidades.js` |
+| `pulpos_web_admin/` | React 19 + Vite 8 + Tailwind 4 + react-router + Recharts | Panel con diseño adaptado de TailAdmin: `src/App.jsx` (sesión, rutas, carga de datos), `vistas/` (una por ruta, carga diferida), `componentes/` (`layout/`, `tablero/`, `ui/`, Login, SegundoFactor…), `contexto/` (tema), `utilidades.js` |
 | `pulpos_apk/` | Flutter (Dart SDK ^3.11) | Taxímetro Android offline-first |
 | `database/init.sql` | PostgreSQL 16 | **Esquema canónico** de la base principal + semillas de dos empresas. `migraciones/` lleva una BD existente a la versión actual. `pulpos_backend/database.sql` es obsoleto |
 | `database/auditoria/` | PostgreSQL 16 | Base de auditoría separada (`esquema.sql`, `rol_app.sql`; en Docker la inicializa `inicializar.sh`) |
@@ -42,7 +42,7 @@ flutter analyze
 
 # Migrar una BD sin empresas (v3) a multiempresa
 psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
-# (luego 002, 003 y 004 en orden; 004 añade viajes_historial.uuid)
+# (luego 002 a 009 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación, 007 el empedrado, 008 la rugosidad, 009 la tarifa sin taxímetro)
 ```
 
 Versiones: SemVer única para todo el sistema. Al publicar, subir `version` en `pulpos_backend/package.json`, `pulpos_web_admin/package.json` (`npm version X.Y.Z --no-git-tag-version`) y `pulpos_apk/pubspec.yaml` (el `+N` sube en cada APK), anotar en `CHANGELOG.md` y crear la etiqueta anotada `vX.Y.Z`.
@@ -62,7 +62,7 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - Aislamiento en la aplicación: la empresa sale **siempre del token** (`req.empresa.id`), nunca del body ni de la URL. Toda consulta nueva de `/api/admin/*` debe filtrar por `empresa_id`; los tests de "Aislamiento" lo verifican. (RLS de PostgreSQL pendiente: el usuario local es superusuario y lo saltaría.)
 
 ### Auditoría (`pulpos_backend/auditoria.js`, `database/auditoria/`)
-- Toda acción que modifica datos, cada login (también fallidos), acceso denegado, exportación y consulta de la bitácora llama a `auditar(req, {accion, entidad, entidad_id, datos_antes, datos_despues, resultado, detalle})`. Al añadir una ruta que modifica datos, auditarla. Las lecturas cotidianas no se auditan (el radar consulta cada 15 s).
+- Toda acción que modifica datos, cada login (también fallidos), acceso denegado, exportación y consulta de la bitácora llama a `auditar(req, {accion, entidad, entidad_id, datos_antes, datos_despues, resultado, detalle})`. Al añadir una ruta que modifica datos, auditarla. Las lecturas cotidianas no se auditan (la central consulta cada 15 s).
 - Antes/después en una sola sentencia: `WITH antes AS (SELECT ... FOR UPDATE) UPDATE ... FROM antes RETURNING x.*, to_jsonb(antes) AS _antes, to_jsonb(x) AS _despues`; `separar()` los extrae.
 - `auditoria.registrar()` nunca lanza: si la base de auditoría falla, el evento va a `auditoria_pendiente` (base principal) y `reenviarPendientes()` lo reintenta cada 30 s. `limpiar()` quita `password*`, `token`.
 - En la base de auditoría, `id`, `hash_anterior` y `hash` (SHA-256 de `jsonb_build_array(...)`) los asigna el trigger `eventos_encadenar` bajo `pg_advisory_xact_lock`; UPDATE/DELETE/TRUNCATE los bloquea otro trigger. El backend escribe como `auditor_app` (solo INSERT/SELECT). Cada `AUDITORIA_ANCLA_CADA` eventos el hash se copia en `auditoria_anclas` (base principal); `verificar()` combina `auditoria_verificar()` con las anclas.
@@ -84,10 +84,12 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - El cliente envía el historial (`{rol: 'usuario'|'asistente', texto}`, máx. 12); el prompt de sistema lo arma solo el servidor. Máx. 5 rondas de herramientas, límite de 20 preguntas/10 min por administrador. Cada pregunta se audita (`asistente.consulta`) con las herramientas usadas.
 - La ruta llama a `asistente.llamarModelo` por el objeto del módulo: los tests lo reemplazan por un guion.
 
-### Fórmula tarifaria (v3) — está duplicada, mantener sincronizada
-`T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td`
+### Fórmula tarifaria (v4, por tramos) — está duplicada, mantener sincronizada
+`T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td`
 
-Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `DesgloseTarifa`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js`, la herramienta `calcular_tarifa` de `pulpos_backend/asistente.js` y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
+Da/Dt/De: km en asfalto/tierra/empedrado. La app suma cada tramo GPS a la superficie elegida en ese momento (`RecorridoPorSuperficie`); con una sola superficie se reduce a la v3. El código de superficie es el índice del enum `Superficie` (0 asfalto, 1 tierra, 2 empedrado; `SUPERFICIES` en `validacion.js`): no reordenar. `viajes_historial` guarda `km_asfalto`, `km_tierra` y `km_empedrado` (CHECK: suman `distancia_km`), `tipo_superficie` es `asfalto`/`tierra`/`empedrado`/`mixto` y lo decide el servidor; `factor_superficie_aplicado` es el FR de la tierra y `factor_empedrado_aplicado` el FE. En el panel, nombres y colores de cada superficie salen de `SUPERFICIES` en `utilidades.js`. Si la app no envía los km (versiones previas), `kmPorSuperficie()` asigna toda la distancia a su `tipo_superficie`.
+
+Aparece en: `pulpos_apk/lib/calculadora.dart` (`calcularTarifa`, `RecorridoPorSuperficie`), el preview de `vistas/Parametros.jsx` (`previewTarifa`), las columnas calculadas de las consultas/CSV en `rutas/viajes.js` (y el reparto por superficie de `rutas/estadisticas.js`), `tarifaV4` de `pulpos_backend/verificacion.js` (la usan la verificación de viajes y la herramienta `calcular_tarifa` del asistente) y la semilla de `init.sql`. Un cambio de fórmula toca los cinco y los tests de `test/calculadora_test.dart` y del asistente en `api.test.js`.
 
 Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y en los `min`/`max` de los inputs del panel: mantenerlos iguales. `pg` devuelve `NUMERIC` como **string**: parsear siempre. Las columnas conservan el sufijo `_bs` por compatibilidad, pero el símbolo mostrado es `empresas.moneda_simbolo`.
 
@@ -97,19 +99,23 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 3. Durante el viaje: `MotorGPS.obtenerFlujoUbicacion()` (distanceFilter 10 m) acumula distancia y envía `/api/posicion` cada 10 posiciones.
 4. Espera (`Td`): `lib/detector_detencion.dart`. Detenido si velocidad < 0.5 m/s **o** 10 s sin posición nueva. No volver a leer `Position.speed` directamente.
 5. El viaje se guarda en SQLite (`viajes`) con todos los parámetros aplicados, `estado_sincronizacion = 0` y un `uuid` v4 (`nuevoUuid()`, lo asigna `insertarViaje`).
-6. "SINC. NUBE" envía solo `viajesPendientes(choferId)` del chofer con sesión; `viajeParaServidor()` mapea columnas locales → campos `*_aplicado` y omite nulos. El historial también filtra por chofer.
-7. Sincronización idempotente: el servidor guarda el `uuid` con `UNIQUE (chofer_id, uuid)` e `INSERT ... ON CONFLICT DO NOTHING`; un reenvío responde **200** `{duplicado: true}` con el mismo `id_servidor` (sin auditar) y la app lo marca sincronizado igual que un 201. Sin `uuid` (apps viejas) se inserta como antes.
+6. La ruta: cada punto GPS aceptado (precisión ≤ 20 m, más la posición inicial) se guarda como `PuntoRuta` en `puntos_viaje` (SQLite, misma transacción que el viaje) con la superficie marcada al llegar a él y la vibración medida desde el punto anterior. Se borra del teléfono al confirmarse la sincronización.
+   - Rugosidad (`lib/rugosidad.dart`, Dart puro y testeado): `MedidorVibracion` recibe el acelerómetro (`sensors_plus`, ~50 Hz) y da a cada punto el RMS (m/s²) de la magnitud |a| menos su media lenta; bajo 2 m/s el punto queda sin vibración. `SugerenciaSuperficie` compara la media de los últimos 8 puntos con la referencia del asfalto de ese teléfono (aprendida en SharedPreferences `vibracion_referencia`, 0,2–2,0) y **solo sugiere** cambiar la superficie (≥ 2× marcado asfalto, ≤ 1,3× marcado tierra/empedrado); nunca la cambia sola.
+7. `Sincronizador` (`lib/sincronizador.dart`, dependencias inyectadas para los tests) envía solo `viajesPendientes(choferId)` del chofer con sesión; `viajeParaServidor()` mapea columnas locales → campos `*_aplicado`, omite nulos y añade `ruta: [[lat, lng, segundos, 0|1]]`. Corre solo al terminar un viaje, al abrir o volver a la app y cada 2 min (nunca durante un viaje); "SINC. NUBE" lo lanza a mano. Sin red se detiene en el primer fallo. El historial también filtra por chofer.
+8. Verificación (`pulpos_backend/verificacion.js`): el servidor mide la ruta con Haversine (cada tramo cuenta para la superficie del punto final, como en la app), recalcula la tarifa con `tarifaV4` y los parámetros aplicados, y guarda `verificacion` = `ok` | `sin_ruta` | `diferencia` | `sin_verificar` con su detalle. **Nunca rechaza** un viaje por no cuadrar (el pasajero ya pagó): lo marca y lo audita. Tolerancias: tarifa ± 0,02; km 1 % o 20 m (la app usa otro radio terrestre). `evaluarSuperficie` guarda `superficie_respaldo` = `respaldada` (lo marcado como tierra/empedrado vibró ≥ 1,5× el asfalto del viaje o, si hubo poco, la referencia que envía la app) | `dudosa` | `sin_datos` | NULL (solo asfalto); no toca la tarifa ni `verificacion`, una dudosa se anota en el detalle de la auditoría. Puntos en `viajes_puntos`; `GET /api/admin/viajes/:id/ruta` filtra por la empresa del token. El JSON de `/api/viajes/sincronizar` admite hasta 1 MB (20 000 puntos).
+9. Tarifa sin taxímetro (objetivo 4 del documento): al terminar el viaje un diálogo opcional pregunta cuánto se habría cobrado de palabra (`leerMonto`); se guarda en `viajes.tarifa_tradicional` solo si el viaje sigue sin enviar (`_preguntandoMonto` frena la sincronización mientras tanto). El servidor descarta un valor inválido sin rechazar el viaje; `/api/admin/estadisticas` devuelve `comparacion` (por superficie y `total`) e Informes la muestra. Las semillas no traen este dato a propósito: debe salir de pruebas de campo reales.
+10. Sincronización idempotente: el servidor guarda el `uuid` con `UNIQUE (chofer_id, uuid)` e `INSERT ... ON CONFLICT DO NOTHING`; un reenvío responde **200** `{duplicado: true}` con el mismo `id_servidor` (sin auditar) y la app lo marca sincronizado igual que un 201. Sin `uuid` (apps viejas) se inserta como antes. Un reenvío no vuelve a insertar la ruta.
 
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
 ### Panel web
-- Rutas con react-router (`/`, `/radar`, `/flota`, `/parametros`, `/empresa`, `/auditoria`, `/seguridad`; superadmin `/plataforma`). Cada vista se carga con `lazy` (Recharts solo baja con el tablero). En Docker, `nginx.conf` ya redirige toda ruta a `index.html`.
-- `App.jsx` carga viajes, choferes y `/api/config` y los pasa a las vistas por props; cada vista guarda su propio estado de formularios y mensajes. Las vistas reciben `urlServidor`, `headers()` y `manejarErrorApi`. El tablero pide además `/api/admin/estadisticas` (rutas/estadisticas.js) para sus gráficos.
+- Rutas con react-router (`/` la central: visor del día, mapa y bitácora; `/informes`, `/flota`, `/parametros`, `/empresa`, `/auditoria`, `/seguridad`; superadmin `/plataforma`). Cada vista se carga con `lazy` (Recharts solo baja con los informes). En Docker, `nginx.conf` ya redirige toda ruta a `index.html`.
+- `App.jsx` carga viajes, choferes y `/api/config` y los pasa a las vistas por props; cada vista guarda su propio estado de formularios y mensajes. Las vistas reciben `urlServidor`, `headers()` y `manejarErrorApi`. Informes pide además `/api/admin/estadisticas` (rutas/estadisticas.js) para sus gráficos.
 - Estilos: clases de TailAdmin centralizadas en `componentes/ui/estilos.js` (`tarjeta`, `campo`, `botonPrimario`…) y componentes `Tarjeta`, `Insignia`, `Mensaje`. El color de marca es la variable CSS `--marca` (App la fija con `empresas.color_primario`; la escala `brand-*` se deriva con `color-mix` en `index.css`). Modo claro/oscuro con la clase `dark` en `<html>` (`ProveedorTema`, se recuerda en `localStorage.tema`).
 - Los hooks de contexto están en `contexto/contextos.js` y los proveedores en archivos aparte (regla `react-refresh/only-export-components`).
 - Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve `Plataforma` y `Auditoria` (todas las empresas, verificación); los demás, las vistas de su empresa y su bitácora. 401/403 → cierra sesión.
 - Nombre, logo, color, moneda, centro del mapa y altitud vienen de `/api/config` (`empresa`).
-- Leaflet se carga en runtime desde unpkg (`useLeaflet`, en `componentes/MapaFlota.jsx`). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
+- Leaflet se carga en runtime desde unpkg (`componentes/useLeaflet.js`; lo usan `MapaFlota.jsx` y `RutaViaje.jsx`, el modal con la ruta y la verificación de un viaje). El popup del mapa es HTML crudo: todo dato de la BD debe pasar por `escaparHtml()`.
 - `VITE_API_URL` define el backend (en Docker llega como build arg).
 
 ## Gotchas

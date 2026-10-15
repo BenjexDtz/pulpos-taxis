@@ -1,5 +1,6 @@
 const pool = require('./db');
-const { validarRangoDias, numeroEnRango } = require('./validacion');
+const { validarRangoDias, numeroEnRango, tipoSegunKm } = require('./validacion');
+const { tarifaV4 } = require('./verificacion');
 
 const DIAS_POR_DEFECTO = 30;
 const DIAS_MAXIMOS = 366;
@@ -88,9 +89,14 @@ const HERRAMIENTAS = [
         {
             distancia_km: { type: 'number', description: 'Distancia en km (0.1 a 500).' },
             espera_min: { type: 'number', description: 'Minutos detenido (0 a 600, por defecto 0).' },
-            superficie: { type: 'string', enum: ['asfalto', 'tierra'], description: 'Por defecto, asfalto.' },
+            superficie: { type: 'string', enum: ['asfalto', 'tierra', 'empedrado'], description: 'Si todo el viaje es de un tipo. Por defecto, asfalto.' },
+            km_tierra: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en tierra.' },
+            km_empedrado: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en empedrado. El resto de km_tierra y km_empedrado es asfalto.' },
         },
         ['distancia_km']),
+    herramienta('viajes_con_diferencias',
+        'Viajes cuya verificación no cuadró: la tarifa cobrada no coincide con la fórmula o la ruta GPS no coincide con los km declarados. También cuenta los viajes por estado de verificación.',
+        fechas),
 ];
 
 const EJECUTORES = {
@@ -173,27 +179,54 @@ const EJECUTORES = {
         return r.rows[0];
     },
 
-    // Misma fórmula que calculadora.dart: T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
     async calcular_tarifa(args, { empresaId }) {
         const D = numeroEnRango(args.distancia_km, 0.1, 500);
         const Td = numeroEnRango(args.espera_min ?? 0, 0, 600);
         if (D === null) return { error: 'distancia_km debe estar entre 0.1 y 500.' };
         if (Td === null) return { error: 'espera_min debe estar entre 0 y 600.' };
+        const mixto = args.km_tierra !== undefined || args.km_empedrado !== undefined;
+        const [Dt, De] = ['tierra', 'empedrado'].map(s =>
+            mixto ? numeroEnRango(args[`km_${s}`] ?? 0, 0, D) : args.superficie === s ? D : 0);
+        if (Dt === null || De === null || Dt + De > D + 1e-9)
+            return { error: 'km_tierra y km_empedrado deben ser positivos y no sumar más que distancia_km.' };
         const r = await pool.query(`SELECT * FROM parametros_topograficos WHERE empresa_id = $1`, [empresaId]);
         if (!r.rows.length) return { error: 'La empresa no tiene parámetros tarifarios.' };
         const p = r.rows[0];
         const [Cb, Cl, Pc, FH, Ct] = [p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
             p.factor_altitud, p.costo_minuto_detencion].map(parseFloat);
-        const superficie = args.superficie === 'tierra' ? 'tierra' : 'asfalto';
-        const FR = superficie === 'tierra' ? parseFloat(p.factor_superficie) : 1;
-        const recorrido = D * (Cb + Cl * Pc) * FH * FR;
+        const [FR, FE] = [p.factor_superficie, p.factor_empedrado].map(parseFloat);
+        const Da = Math.max(0, D - Dt - De);
+        const superficie = tipoSegunKm({ km_asfalto: Da, km_tierra: Dt, km_empedrado: De });
         const espera = Ct * Td;
+        const recorrido = tarifaV4({ km_asfalto: Da, km_tierra: Dt, km_empedrado: De, Cb, Cl, Pc, FH, FR, FE, Ct, Td }) - espera;
         const r2 = (x) => Math.round(x * 100) / 100;
         return {
-            distancia_km: D, espera_min: Td, superficie,
-            parametros: { Cb, Cl, Pc, FH, FR, Ct },
+            distancia_km: D, km_asfalto: r2(Da), km_tierra: r2(Dt), km_empedrado: r2(De), espera_min: Td, superficie,
+            parametros: { Cb, Cl, Pc, FH, FR, FE, Ct },
             costo_recorrido: r2(recorrido), costo_espera: r2(espera), tarifa: r2(recorrido + espera),
         };
+    },
+
+    async viajes_con_diferencias(args, { empresaId, hoy }) {
+        const p = rango(args, hoy);
+        if (p.error) return p;
+        const [estados, viajes] = await Promise.all([
+            pool.query(
+                `SELECT v.verificacion AS estado, count(*)::int AS viajes
+                 FROM viajes_historial v WHERE ${EN_RANGO} GROUP BY 1 ORDER BY 2 DESC`,
+                [empresaId, p.desde, p.hasta]),
+            pool.query(
+                `SELECT v.id_servidor AS id, c.nombre_completo AS chofer, c.placa_vehiculo AS placa,
+                        to_char(v.fecha_hora_viaje, 'YYYY-MM-DD HH24:MI') AS fecha,
+                        v.tarifa_cobrada::float AS cobrada, v.tarifa_calculada::float AS calculada,
+                        v.verificacion_detalle AS detalle
+                 FROM viajes_historial v
+                 JOIN choferes c ON c.id = v.chofer_id AND c.empresa_id = v.empresa_id
+                 WHERE ${EN_RANGO} AND v.verificacion = 'diferencia'
+                 ORDER BY v.fecha_hora_viaje DESC LIMIT 20`,
+                [empresaId, p.desde, p.hasta]),
+        ]);
+        return { desde: p.desde, hasta: p.hasta, por_estado: estados.rows, viajes: viajes.rows };
     },
 };
 

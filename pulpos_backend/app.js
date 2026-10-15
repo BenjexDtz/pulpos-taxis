@@ -13,6 +13,8 @@ const origenesPermitidos = (process.env.CORS_ORIGINS || 'http://localhost:5173,h
     .split(',').map(o => o.trim()).filter(Boolean);
 app.use(cors({ origin: origenesPermitidos }));
 
+// La ruta de un viaje largo (hasta 20 000 puntos) supera el límite por defecto de 100 kB
+app.use('/api/viajes/sincronizar', express.json({ limit: '1mb' }));
 app.use(express.json());
 app.use((req, res, next) => { req.body ??= {}; next(); });
 

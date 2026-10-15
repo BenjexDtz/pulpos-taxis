@@ -1,23 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
+import useLeaflet from './useLeaflet.js';
 import { escaparHtml, haceTiempo } from '../utilidades.js';
-
-// ─── LEAFLET ──────────────────────────────────────────────────────────────────
-function useLeaflet() {
-  const [ready, setReady] = useState(() => Boolean(window.L));
-  useEffect(() => {
-    if (window.L) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload = () => setReady(true);
-    document.head.appendChild(script);
-  }, []);
-  return ready;
-}
 
 export default function MapaFlota({ choferes, viajes, empresa }) {
   const mapRef = useRef(null);
@@ -77,8 +61,8 @@ export default function MapaFlota({ choferes, viajes, empresa }) {
             <div style="font-weight:bold;color:${color};margin-bottom:4px;">${escaparHtml(chofer.nombre_completo)}</div>
             <div style="color:#888;">🚗 ${escaparHtml(chofer.placa_vehiculo)}</div>
             <hr style="border-color:#eee;margin:6px 0;"/>
-            <div>Viajes: <b>${trips}</b></div>
-            <div>Recaudado: <b style="color:#16a34a;">${escaparHtml(empresa?.moneda_simbolo ?? 'Bs')} ${total.toFixed(2)}</b></div>
+            <div>Viajes hoy: <b>${trips}</b></div>
+            <div>Recaudado hoy: <b style="color:#16a34a;">${escaparHtml(empresa?.moneda_simbolo ?? 'Bs')} ${total.toFixed(2)}</b></div>
             ${minutos !== null ? `<div style="color:${enVivo ? '#16a34a' : '#d97706'};margin-top:4px;">⏱ ${haceTiempo(minutos)}</div>` : ''}
             <div style="color:#999;font-size:10px;margin-top:4px;">📍 ${parseFloat(chofer.ultima_lat).toFixed(5)}, ${parseFloat(chofer.ultima_lng).toFixed(5)}</div>
           </div>

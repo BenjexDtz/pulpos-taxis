@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 9,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -44,10 +44,30 @@ class BaseDatosLocal {
         estado_sincronizacion INTEGER,
         fecha_hora TEXT,
         $_columnasV3,
-        uuid TEXT
+        uuid TEXT,
+        km_asfalto REAL,
+        km_tierra REAL,
+        km_empedrado REAL,
+        factor_empedrado REAL,
+        vibracion_referencia REAL,
+        tarifa_tradicional REAL
       )
     ''');
+    await _crearTablaPuntos(db);
   }
+
+  Future _crearTablaPuntos(Database db) => db.execute('''
+      CREATE TABLE IF NOT EXISTS puntos_viaje (
+        viaje_uuid TEXT NOT NULL,
+        orden INTEGER NOT NULL,
+        lat REAL NOT NULL,
+        lng REAL NOT NULL,
+        segundos INTEGER NOT NULL,
+        superficie INTEGER NOT NULL,
+        vibracion REAL,
+        PRIMARY KEY (viaje_uuid, orden)
+      )
+    ''');
 
   static const _columnasV3 = '''
         tipo_superficie TEXT,
@@ -76,18 +96,86 @@ class BaseDatosLocal {
             where: 'id = ?', whereArgs: [fila['id']]);
       }
     }
+    // Viajes previos quedan en NULL: el servidor deduce los km por superficie
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN km_asfalto REAL');
+      await db.execute('ALTER TABLE viajes ADD COLUMN km_tierra REAL');
+    }
+    if (oldVersion < 6) await _crearTablaPuntos(db);
+    if (oldVersion < 7) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN km_empedrado REAL');
+      await db.execute('ALTER TABLE viajes ADD COLUMN factor_empedrado REAL');
+    }
+    if (oldVersion < 8) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN vibracion_referencia REAL');
+      // Si puntos_viaje se creó en esta misma actualización (desde v5 o antes) ya la trae
+      final columnas = await db.rawQuery('PRAGMA table_info(puntos_viaje)');
+      if (!columnas.any((c) => c['name'] == 'vibracion')) {
+        await db.execute('ALTER TABLE puntos_viaje ADD COLUMN vibracion REAL');
+      }
+    }
+    if (oldVersion < 9) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN tarifa_tradicional REAL');
+    }
   }
 
-  // Función para guardar un nuevo viaje en la "caja negra"
-  Future<int> insertarViaje(Map<String, dynamic> viaje) async {
+  // Viaje y ruta en una sola transacción: o se guardan los dos o ninguno
+  Future<int> insertarViaje(
+    Map<String, dynamic> viaje, {
+    List<PuntoRuta> ruta = const [],
+  }) async {
     final db = await instancia.database;
+    final uuid = viaje['uuid'] ?? nuevoUuid();
+    return db.transaction((txn) async {
+      final id = await txn.insert('viajes', {...viaje, 'uuid': uuid});
+      final lote = txn.batch();
+      for (var i = 0; i < ruta.length; i++) {
+        lote.insert('puntos_viaje', ruta[i].paraSqlite(uuid, i));
+      }
+      await lote.commit(noResult: true);
+      return id;
+    });
+  }
 
-    int idGenerado = await db.insert(
-      'viajes', // 🔥 NOMBRE UNIFICADO
-      {...viaje, 'uuid': viaje['uuid'] ?? nuevoUuid()},
+  // Solo mientras el viaje no se haya enviado
+  Future<void> guardarTarifaTradicional(int id, double monto) async {
+    final db = await instancia.database;
+    await db.update(
+      'viajes',
+      {'tarifa_tradicional': monto},
+      where: 'id = ? AND estado_sincronizacion = 0',
+      whereArgs: [id],
     );
+  }
 
-    return idGenerado;
+  Future<List<PuntoRuta>> puntosDeViaje(String? uuid) async {
+    if (uuid == null) return const [];
+    final db = await instancia.database;
+    final filas = await db.query(
+      'puntos_viaje',
+      where: 'viaje_uuid = ?',
+      whereArgs: [uuid],
+      orderBy: 'orden',
+    );
+    return filas.map(PuntoRuta.desdeSqlite).toList();
+  }
+
+  // El servidor ya tiene la ruta: se borra del teléfono para no acumular puntos
+  Future<void> marcarSincronizado(Map<String, dynamic> viaje) async {
+    final db = await instancia.database;
+    await db.transaction((txn) async {
+      await txn.update(
+        'viajes',
+        {'estado_sincronizacion': 1},
+        where: 'id = ?',
+        whereArgs: [viaje['id']],
+      );
+      await txn.delete(
+        'puntos_viaje',
+        where: 'viaje_uuid = ?',
+        whereArgs: [viaje['uuid']],
+      );
+    });
   }
 
   Future<List<Map<String, dynamic>>> viajesPendientes(int choferId) async {
