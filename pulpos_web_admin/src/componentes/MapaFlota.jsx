@@ -61,8 +61,8 @@ export default function MapaFlota({ choferes, viajes, empresa }) {
             <div style="font-weight:bold;color:${color};margin-bottom:4px;">${escaparHtml(chofer.nombre_completo)}</div>
             <div style="color:#888;">🚗 ${escaparHtml(chofer.placa_vehiculo)}</div>
             <hr style="border-color:#eee;margin:6px 0;"/>
-            <div>Viajes: <b>${trips}</b></div>
-            <div>Recaudado: <b style="color:#16a34a;">${escaparHtml(empresa?.moneda_simbolo ?? 'Bs')} ${total.toFixed(2)}</b></div>
+            <div>Viajes hoy: <b>${trips}</b></div>
+            <div>Recaudado hoy: <b style="color:#16a34a;">${escaparHtml(empresa?.moneda_simbolo ?? 'Bs')} ${total.toFixed(2)}</b></div>
             ${minutos !== null ? `<div style="color:${enVivo ? '#16a34a' : '#d97706'};margin-top:4px;">⏱ ${haceTiempo(minutos)}</div>` : ''}
             <div style="color:#999;font-size:10px;margin-top:4px;">📍 ${parseFloat(chofer.ultima_lat).toFixed(5)}, ${parseFloat(chofer.ultima_lng).toFixed(5)}</div>
           </div>

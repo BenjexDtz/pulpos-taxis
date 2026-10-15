@@ -99,18 +99,6 @@
   }
 }
 
-@utility menu-item {
-  @apply relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium;
-}
-
-@utility menu-item-active {
-  @apply bg-brand-50 text-brand-600 dark:bg-brand-500/[0.12] dark:text-brand-400;
-}
-
-@utility menu-item-inactive {
-  @apply text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5;
-}
-
 @utility no-scrollbar {
   &::-webkit-scrollbar {
     display: none;

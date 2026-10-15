@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Activity, Car, Clock, Coins, Download, Flame, Layers, MapPinned, RefreshCw, Route, Scale, Search, Trophy, TrendingUp } from 'lucide-react';
+import { Clock, Download, Flame, Layers, MapPinned, RefreshCw, Scale, Search, Trophy, TrendingUp } from 'lucide-react';
 import Tarjeta from '../componentes/ui/Tarjeta.jsx';
 import Insignia from '../componentes/ui/Insignia.jsx';
 import Mensaje from '../componentes/Mensaje.jsx';
 import RutaViaje from '../componentes/RutaViaje.jsx';
-import TarjetaMetrica from '../componentes/tablero/TarjetaMetrica.jsx';
+import Visor from '../componentes/tablero/Visor.jsx';
 import GraficoRecaudacion from '../componentes/tablero/GraficoRecaudacion.jsx';
 import GraficoSuperficie from '../componentes/tablero/GraficoSuperficie.jsx';
 import RankingChoferes from '../componentes/tablero/RankingChoferes.jsx';
@@ -13,7 +13,7 @@ import MapaCalorHoras from '../componentes/tablero/MapaCalorHoras.jsx';
 import ComparacionTradicional from '../componentes/tablero/ComparacionTradicional.jsx';
 import { botonIcono, botonSecundario, campo, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
 import {
-  consultaFechas, desgloseKm, fechaLocal, formatoMoneda, formatoNumero, RESPALDO_SUPERFICIE, resumenFlota, SUPERFICIES,
+  consultaFechas, desgloseKm, fechaLocal, formatoMoneda, formatoNumero, RESPALDO_SUPERFICIE, SUPERFICIES,
   variacion, VERIFICACION,
 } from '../utilidades.js';
 
@@ -21,9 +21,9 @@ const PERIODOS = [[7, '7 días'], [30, '30 días'], [90, '90 días'], [365, '1 a
 
 const haceDias = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return fechaLocal(d); };
 
-export default function Tablero({
-  viajes, choferes, empresa, params, cargando, errorDashboard, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta,
-  cargarReporte, cargarChoferes, urlServidor, headers, manejarErrorApi,
+export default function Informes({
+  viajes, empresa, params, cargando, errorDashboard, fechaDesde, setFechaDesde, fechaHasta, setFechaHasta,
+  cargarReporte, urlServidor, headers, manejarErrorApi,
 }) {
   const [filtroChofer, setFiltroChofer] = useState('');
   const [soloDiferencias, setSoloDiferencias] = useState(false);
@@ -43,7 +43,6 @@ export default function Tablero({
   }, [urlServidor, headers, manejarErrorApi, fechaDesde, fechaHasta]);
 
   useEffect(() => { cargarReporte(); }, [cargarReporte]);
-  useEffect(() => { cargarChoferes(); }, [cargarChoferes]);
 
   const elegirPeriodo = (dias) => { setFechaDesde(haceDias(dias - 1)); setFechaHasta(haceDias(0)); };
   const periodoActivo = PERIODOS.find(([dias]) => fechaDesde === haceDias(dias - 1) && fechaHasta === haceDias(0))?.[0];
@@ -70,7 +69,6 @@ export default function Tablero({
     (v.chofer?.toLowerCase().includes(texto) || v.placa_vehiculo?.toLowerCase().includes(texto)) &&
     (!soloDiferencias || v.verificacion === 'diferencia'));
   const conDiferencia = viajes.filter(v => v.verificacion === 'diferencia').length;
-  const { activosCount, conGPSVivo } = resumenFlota(choferes);
   const r = estadisticas?.resumen;
   const a = estadisticas?.anterior;
 
@@ -101,19 +99,16 @@ export default function Tablero({
 
       <Mensaje texto={errorEstadisticas} />
 
-      {/* Indicadores */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 md:gap-6">
-        <TarjetaMetrica icono={Coins} etiqueta="Recaudación" valor={formatoMoneda(r?.recaudado, m)}
-          cambio={r && variacion(r.recaudado, a?.recaudado)}
-          detalle={a?.viajes ? `Período anterior: ${formatoMoneda(a.recaudado, m)}` : 'Sin viajes en el período anterior'} />
-        <TarjetaMetrica icono={Activity} etiqueta="Viajes" valor={formatoNumero(r?.viajes)}
-          cambio={r && variacion(r.viajes, a?.viajes)}
-          detalle={r?.viajes ? `Tarifa promedio ${formatoMoneda(r.recaudado / r.viajes, m)}` : null} />
-        <TarjetaMetrica icono={Route} etiqueta="Kilómetros recorridos" valor={formatoNumero(r?.km, 1)}
-          cambio={r && variacion(r.km, a?.km)} detalle={r ? `${formatoNumero(r.espera_min)} min de espera cobrados` : null} />
-        <TarjetaMetrica icono={Car} etiqueta="Flota activa" valor={activosCount}
-          detalle={`${conGPSVivo} con GPS en vivo · ${choferes.length} registrados`} />
-      </div>
+      <Visor titulo={`Período · ${new Date(`${fechaDesde}T00:00`).toLocaleDateString('es-BO')} al ${new Date(`${fechaHasta}T00:00`).toLocaleDateString('es-BO')}`}
+        nota={a?.viajes ? 'Variación frente al período anterior de igual duración' : null}
+        cifras={[
+          { etiqueta: 'Recaudación', valor: formatoMoneda(r?.recaudado, m), cambio: r && variacion(r.recaudado, a?.recaudado),
+            detalle: a?.viajes ? `antes ${formatoMoneda(a.recaudado, m)}` : 'sin período anterior' },
+          { etiqueta: 'Viajes', valor: formatoNumero(r?.viajes), cambio: r && variacion(r.viajes, a?.viajes),
+            detalle: r?.viajes ? `promedio ${formatoMoneda(r.recaudado / r.viajes, m)}` : null },
+          { etiqueta: 'Kilómetros', valor: formatoNumero(r?.km, 1), cambio: r && variacion(r.km, a?.km) },
+          { etiqueta: 'Espera cobrada', valor: `${formatoNumero(r?.espera_min)} min`, cambio: r && variacion(r.espera_min, a?.espera_min) },
+        ]} />
 
       {/* Gráficos */}
       <div className="grid grid-cols-12 gap-4 md:gap-6">

@@ -1,18 +1,14 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router';
 import axios from 'axios';
-import {
-  LayoutDashboard, Map, Users, Settings, Building2, ScrollText, ShieldCheck,
-} from 'lucide-react';
 import Login from './componentes/Login.jsx';
 import Mensaje from './componentes/Mensaje.jsx';
 import Diseno from './componentes/layout/Diseno.jsx';
-import ProveedorBarra from './contexto/ProveedorBarra.jsx';
 import { leerToken, consultaFechas, fechaLocal } from './utilidades.js';
 
 // Cada vista se descarga al entrar a ella: los gráficos no pesan en el login.
-const Tablero = lazy(() => import('./vistas/Tablero.jsx'));
-const Radar = lazy(() => import('./vistas/Radar.jsx'));
+const Central = lazy(() => import('./vistas/Central.jsx'));
+const Informes = lazy(() => import('./vistas/Informes.jsx'));
 const Flota = lazy(() => import('./vistas/Flota.jsx'));
 const Parametros = lazy(() => import('./vistas/Parametros.jsx'));
 const Empresa = lazy(() => import('./vistas/Empresa.jsx'));
@@ -24,30 +20,19 @@ const Asistente = lazy(() => import('./componentes/Asistente.jsx'));
 const urlServidor = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 const MARCA_PLATAFORMA = '#465fff';
 
-const MENU_PLATAFORMA = [
-  { titulo: 'Plataforma', items: [
-    { ruta: '/plataforma', icono: Building2, etiqueta: 'Empresas' },
-    { ruta: '/auditoria', icono: ScrollText, etiqueta: 'Auditoría' },
-  ] },
-  { titulo: 'Cuenta', items: [{ ruta: '/seguridad', icono: ShieldCheck, etiqueta: 'Seguridad' }] },
+// Grupos de pestañas: operación diaria y configuración. Seguridad está en el menú del usuario.
+const SECCIONES_PLATAFORMA = [
+  [{ ruta: '/plataforma', etiqueta: 'Empresas' }, { ruta: '/auditoria', etiqueta: 'Auditoría' }],
 ];
 
-const MENU_EMPRESA = [
-  { titulo: 'Operación', items: [
-    { ruta: '/', icono: LayoutDashboard, etiqueta: 'Tablero' },
-    { ruta: '/radar', icono: Map, etiqueta: 'Radar' },
-    { ruta: '/flota', icono: Users, etiqueta: 'Flota' },
-  ] },
-  { titulo: 'Configuración', items: [
-    { ruta: '/parametros', icono: Settings, etiqueta: 'Parámetros' },
-    { ruta: '/empresa', icono: Building2, etiqueta: 'Empresa' },
-    { ruta: '/auditoria', icono: ScrollText, etiqueta: 'Auditoría' },
-  ] },
-  { titulo: 'Cuenta', items: [{ ruta: '/seguridad', icono: ShieldCheck, etiqueta: 'Seguridad' }] },
+const SECCIONES_EMPRESA = [
+  [{ ruta: '/', etiqueta: 'Central' }, { ruta: '/informes', etiqueta: 'Informes' }, { ruta: '/flota', etiqueta: 'Flota' }],
+  [{ ruta: '/parametros', etiqueta: 'Parámetros' }, { ruta: '/empresa', etiqueta: 'Empresa' }, { ruta: '/auditoria', etiqueta: 'Auditoría' }],
 ];
 
+// La central no lleva título: el visor ya dice qué se está viendo.
 const TITULOS = {
-  '/': 'Tablero', '/radar': 'Radar de flota', '/flota': 'Flota', '/parametros': 'Parámetros tarifarios',
+  '/informes': 'Informes del período', '/flota': 'Flota', '/parametros': 'Parámetros tarifarios',
   '/empresa': 'Datos de la empresa', '/auditoria': 'Auditoría', '/seguridad': 'Seguridad de la cuenta',
   '/plataforma': 'Empresas de la plataforma',
 };
@@ -142,62 +127,52 @@ export default function App() {
     if (!token || esSuperadmin) return;
     /* eslint-disable react-hooks/set-state-in-effect */
     if (pathname === '/parametros' || pathname === '/empresa' || !empresa) cargarConfig();
-    if (pathname === '/radar' || pathname === '/flota') cargarChoferes();
-    if (pathname === '/radar') cargarReporte();
+    if (pathname === '/flota') cargarChoferes();
     /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, token, esSuperadmin]);
-
-  useEffect(() => {
-    if (pathname !== '/radar' || !token) return;
-    const iv = setInterval(() => cargarChoferes(), 15000);
-    return () => clearInterval(iv);
-  }, [pathname, token, cargarChoferes]);
 
   if (!token) return <Login urlServidor={urlServidor} onSesion={entrar} />;
 
   const api = { urlServidor, headers, manejarErrorApi };
 
   return (
-    <ProveedorBarra>
-      <Diseno empresa={empresa} esSuperadmin={esSuperadmin} grupos={esSuperadmin ? MENU_PLATAFORMA : MENU_EMPRESA}
-        titulo={TITULOS[pathname] ?? ''} sesion={sesion} onSalir={cerrarSesion}>
-        {aviso && <Mensaje tipo={aviso.tipo} texto={aviso.texto} onCerrar={() => setAviso(null)} className="mb-6" />}
+    <Diseno empresa={empresa} esSuperadmin={esSuperadmin} secciones={esSuperadmin ? SECCIONES_PLATAFORMA : SECCIONES_EMPRESA}
+      titulo={TITULOS[pathname] ?? ''} sesion={sesion} onSalir={cerrarSesion}>
+      {aviso && <Mensaje tipo={aviso.tipo} texto={aviso.texto} onCerrar={() => setAviso(null)} className="mb-6" />}
 
-        <Suspense fallback={<p className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">Cargando...</p>}>
-        <Routes>
-          <Route path="/seguridad" element={<Seguridad {...api} cuenta={sesion?.nombre} />} />
-          <Route path="/auditoria" element={<Auditoria {...api} plataforma={esSuperadmin} />} />
-          {esSuperadmin ? (
-            <>
-              <Route path="/plataforma" element={<Plataforma {...api} usuarioId={sesion?.id} />} />
-              <Route path="*" element={<Navigate to="/plataforma" replace />} />
-            </>
-          ) : (
-            <>
-              <Route path="/" element={
-                <Tablero {...api} viajes={viajes} choferes={choferes} empresa={empresa} params={params} cargando={cargando}
-                  errorDashboard={errorDashboard} cargarReporte={cargarReporte} cargarChoferes={cargarChoferes}
-                  fechaDesde={fechaDesde} setFechaDesde={setFechaDesde} fechaHasta={fechaHasta} setFechaHasta={setFechaHasta} />
-              } />
-              <Route path="/radar" element={
-                <Radar choferes={choferes} viajes={viajes} params={params} empresa={empresa}
-                  cargandoChoferes={cargandoChoferes} cargarChoferes={cargarChoferes} cargarReporte={cargarReporte} />
-              } />
-              <Route path="/flota" element={
-                <Flota {...api} choferes={choferes} cargandoChoferes={cargandoChoferes} cargarChoferes={cargarChoferes} />
-              } />
-              <Route path="/parametros" element={
-                <Parametros {...api} setParams={setParams} formParams={formParams} setFormParams={setFormParams} empresa={empresa} />
-              } />
-              <Route path="/empresa" element={<Empresa {...api} empresa={empresa} setEmpresa={setEmpresa} />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </>
-          )}
-        </Routes>
-        </Suspense>
-        {!esSuperadmin && <Suspense fallback={null}><Asistente {...api} /></Suspense>}
-      </Diseno>
-    </ProveedorBarra>
+      <Suspense fallback={<p className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">Cargando...</p>}>
+      <Routes>
+        <Route path="/seguridad" element={<Seguridad {...api} cuenta={sesion?.nombre} />} />
+        <Route path="/auditoria" element={<Auditoria {...api} plataforma={esSuperadmin} />} />
+        {esSuperadmin ? (
+          <>
+            <Route path="/plataforma" element={<Plataforma {...api} usuarioId={sesion?.id} />} />
+            <Route path="*" element={<Navigate to="/plataforma" replace />} />
+          </>
+        ) : (
+          <>
+            <Route path="/" element={
+              <Central {...api} choferes={choferes} empresa={empresa} cargarChoferes={cargarChoferes} />
+            } />
+            <Route path="/informes" element={
+              <Informes {...api} viajes={viajes} empresa={empresa} params={params} cargando={cargando}
+                errorDashboard={errorDashboard} cargarReporte={cargarReporte}
+                fechaDesde={fechaDesde} setFechaDesde={setFechaDesde} fechaHasta={fechaHasta} setFechaHasta={setFechaHasta} />
+            } />
+            <Route path="/flota" element={
+              <Flota {...api} choferes={choferes} cargandoChoferes={cargandoChoferes} cargarChoferes={cargarChoferes} />
+            } />
+            <Route path="/parametros" element={
+              <Parametros {...api} setParams={setParams} formParams={formParams} setFormParams={setFormParams} empresa={empresa} />
+            } />
+            <Route path="/empresa" element={<Empresa {...api} empresa={empresa} setEmpresa={setEmpresa} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </>
+        )}
+      </Routes>
+      </Suspense>
+      {!esSuperadmin && <Suspense fallback={null}><Asistente {...api} /></Suspense>}
+    </Diseno>
   );
 }
