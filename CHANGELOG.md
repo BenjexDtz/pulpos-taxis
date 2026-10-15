@@ -5,21 +5,34 @@ Backend, panel web y app comparten un único número de versión: se entregan ju
 
 ## [Sin publicar]
 
+## [1.2.0] - 2026-10-15
+
 ### Añadido
+- **Empedrado como tercera superficie** con su propio factor (FE), junto al asfalto y la tierra. El chofer marca la superficie de cada tramo con tres botones.
 - **Ruta de cada viaje**: la app guarda los puntos GPS con los que calculó la tarifa, cada uno con la superficie marcada en ese momento, y los envía al sincronizar. En el panel, cada viaje abre su ruta en el mapa coloreada por superficie.
-- **Verificación en el servidor**: al recibir un viaje, el servidor mide la ruta (Haversine), reparte los km por superficie y recalcula la tarifa con los parámetros aplicados. El viaje queda como verificado, sin ruta, con diferencia o sin verificar; nunca se rechaza, pero las diferencias quedan en la bitácora y el tablero permite filtrarlas.
+- **Verificación en el servidor**: al recibir un viaje, el servidor mide la ruta (Haversine), reparte los km por superficie y recalcula la tarifa con los parámetros aplicados. El viaje queda como verificado, sin ruta, con diferencia o sin verificar; nunca se rechaza, pero las diferencias quedan en la bitácora y se pueden filtrar en el panel.
+- **Rugosidad del camino con el acelerómetro**: la app mide cuánto vibra cada tramo y sugiere cambiar la superficie cuando no coincide con la marcada; nunca la cambia sola. El servidor marca si lo cobrado como tierra o empedrado está respaldado por la vibración, y el panel lo muestra en la ruta de cada viaje.
+- **Tarifa sin taxímetro (objetivo 4)**: al terminar el viaje, un diálogo opcional pregunta cuánto se habría cobrado de palabra. Las estadísticas comparan esa negociación con la tarifa del sistema por superficie y en total; el CSV incluye la columna.
 - **Sincronización automática**: al terminar un viaje, al abrir la app y cada 2 minutos mientras haya viajes pendientes. El botón "SINC. NUBE" muestra cuántos quedan.
+- **Central** como pantalla de inicio del panel: visor con las cifras de hoy, mapa de unidades y bitácora de los viajes del día con su verificación, actualizados cada 15 s.
 - Herramienta `viajes_con_diferencias` del asistente.
 
 ### Cambiado
-- **Tarifa por tramos (fórmula v4)**: `T = (Da + Dt × FR) × (Cb + Cl × Pc) × FH + Ct × Td`. Cada tramo GPS se cobra con la superficie que el chofer tenía marcada en ese momento; antes, la superficie elegida al terminar se aplicaba a todo el viaje. Con una sola superficie el resultado es igual al de la v3.
-- La app muestra los km en asfalto y en tierra durante el viaje y los guarda con el viaje; el servidor valida que sumen la distancia y marca el viaje como asfalto, tierra o mixto.
-- El listado y el CSV de viajes incluyen los km por superficie; el gráfico "Asfalto vs tierra" del tablero reparte km y cobro por recorrido entre superficies.
+- **Tarifa por tramos (fórmula v4)**: `T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td`. Cada tramo GPS se cobra con la superficie que el chofer tenía marcada en ese momento; antes, la superficie elegida al terminar se aplicaba a todo el viaje. Con una sola superficie el resultado es igual al de la v3.
+- La app muestra los km por superficie durante el viaje y los guarda con el viaje; el servidor valida que sumen la distancia y marca el viaje como asfalto, tierra, empedrado o mixto.
+- El listado y el CSV de viajes incluyen los km por superficie; el gráfico de superficies reparte km y cobro por recorrido.
 - La vista previa de Parámetros y la herramienta `calcular_tarifa` del asistente admiten viajes mixtos.
+- **Panel con pestañas** en la cabecera en lugar de la barra lateral. El antiguo tablero pasa a **Informes** (`/informes`), con un visor de cifras del período en lugar de las tarjetas de métricas. El radar se reemplaza por la Central (`/radar` redirige a ella).
 
 ### Migraciones
-- `006_rutas_y_verificacion.sql`: tabla `viajes_puntos` y columnas de verificación en `viajes_historial`; los viajes existentes quedan "sin verificar". SQLite pasa a la versión 6 (tabla `puntos_viaje`).
-- `005_km_por_superficie.sql`: añade `km_asfalto` y `km_tierra` a `viajes_historial`, reparte los viajes existentes según su tipo de superficie y agrega los CHECK. La base de la app (SQLite) pasa a la versión 5 sin borrar viajes.
+Aplicar en orden sobre una base 1.1.0:
+- `005_km_por_superficie.sql`: añade `km_asfalto` y `km_tierra` a `viajes_historial`, reparte los viajes existentes según su tipo de superficie y agrega los CHECK.
+- `006_rutas_y_verificacion.sql`: tabla `viajes_puntos` y columnas de verificación; los viajes existentes quedan "sin verificar".
+- `007_empedrado.sql`: `parametros.factor_empedrado`, `km_empedrado` y `factor_empedrado_aplicado` en los viajes.
+- `008_rugosidad.sql`: vibración por punto y `superficie_respaldo`.
+- `009_tarifa_tradicional.sql`: `viajes_historial.tarifa_tradicional`.
+
+La base de la app (SQLite) sube de la versión 4 a la 9 sin borrar viajes.
 
 ## [1.1.0] - 2026-10-09
 
