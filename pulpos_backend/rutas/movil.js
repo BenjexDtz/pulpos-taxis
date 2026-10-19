@@ -3,7 +3,7 @@ const pool = require('../db');
 const { verificarToken, soloChofer } = require('../middlewares/autenticacion');
 const { auditar, enTransaccion } = require('../utilidades');
 const { distanciaKm, kmPorSuperficie, numeroEnRango } = require('../validacion');
-const { leerRuta, verificarViaje } = require('../verificacion');
+const { leerRuta, verificarViaje, MODOS_TARIFA } = require('../verificacion');
 
 const router = express.Router();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,8 +37,9 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 consumo_litros_aplicado, precio_combustible_aplicado,
                 fecha_hora_viaje, uuid,
                 distancia_ruta_km, tarifa_calculada, verificacion, verificacion_detalle,
-                vibracion_referencia, vibracion_irregular, superficie_respaldo, tarifa_tradicional
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+                vibracion_referencia, vibracion_irregular, superficie_respaldo, tarifa_tradicional,
+                modo_tarifa_aplicado, bajada_bandera_aplicada, valor_salto_aplicado
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
              ON CONFLICT (chofer_id, uuid) DO NOTHING
              RETURNING *`,
             [
@@ -56,6 +57,10 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 v.vibracion_referencia, v.vibracion_irregular, v.superficie_respaldo,
                 // Dato opcional para comparar: si llega mal se descarta, el viaje no
                 numeroEnRango(b.tarifa_tradicional, 0.01, 10000),
+                // Taxímetro v5; NULL = viaje de una app con la fórmula v4
+                MODOS_TARIFA.includes(b.modo_tarifa_aplicado) ? b.modo_tarifa_aplicado : null,
+                numeroEnRango(b.bajada_bandera_aplicada, 0, 50),
+                numeroEnRango(b.valor_salto_aplicado, 0.01, 5),
             ]
         );
         const nuevo = r.rows[0];

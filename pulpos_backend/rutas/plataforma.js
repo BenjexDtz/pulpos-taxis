@@ -82,10 +82,12 @@ router.post('/api/plataforma/empresas', verificarToken, soloSuperadmin, async (r
             await c.query(
                 `INSERT INTO parametros_topograficos (
                     empresa_id, zona_ciudad, costo_base_km, consumo_litros_km, precio_combustible_bs,
-                    factor_altitud, factor_superficie, factor_empedrado, costo_minuto_detencion)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                    factor_altitud, factor_superficie, factor_empedrado, costo_minuto_detencion,
+                    bajada_bandera_bs, valor_salto_bs, modo_tarifa)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
                 [e.id, e.ciudad, p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
-                 p.factor_altitud, p.factor_superficie, p.factor_empedrado, p.costo_minuto_detencion]
+                 p.factor_altitud, p.factor_superficie, p.factor_empedrado, p.costo_minuto_detencion,
+                 p.bajada_bandera_bs, p.valor_salto_bs, p.modo_tarifa]
             );
             await c.query(
                 `INSERT INTO administradores (empresa_id, nombre, email, password_hash, rol)

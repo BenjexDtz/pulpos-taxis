@@ -182,6 +182,29 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal(rows[0].n, 41);
     });
 
+    test('viaje del taxímetro v5: guarda modo, bajada y salto y lo recalcula con la ruta', async () => {
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const cfg = (await pedir('GET', '/api/config', { token })).json.parametros;
+        assert.deepEqual([cfg.modo_tarifa, cfg.bajada_bandera_bs, cfg.valor_salto_bs, cfg.velocidad_cruce_kmh], ['S', '2.00', '0.50', 7.9]);
+        // Mismo caso compartido que verificacion.test.js y taximetro_test.dart
+        const p = Array.from({ length: 21 }, (_, i) => [-16.5, -68.19 + i * 0.0005, i * 6, i > 15 ? 1 : 0]);
+        const ruta = [...p, [...p[20].slice(0, 2), 240, 1]];
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+            distancia_km: 1.066, km_asfalto: 0.8, km_tierra: 0.266,
+            tiempo_detencion_min: 2, tarifa_cobrada: 8.5,
+            costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
+            factor_altitud_aplicado: 1.4, factor_superficie_aplicado: 2.5, factor_empedrado_aplicado: 2, costo_minuto_aplicado: 0.5,
+            modo_tarifa_aplicado: 'S', bajada_bandera_aplicada: 2, valor_salto_aplicado: 0.5,
+            fecha_hora_viaje: '2026-10-09T11:00:00', uuid: '3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f', ruta,
+        } });
+        assert.equal(r.status, 201);
+        assert.equal(r.json.verificacion, 'ok');
+        const v = (await pool.query(
+            `SELECT modo_tarifa_aplicado, bajada_bandera_aplicada, valor_salto_aplicado, tarifa_calculada
+             FROM viajes_historial WHERE id_servidor = $1`, [r.json.id_servidor])).rows[0];
+        assert.deepEqual(v, { modo_tarifa_aplicado: 'S', bajada_bandera_aplicada: '2.00', valor_salto_aplicado: '0.50', tarifa_calculada: '8.50' });
+    });
+
     test('reenviar el mismo viaje (también en paralelo) no lo duplica', async () => {
         const { token } = await loginChofer('pulpos', '1234-KKK');
         const body = { distancia_km: 1, tiempo_detencion_min: 0, tarifa_cobrada: 5, fecha_hora_viaje: '2026-10-08T08:00:00',
@@ -202,8 +225,10 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const r = await pedir('PUT', '/api/admin/parametros', { token: pulpos, body: {
             zona_ciudad: 'El Alto', costo_base_km: 3, consumo_litros_km: 0.1, precio_combustible_bs: 6.96,
             factor_altitud: 1.4, factor_superficie: 2.5, factor_empedrado: 2, costo_minuto_detencion: 0.5,
+            bajada_bandera_bs: 3, valor_salto_bs: 0.2, modo_tarifa: 'D',
         } });
         assert.equal(r.status, 200);
+        assert.deepEqual([r.json.parametros.modo_tarifa, r.json.parametros.valor_salto_bs], ['D', '0.20']);
         const illimani = await loginAdmin('admin@illimani.bo');
         const cfg = (await pedir('GET', '/api/config', { token: illimani })).json;
         assert.equal(cfg.empresa.codigo, 'illimani');

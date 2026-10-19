@@ -45,11 +45,14 @@ const RANGOS_PARAMETROS = {
     factor_superficie:      [1, 5],
     factor_empedrado:       [1, 5],
     costo_minuto_detencion: [0.1, 5],
+    bajada_bandera_bs:      [0, 50],
+    valor_salto_bs:         [0.01, 5],
 };
 
 const PARAMETROS_INICIALES = {
     costo_base_km: 2.00, consumo_litros_km: 0.100, precio_combustible_bs: 6.96,
     factor_altitud: 1.00, factor_superficie: 2.00, factor_empedrado: 1.50, costo_minuto_detencion: 0.50,
+    bajada_bandera_bs: 0, valor_salto_bs: 0.10, modo_tarifa: 'S',
 };
 
 const CAMPOS_EMPRESA = [
@@ -113,8 +116,10 @@ const validarEmpresa = (b) => {
 
 const distanciaKm = (lat1, lng1, lat2, lng2) => {
     const rad = (x) => x * Math.PI / 180;
-    const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 +
-              Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2;
+    // Mismas operaciones y en el mismo orden que distanciaKm de taximetro.dart
+    const s1 = Math.sin(rad(lat2 - lat1) / 2);
+    const s2 = Math.sin(rad(lng2 - lng1) / 2);
+    const a = s1 * s1 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * (s2 * s2);
     return 2 * 6371 * Math.asin(Math.sqrt(a));
 };
 
@@ -143,12 +148,21 @@ const kmPorSuperficie = (b) => {
     return { ...km, tipo: tipoSegunKm(km) };
 };
 
+// Tarifas del taxímetro (por km en asfalto y por hora) y la velocidad a la que se igualan
 const conCostos = (p) => {
     const combustible = parseFloat(p.consumo_litros_km) * parseFloat(p.precio_combustible_bs);
+    const variable = parseFloat(p.costo_base_km) + combustible;
+    const tarifaKm = variable * parseFloat(p.factor_altitud);
+    const tarifaHora = parseFloat(p.costo_minuto_detencion) * 60;
     return {
         ...p,
         costo_combustible_km: parseFloat(combustible.toFixed(3)),
-        costo_variable_km: parseFloat((parseFloat(p.costo_base_km) + combustible).toFixed(3)),
+        costo_variable_km: parseFloat(variable.toFixed(3)),
+        ...(tarifaKm > 0 && tarifaHora > 0 && {
+            tarifa_km: parseFloat(tarifaKm.toFixed(3)),
+            tarifa_hora: parseFloat(tarifaHora.toFixed(2)),
+            velocidad_cruce_kmh: parseFloat((tarifaHora / tarifaKm).toFixed(1)),
+        }),
     };
 };
 

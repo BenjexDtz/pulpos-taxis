@@ -3,6 +3,7 @@ const pool = require('../db');
 const { verificarToken, soloAdmin, deEmpresa } = require('../middlewares/autenticacion');
 const { auditar, separar, actualizarEmpresa } = require('../utilidades');
 const { numeroEnRango, validarEmpresa, conCostos, RANGOS_PARAMETROS } = require('../validacion');
+const { MODOS_TARIFA } = require('../verificacion');
 
 const router = express.Router();
 
@@ -39,6 +40,9 @@ router.put('/api/admin/parametros', verificarToken, soloAdmin, async (req, res) 
         if (valores[campo] === null)
             return res.status(400).json({ error: `⚠️ ${campo} debe ser un número entre ${min} y ${max}.` });
     }
+    if (!MODOS_TARIFA.includes(req.body.modo_tarifa))
+        return res.status(400).json({ error: '⚠️ modo_tarifa debe ser S (tiempo o distancia) o D (ambos).' });
+    valores.modo_tarifa = req.body.modo_tarifa;
     // Los nombres de columna salen de RANGOS_PARAMETROS, nunca del body
     const campos = Object.keys(valores);
     const r = await pool.query(
