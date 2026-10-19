@@ -45,7 +45,8 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
             [
                 req.empresa.id, req.usuario.id, distancia_km, km.km_asfalto, km.km_tierra, km.km_empedrado,
                 tiempo_detencion_min, tarifa_cobrada, km.tipo,
-                b.factor_altitud_aplicado ?? p.factor_altitud ?? 1,
+                // El taxímetro v5 no aplica factor de altitud
+                b.modo_tarifa_aplicado !== undefined ? 1 : b.factor_altitud_aplicado ?? p.factor_altitud ?? 1,
                 b.factor_superficie_aplicado ?? (km.km_tierra > 0 ? p.factor_superficie : null) ?? 1,
                 b.factor_empedrado_aplicado ?? (km.km_empedrado > 0 ? p.factor_empedrado : null) ?? 1,
                 b.costo_base_aplicado ?? p.costo_base_km,

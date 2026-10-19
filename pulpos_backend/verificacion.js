@@ -16,13 +16,14 @@ const tarifaV4 = ({ km_asfalto, km_tierra, km_empedrado = 0, Cb, Cl, Pc, FH, FR,
 // ─── Taxímetro v5: modo S de la Directiva 2014/32/UE (Anexo IX, MI-007) con superficie por tramos ───
 // Mismo algoritmo que taximetro.dart. Por tramo de la ruta (d km, t s, superficie F del punto final):
 //   modo S: max(d × F × Tkm, t × Th)    modo D: d × F × Tkm + t × Th
-// con Tkm = (Cb + Cl × Pc) × FH y Th = 60 × Ct. Importe = B + S × saltos completos.
+// con Tkm = Cb + Cl × Pc y Th = 60 × Ct. Importe = B + S × saltos completos. La altitud no es un
+// factor aparte: queda dentro de los costos medidos en la ciudad (FH solo lo usan los viajes v4).
 // Enteros exactos: tarifas en milicentavos, distancia en mm y tiempo en s; 1 mc = 9e6 unidades
 // (mm × mc/km × 9 = s × mc/h × 2500), así ambos componentes se comparan sin redondeos.
 const U_POR_CENTAVO = 9_000_000_000n;
 
-const tarifasEnteras = ({ Cb, Cl, Pc, FH, FR, FE, Ct, B, S, modo }) => {
-    const km = (Cb + Cl * Pc) * FH;
+const tarifasEnteras = ({ Cb, Cl, Pc, FR, FE, Ct, B, S, modo }) => {
+    const km = Cb + Cl * Pc;
     return {
         modo, bajada: Math.round(B * 100), salto: Math.round(S * 100),
         porKm: { asfalto: Math.round(km * 1e5), tierra: Math.round(km * FR * 1e5), empedrado: Math.round(km * FE * 1e5) },
@@ -136,12 +137,12 @@ const esTaximetro = (b) => b.modo_tarifa_aplicado !== undefined;
 const aplicadosDe = (b, km) => {
     const v = {
         Cb: b.costo_base_aplicado, Cl: b.consumo_litros_aplicado, Pc: b.precio_combustible_aplicado,
-        FH: b.factor_altitud_aplicado, Ct: b.costo_minuto_aplicado,
+        Ct: b.costo_minuto_aplicado,
         FR: km.km_tierra > 0 ? b.factor_superficie_aplicado : (b.factor_superficie_aplicado ?? 1),
         FE: km.km_empedrado > 0 ? b.factor_empedrado_aplicado : (b.factor_empedrado_aplicado ?? 1),
         ...(esTaximetro(b)
             ? { B: b.bajada_bandera_aplicada, S: b.valor_salto_aplicado }
-            : { Td: b.tiempo_detencion_min }),
+            : { Td: b.tiempo_detencion_min, FH: b.factor_altitud_aplicado }),
     };
     if (!Object.values(v).every(x => typeof x === 'number' && Number.isFinite(x))) return null;
     if (!esTaximetro(b)) return v;

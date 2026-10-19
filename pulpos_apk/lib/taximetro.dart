@@ -10,11 +10,12 @@ import 'calculadora.dart';
 // (d km y t s hasta el punto siguiente, F de la superficie marcada al llegar):
 //
 //   modo S: max(d × F × Tkm, t × Th)        modo D: d × F × Tkm + t × Th
-//   Tkm = (Cb + Cl × Pc) × FH                Th = 60 × Ct
+//   Tkm = Cb + Cl × Pc                       Th = 60 × Ct
 //   Importe = B + S × saltos completos
 //
 // Bajo la velocidad de cruce Th / (Tkm × F) gana el tiempo; encima, la distancia.
-// Estar detenido no depende de la superficie: F solo multiplica la distancia.
+// Estar detenido no depende de la superficie: F solo multiplica la distancia. La altitud
+// no es un factor aparte: queda dentro de los costos medidos en la ciudad.
 //
 // Enteros exactos: tarifas en milicentavos, distancia en mm y tiempo en s; un
 // milicentavo son 9e6 unidades (mm × mc/km × 9 = s × mc/h × 2500), así los dos
@@ -37,7 +38,7 @@ class TarifaTaximetro {
 
   // Mismas operaciones que tarifasEnteras de verificacion.js
   factory TarifaTaximetro.desde(ParametrosTopograficos p) {
-    final km = (p.costoBaseKm + p.consumoLitrosKm * p.precioCombustibleBs) * p.factorAltitud;
+    final km = p.costoBaseKm + p.consumoLitrosKm * p.precioCombustibleBs;
     return TarifaTaximetro(
       modo: p.modoTarifa,
       bajada: (p.bajadaBandera * 100).round(),

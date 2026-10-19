@@ -423,14 +423,15 @@ describe('Parámetros y datos de la empresa', () => {
         assert.equal(r.status, 200);
         const q = consultasDeDatos()[0];
         assert.match(q.sql, /WHERE empresa_id=\$1/);
-        assert.match(q.sql, /factor_empedrado=\$8/);
-        assert.match(q.sql, /modo_tarifa=\$12/);
-        assert.deepEqual(q.params, [2, 'El Alto', 2, 0.1, 6.96, 1.4, 2.5, 1.8, 0.5, 2, 0.5, 'S']);
+        assert.match(q.sql, /factor_empedrado=\$7/);
+        assert.match(q.sql, /modo_tarifa=\$11/);
+        assert.doesNotMatch(q.sql, /factor_altitud/);
+        assert.deepEqual(q.params, [2, 'El Alto', 2, 0.1, 6.96, 2.5, 1.8, 0.5, 2, 0.5, 'S']);
     });
 
     for (const [caso, cambio] of [
         ['negativo', { costo_minuto_detencion: -5 }],
-        ['texto', { factor_altitud: 'abc' }],
+        ['texto', { factor_superficie: 'abc' }],
         ['vacío', { precio_combustible_bs: '' }],
         ['FE fuera de rango', { factor_empedrado: 0.5 }],
         ['FE ausente', { factor_empedrado: undefined }],
@@ -1037,20 +1038,21 @@ describe('Asistente de IA', () => {
 
     test('calcular_tarifa estima el taxímetro con los parámetros de la empresa', async () => {
         responder = datosBase;
-        // Bajada 2 + saltos de 0,50 sobre 5 × (2 + 0.1 × 6.96) × 1.4 × 2 + 0.5 × 10 = 42.744
+        // Bajada 2 + saltos de 0,50 sobre 5 × (2 + 0.1 × 6.96) × 2 + 0.5 × 10 = 31.96; sin factor de altitud
         const tierra = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"espera_min":10,"superficie":"tierra"}', contexto);
-        assert.equal(tierra.tarifa, 44.5);
+        assert.equal(tierra.tarifa, 33.5);
+        assert.equal(tierra.parametros.FH, undefined);
         assert.deepEqual([tierra.km_tierra, tierra.superficie, tierra.parametros.FR, tierra.costo_tiempo], [5, 'tierra', 2, 5]);
-        assert.deepEqual([tierra.tarifa_km, tierra.tarifa_hora, tierra.velocidad_cruce_kmh], [3.77, 30, 7.9]);
+        assert.deepEqual([tierra.tarifa_km, tierra.tarifa_hora, tierra.velocidad_cruce_kmh], [2.7, 30, 11.1]);
         const asfalto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5}', contexto);
-        assert.deepEqual([asfalto.tarifa, asfalto.km_tierra, asfalto.superficie, asfalto.costo_tiempo], [20.5, 0, 'asfalto', 0]);
-        // 2 + ⌊((3 + 2 × 2) × 3.7744 + 5) / 0.5⌋ × 0.5
+        assert.deepEqual([asfalto.tarifa, asfalto.km_tierra, asfalto.superficie, asfalto.costo_tiempo], [15, 0, 'asfalto', 0]);
+        // 2 + ⌊((3 + 2 × 2) × 2.696 + 5) / 0.5⌋ × 0.5
         const mixto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"espera_min":10,"km_tierra":2}', contexto);
-        assert.deepEqual([mixto.tarifa, mixto.km_asfalto, mixto.superficie], [33, 3, 'mixto']);
+        assert.deepEqual([mixto.tarifa, mixto.km_asfalto, mixto.superficie], [25.5, 3, 'mixto']);
         for (const km of ['-1', '6', '"dos"'])
             assert.ok((await asistente.ejecutarHerramienta('calcular_tarifa', `{"distancia_km":5,"km_tierra":${km}}`, contexto)).error);
         const tres = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"km_tierra":1,"km_empedrado":2}', contexto);
-        assert.deepEqual([tres.tarifa, tres.km_asfalto, tres.superficie, tres.parametros.FE], [28, 2, 'mixto', 1.5]);
+        assert.deepEqual([tres.tarifa, tres.km_asfalto, tres.superficie, tres.parametros.FE], [20.5, 2, 'mixto', 1.5]);
         const empedrado = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"superficie":"empedrado"}', contexto);
         assert.deepEqual([empedrado.km_empedrado, empedrado.superficie], [5, 'empedrado']);
         assert.ok((await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"km_tierra":3,"km_empedrado":3}', contexto)).error);
@@ -1060,8 +1062,8 @@ describe('Asistente de IA', () => {
     test('calcular_tarifa en modo D cobra también el tiempo en movimiento', async () => {
         responder = (sql) => sql.includes('FROM parametros_topograficos') ? { rows: [{ ...PARAMETROS, modo_tarifa: 'D' }] } : datosBase(sql);
         const d = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"minutos_en_movimiento":10}', contexto);
-        // 2 + ⌊(18.872 + 5) / 0.5⌋ × 0.5
-        assert.deepEqual([d.tarifa, d.costo_tiempo, d.parametros.modo], [25.5, 5, 'D']);
+        // 2 + ⌊(13.48 + 5) / 0.5⌋ × 0.5
+        assert.deepEqual([d.tarifa, d.costo_tiempo, d.parametros.modo], [20, 5, 'D']);
     });
 
     test('ranking: criterio y límite solo de la lista permitida', async () => {

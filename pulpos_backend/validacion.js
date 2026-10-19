@@ -36,12 +36,11 @@ const zonaHorariaValida = (zona) => {
     try { new Intl.DateTimeFormat('es', { timeZone: zona }); return true; } catch { return false; }
 };
 
-// Mismos límites que los inputs del panel
+// Mismos límites que los inputs del panel. factor_altitud ya no se edita: solo lo leen las apps v4
 const RANGOS_PARAMETROS = {
     costo_base_km:          [0.5, 10],
     consumo_litros_km:      [0.05, 0.5],
     precio_combustible_bs:  [1, 30],
-    factor_altitud:         [1, 3],
     factor_superficie:      [1, 5],
     factor_empedrado:       [1, 5],
     costo_minuto_detencion: [0.1, 5],
@@ -152,7 +151,7 @@ const kmPorSuperficie = (b) => {
 const conCostos = (p) => {
     const combustible = parseFloat(p.consumo_litros_km) * parseFloat(p.precio_combustible_bs);
     const variable = parseFloat(p.costo_base_km) + combustible;
-    const tarifaKm = variable * parseFloat(p.factor_altitud);
+    const tarifaKm = variable;
     const tarifaHora = parseFloat(p.costo_minuto_detencion) * 60;
     return {
         ...p,

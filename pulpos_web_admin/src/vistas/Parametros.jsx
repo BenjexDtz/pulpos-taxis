@@ -24,7 +24,8 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
   };
 
   const valor = (clave, porDefecto = 0) => parseFloat(formParams?.[clave] || porDefecto);
-  const tarifaKm = () => (valor('costo_base_km') + valor('consumo_litros_km') * valor('precio_combustible_bs')) * valor('factor_altitud');
+  // Sin factor de altitud: queda dentro de los costos medidos en la ciudad
+  const tarifaKm = () => valor('costo_base_km') + valor('consumo_litros_km') * valor('precio_combustible_bs');
   const tarifaHora = () => valor('costo_minuto_detencion') * 60;
   const modoD = formParams?.modo_tarifa === 'D';
   // Directiva 2014/32/UE, Anexo IX: velocidad de cruce = tarifa por tiempo / tarifa por distancia
@@ -93,14 +94,9 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
           </div>
         </Tarjeta>
 
-        <Tarjeta icono={Settings} titulo="Factores topográficos y económicos">
+        <Tarjeta icono={Settings} titulo="Costo por km, superficie y tiempo">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             {campoParam('costo_base_km', { etiqueta: `Cb · costo base por km (${m})`, ayuda: 'Ganancia del conductor + depreciación.', step: '0.01', min: 0.5, max: 10 })}
-            {campoParam('factor_altitud', {
-              etiqueta: 'FH · factor de altitud',
-              ayuda: `Penalización por la altitud${empresa?.altitud_msnm ? ` (${empresa.altitud_msnm.toLocaleString('es-BO')} msnm)` : ''}.`,
-              step: '0.01', min: 1, max: 3,
-            })}
             {campoParam('factor_superficie', { etiqueta: 'FR · factor tierra / barro', ayuda: 'Multiplicador para calles de tierra.', step: '0.1', min: 1, max: 5 })}
             {campoParam('factor_empedrado', { etiqueta: 'FE · factor empedrado / adoquín', ayuda: 'Multiplicador para calles empedradas.', step: '0.1', min: 1, max: 5 })}
             {campoParam('costo_minuto_detencion', { etiqueta: `Ct · costo por minuto (${m})`, ayuda: 'Cobro por espera o tráfico lento; × 60 es la tarifa por hora.', step: '0.01', min: 0.1, max: 5 })}
@@ -154,7 +150,7 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
             <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Σ</dt> <dd className="inline">sobre cada tramo GPS del viaje</dd></div>
             <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">d, t</dt> <dd className="inline">km y horas del tramo</dd></div>
             <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">F</dt> <dd className="inline">1 en asfalto, FR en tierra, FE en empedrado; el chofer marca cada tramo en la app</dd></div>
-            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Tkm</dt> <dd className="inline">(Cb + Cl × Pc) × FH</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Tkm</dt> <dd className="inline">Cb + Cl × Pc</dd></div>
             <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Th</dt> <dd className="inline">60 × Ct</dd></div>
           </dl>
         </Tarjeta>

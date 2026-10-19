@@ -195,11 +195,11 @@ const EJECUTORES = {
         const r = await pool.query(`SELECT * FROM parametros_topograficos WHERE empresa_id = $1`, [empresaId]);
         if (!r.rows.length) return { error: 'La empresa no tiene parámetros tarifarios.' };
         const p = r.rows[0];
-        const [Cb, Cl, Pc, FH, Ct, FR, FE, B, S] = [p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
-            p.factor_altitud, p.costo_minuto_detencion, p.factor_superficie, p.factor_empedrado,
+        const [Cb, Cl, Pc, Ct, FR, FE, B, S] = [p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
+            p.costo_minuto_detencion, p.factor_superficie, p.factor_empedrado,
             p.bajada_bandera_bs, p.valor_salto_bs].map(parseFloat);
         const modo = p.modo_tarifa;
-        const t = tarifasEnteras({ Cb, Cl, Pc, FH, FR, FE, Ct, B, S, modo });
+        const t = tarifasEnteras({ Cb, Cl, Pc, FR, FE, Ct, B, S, modo });
         const Da = Math.max(0, D - Dt - De);
         const superficie = tipoSegunKm({ km_asfalto: Da, km_tierra: Dt, km_empedrado: De });
         const km = { km_asfalto: Da, km_tierra: Dt, km_empedrado: De };
@@ -208,11 +208,11 @@ const EJECUTORES = {
         const r2 = (x) => Math.round(x * 100) / 100;
         return {
             distancia_km: D, km_asfalto: r2(Da), km_tierra: r2(Dt), km_empedrado: r2(De), espera_min: Td, superficie,
-            parametros: { Cb, Cl, Pc, FH, FR, FE, Ct, bajada: B, salto: S, modo },
-            tarifa_km: r2((Cb + Cl * Pc) * FH), tarifa_hora: r2(Ct * 60),
+            parametros: { Cb, Cl, Pc, FR, FE, Ct, bajada: B, salto: S, modo },
+            tarifa_km: r2(Cb + Cl * Pc), tarifa_hora: r2(Ct * 60),
             velocidad_cruce_kmh: Math.round(velocidadCruceKmh(t) * 10) / 10,
             bajada: B,
-            costo_recorrido: r2((Da + Dt * FR + De * FE) * (Cb + Cl * Pc) * FH),
+            costo_recorrido: r2((Da + Dt * FR + De * FE) * (Cb + Cl * Pc)),
             costo_tiempo: r2(Ct * minutosCobrados),
             tarifa: total,
             supuesto: 'En movimiento se va más rápido que la velocidad de cruce; el total se redondea hacia abajo al salto.',

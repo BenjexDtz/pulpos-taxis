@@ -415,7 +415,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
       'km_tierra': r.kmTierra,
       'km_empedrado': r.kmEmpedrado,
       'tiempo_detencion_min': taximetro.minutosPorTiempo,
-      'factor_altitud': p.factorAltitud,
+      'factor_altitud': 1.0,
       'factor_superficie': p.factorSuperficie,
       'factor_empedrado': p.factorEmpedrado,
       'tarifa_total': taximetro.importe,
@@ -606,7 +606,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                         )
                       : Tooltip(
                           message:
-                              'Cb: ${params.costoBaseKm} | FH: ${params.factorAltitud}',
+                              'Cb: ${params.costoBaseKm} | Ct: ${params.costoMinutoDetencion}',
                           child: const Icon(
                             Icons.cloud_done,
                             color: Colors.greenAccent,
@@ -786,7 +786,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                         Text(
                           'Bajada: $_moneda ${params.bajadaBandera.toStringAsFixed(2)} · '
                           'Salto: $_moneda ${params.valorSalto.toStringAsFixed(2)} · Modo ${params.modoTarifa.codigo}\n'
-                          'Cb: $_moneda ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · '
+                          'Cb: $_moneda ${params.costoBaseKm}/km · '
                           'FR: ${params.factorSuperficie}× · FE: ${params.factorEmpedrado}× · '
                           'Ct: $_moneda ${params.costoMinutoDetencion}/min · '
                           'Cruce: ${cruce.toStringAsFixed(1)} km/h',

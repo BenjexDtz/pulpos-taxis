@@ -220,18 +220,23 @@ describe('Taxímetro v5 (modo S, Directiva 2014/32/UE)', () => {
         const p = Array.from({ length: 21 }, (_, i) => [-16.5, -68.19 + i * 0.0005, i * 6, i > 15 ? 1 : 0]);
         return leerRuta([...p, [...p[20].slice(0, 2), 240, 1]]);
     };
-    const pulpos = { Cb: 2, Cl: 0.1, Pc: 6.96, FH: 1.4, FR: 2.5, FE: 2, Ct: 0.5, B: 2, S: 0.5 };
+    const pulpos = { Cb: 2, Cl: 0.1, Pc: 6.96, FR: 2.5, FE: 2, Ct: 0.5, B: 2, S: 0.5 };
 
     test('caso compartido con la app', () => {
-        assert.deepEqual(taximetro(rutaCompartida(), tarifasEnteras({ ...pulpos, modo: 'S' })), { centavos: 850, segundosPorTiempo: 120 });
-        assert.equal(taximetro(rutaCompartida(), tarifasEnteras({ ...pulpos, modo: 'D' })).centavos, 950);
+        assert.deepEqual(taximetro(rutaCompartida(), tarifasEnteras({ ...pulpos, modo: 'S' })), { centavos: 650, segundosPorTiempo: 120 });
+        assert.equal(taximetro(rutaCompartida(), tarifasEnteras({ ...pulpos, modo: 'D' })).centavos, 750);
+    });
+
+    test('la altitud no es un factor del taxímetro', () => {
+        assert.deepEqual(tarifasEnteras({ ...pulpos, FH: 1.4, modo: 'S' }), tarifasEnteras({ ...pulpos, modo: 'S' }));
+        assert.equal(tarifasEnteras({ ...pulpos, modo: 'S' }).porKm.asfalto, 269600);
     });
 
     test('tarifaEstimada: distancia en movimiento y tiempo detenido', () => {
         const tp = tarifasEnteras({ ...pulpos, modo: 'S' });
-        // 2 + ⌊(5 × 3.7744 + 10 × 0.5) / 0.5⌋ × 0.5
-        assert.equal(tarifaEstimada({ km_asfalto: 5, minutos_detenido: 10, minutos_en_movimiento: 20 }, tp).centavos, 2550);
-        assert.equal(tarifaEstimada({ km_asfalto: 5, minutos_detenido: 10, minutos_en_movimiento: 20 }, { ...tp, modo: 'D' }).centavos, 3550);
+        // 2 + ⌊(5 × 2.696 + 10 × 0.5) / 0.5⌋ × 0.5
+        assert.equal(tarifaEstimada({ km_asfalto: 5, minutos_detenido: 10, minutos_en_movimiento: 20 }, tp).centavos, 2000);
+        assert.equal(tarifaEstimada({ km_asfalto: 5, minutos_detenido: 10, minutos_en_movimiento: 20 }, { ...tp, modo: 'D' }).centavos, 3000);
     });
 
     const viajeV5 = (extra = {}) => {
@@ -239,18 +244,18 @@ describe('Taxímetro v5 (modo S, Directiva 2014/32/UE)', () => {
         return {
             distancia_km: r.km, km_asfalto: r.km_asfalto, km_tierra: r.km_tierra, tiempo_detencion_min: 2,
             costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
-            factor_altitud_aplicado: 1.4, factor_superficie_aplicado: 2.5, factor_empedrado_aplicado: 2, costo_minuto_aplicado: 0.5,
-            modo_tarifa_aplicado: 'S', bajada_bandera_aplicada: 2, valor_salto_aplicado: 0.5, tarifa_cobrada: 8.5, ...extra,
+            factor_superficie_aplicado: 2.5, factor_empedrado_aplicado: 2, costo_minuto_aplicado: 0.5,
+            modo_tarifa_aplicado: 'S', bajada_bandera_aplicada: 2, valor_salto_aplicado: 0.5, tarifa_cobrada: 6.5, ...extra,
         };
     };
     const kmV5 = () => { const r = resumenRuta(rutaCompartida()); return { km_asfalto: r.km_asfalto, km_tierra: r.km_tierra, km_empedrado: 0 }; };
 
     test('verificarViaje recalcula un viaje v5 con su ruta', () => {
         const v = verificarViaje({ cuerpo: viajeV5(), km: kmV5(), ruta: rutaCompartida() });
-        assert.deepEqual([v.estado, v.tarifa_calculada], ['ok', 8.5]);
+        assert.deepEqual([v.estado, v.tarifa_calculada], ['ok', 6.5]);
         const caro = verificarViaje({ cuerpo: viajeV5({ tarifa_cobrada: 9 }), km: kmV5(), ruta: rutaCompartida() });
         assert.equal(caro.estado, 'diferencia');
-        assert.match(caro.detalle, /\(9\.00\) no coincide con la fórmula \(8\.50\)/);
+        assert.match(caro.detalle, /\(9\.00\) no coincide con la fórmula \(6\.50\)/);
     });
 
     test('viaje v5 sin ruta queda sin_ruta; con modo o salto inválidos, sin verificar', () => {

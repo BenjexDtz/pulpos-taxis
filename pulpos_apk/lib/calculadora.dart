@@ -16,8 +16,7 @@ class ParametrosTopograficos {
   final double consumoLitrosKm; // Cl — litros por km del vehículo
   final double precioCombustibleBs; // Pc — Bs por litro de gasolina
 
-  // Factores topográficos
-  final double factorAltitud;
+  // Factores de superficie (la altitud queda dentro de los costos medidos en la ciudad)
   final double factorSuperficie; // FR para tierra/barro
   final double factorEmpedrado; // FE para empedrado/adoquín
   final double costoMinutoDetencion; // Ct — también la tarifa por hora del taxímetro (× 60)
@@ -33,7 +32,6 @@ class ParametrosTopograficos {
     required this.costoBaseKm,
     required this.consumoLitrosKm,
     required this.precioCombustibleBs,
-    required this.factorAltitud,
     required this.factorSuperficie,
     required this.factorEmpedrado,
     required this.costoMinutoDetencion,
@@ -43,7 +41,6 @@ class ParametrosTopograficos {
   });
 
   /// Costo de combustible por km: Cl × Pc
-  /// Este valor se multiplica luego por FH × FR (igual que el costo base)
   double get costoCombustibleKm => consumoLitrosKm * precioCombustibleBs;
 
   /// Costo variable total por km antes de aplicar factores topográficos
@@ -61,7 +58,6 @@ class ParametrosTopograficos {
       precioCombustibleBs: double.parse(
         (json['precio_combustible_bs'] ?? 6.96).toString(),
       ),
-      factorAltitud: double.parse(json['factor_altitud'].toString()),
       factorSuperficie: double.parse(json['factor_superficie'].toString()),
       factorEmpedrado: double.parse(
         (json['factor_empedrado'] ?? 1.50).toString(),
@@ -82,7 +78,6 @@ class ParametrosTopograficos {
     'costo_base_km': costoBaseKm,
     'consumo_litros_km': consumoLitrosKm,
     'precio_combustible_bs': precioCombustibleBs,
-    'factor_altitud': factorAltitud,
     'factor_superficie': factorSuperficie,
     'factor_empedrado': factorEmpedrado,
     'costo_minuto_detencion': costoMinutoDetencion,
@@ -98,7 +93,6 @@ class ParametrosTopograficos {
     costoBaseKm: 2.00,
     consumoLitrosKm: 0.100, // 10L/100km
     precioCombustibleBs: 6.96, // sin subvención, mayo 2026
-    factorAltitud: 1.40,
     factorSuperficie: 2.50,
     factorEmpedrado: 2.00,
     costoMinutoDetencion: 0.50,

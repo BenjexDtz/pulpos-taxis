@@ -18,16 +18,21 @@ T = B + S × ⌊ Σ cobro de los tramos / S ⌋
 | B | `bajada_bandera_bs` | Importe con el que empieza todo viaje |
 | S | `valor_salto_bs` | El importe avanza de S en S (redondeo hacia abajo al salto) |
 | — | `modo_tarifa` | S (tiempo o distancia) o D (ambos) |
-| Tkm | `(Cb + Cl × Pc) × FH` | Tarifa por km en asfalto |
+| Tkm | `Cb + Cl × Pc` | Tarifa por km en asfalto |
 | Cb | `costo_base_km` | Remuneración y costos fijos por km |
 | Cl, Pc | `consumo_litros_km`, `precio_combustible_bs` | Combustible por km |
-| FH | `factor_altitud` | Altitud de operación |
 | Th | `60 × costo_minuto_detencion` | Tarifa por hora |
 | F | 1, `factor_superficie` (FR), `factor_empedrado` (FE) | Asfalto, tierra, empedrado |
 
-**Velocidad de cruce** (Directiva 2014/32/UE, Anexo IX): `v_c = Th / (Tkm × F)`. Por debajo de ella el tramo se cobra por tiempo y por encima, por distancia. Como `F ≥ 1`, en tierra o empedrado la velocidad de cruce baja: se cobra por distancia desde una velocidad menor. Con los valores de demostración de Pulpos, `Tkm = 3,7744`, `Th = 30` y `v_c ≈ 7,9 km/h` en asfalto.
+**Velocidad de cruce** (Directiva 2014/32/UE, Anexo IX): `v_c = Th / (Tkm × F)`. Por debajo de ella el tramo se cobra por tiempo y por encima, por distancia. Como `F ≥ 1`, en tierra o empedrado la velocidad de cruce baja: se cobra por distancia desde una velocidad menor. Con los valores de demostración de Pulpos, `Tkm = 2,696`, `Th = 30` y `v_c ≈ 11,1 km/h` en asfalto.
 
 `F` solo multiplica la distancia. Detenido o muy lento gana el tiempo y la superficie no influye, lo cual es intencional: un auto detenido no se desgasta por la rugosidad de la calle.
+
+## Altitud
+
+La fórmula no tiene un factor de altitud. El efecto de operar a unos 4 000 m s. n. m. (menor potencia del motor y mayor consumo) queda dentro de los costos medidos en El Alto: el consumo Cl se mide con el vehículo en la ciudad y los costos de mantenimiento salen de talleres locales. Un factor aparte contaría la altitud dos veces y obligaría a justificar un valor que no se puede medir por separado. Si la tarifa se lleva a otra ciudad, basta con medir allí los mismos costos.
+
+La columna `factor_altitud` sigue en la base solo para las apps anteriores (fórmula v4); los viajes del taxímetro se guardan con `factor_altitud_aplicado = 1`.
 
 ## Implementación
 
@@ -48,8 +53,7 @@ El mismo algoritmo está en `pulpos_apk/lib/taximetro.dart` (la app cobra con é
 ## Limitaciones
 
 - **GPS en lugar de un sensor de pulsos de rueda.** La Directiva exige errores máximos de ±0,2 % en distancia (mínimo 4 m) y ±0,1 % en tiempo (mínimo 0,2 s); con GPS de teléfono no se puede prometer eso. El sistema adopta el *modo de cálculo* de la Directiva, no su certificación metrológica.
-- **Parámetros por calibrar.** Los valores de las semillas son de demostración. B, S, Cb, Cl, Pc, FH, FR, FE y Ct deben salir de mediciones y encuestas en El Alto (ver `JUSTIFICACION FORMULA/`).
-- **FH y doble conteo.** Si el consumo se mide en El Alto, ya incluye el efecto de la altitud: FH debería quedar en 1 o justificarse como efecto observado.
+- **Parámetros por calibrar.** Los valores de las semillas son de demostración. B, S, Cb, Cl, Pc, FR, FE y Ct deben salir de mediciones y encuestas en El Alto (ver `JUSTIFICACION FORMULA/`).
 - **Superficie por categorías, no continua.** Un factor continuo `F(IRI)` derivado de HDM-4 queda como trabajo futuro: requiere calibrar la relación vibración → IRI con perfiles de referencia, y HDM-4 está pensado para carreteras interurbanas, con menor precisión a baja velocidad urbana. Los puntos con vibración que la app ya envía sirven de datos para esa calibración.
 - **No hay distancia ni tiempo incluidos en la bajada** (`d₀`, `t₀` de la Directiva): B es un importe fijo.
 

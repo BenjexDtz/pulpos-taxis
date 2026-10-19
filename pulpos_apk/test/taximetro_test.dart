@@ -133,7 +133,6 @@ void main() {
       costoBaseKm: 2,
       consumoLitrosKm: 0.1,
       precioCombustibleBs: 6.96,
-      factorAltitud: 1.4,
       factorSuperficie: 2.5,
       factorEmpedrado: 2,
       costoMinutoDetencion: 0.5,
@@ -157,17 +156,17 @@ void main() {
     test('tarifas enteras iguales a tarifasEnteras de verificacion.js', () {
       final t = TarifaTaximetro.desde(pulpos);
       expect([t.bajada, t.salto, t.porHora], [200, 50, 3000000]);
-      expect(t.porKm, {Superficie.asfalto: 377440, Superficie.tierra: 943600, Superficie.empedrado: 754880});
+      expect(t.porKm, {Superficie.asfalto: 269600, Superficie.tierra: 674000, Superficie.empedrado: 539200});
     });
 
-    test('modo S: 8,50 con 2 min cobrados por tiempo; modo D: 9,50', () {
+    test('modo S: 6,50 con 2 min cobrados por tiempo; modo D: 7,50', () {
       final s = recorrer(pulpos);
-      expect([s.centavos, s.minutosPorTiempo], [850, 2]);
+      expect([s.centavos, s.minutosPorTiempo], [650, 2]);
       // Los mismos km, bit a bit, que resumenRuta del servidor
       expect(s.recorrido.kmAsfalto, 0.799619175629248);
       expect(s.recorrido.kmTierra, 0.26653972520974933);
       final d = ParametrosTopograficos.fromJson({...pulpos.toJson(), 'modo_tarifa': 'D'});
-      expect(recorrer(d).centavos, 950);
+      expect(recorrer(d).centavos, 750);
     });
 
     test('recalcular desde la ruta guardada da el mismo importe (recuperación tras un cierre)', () {

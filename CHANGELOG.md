@@ -6,10 +6,13 @@ Backend, panel web y app comparten un único número de versión: se entregan ju
 ## [Sin publicar]
 
 ### Cambiado
-- **Taxímetro v5 (modo S de la Directiva 2014/32/UE, Anexo IX)** en lugar de la fórmula v4. En cada tramo GPS se cobra el tiempo (`t × Th`, con `Th = 60 × Ct`) o la distancia (`d × F × Tkm`, con `Tkm = (Cb + Cl × Pc) × FH` y `F` = 1, FR o FE según la superficie), lo que sea mayor; el modo D cobra ambos. El importe empieza en la bajada de bandera y avanza en saltos completos. Bajo la velocidad de cruce `Th / (Tkm × F)` gana el tiempo, así la espera ya no depende de un detector de detención aparte y el tiempo en marcha no se cobra dos veces.
+- **Taxímetro v5 (modo S de la Directiva 2014/32/UE, Anexo IX)** en lugar de la fórmula v4. En cada tramo GPS se cobra el tiempo (`t × Th`, con `Th = 60 × Ct`) o la distancia (`d × F × Tkm`, con `Tkm = Cb + Cl × Pc` y `F` = 1, FR o FE según la superficie), lo que sea mayor; el modo D cobra ambos. El importe empieza en la bajada de bandera y avanza en saltos completos. Bajo la velocidad de cruce `Th / (Tkm × F)` gana el tiempo, así la espera ya no depende de un detector de detención aparte y el tiempo en marcha no se cobra dos veces.
 - Aritmética entera exacta (milicentavos, mm y s) en la app y en el servidor, con el mismo algoritmo: el servidor recalcula cada viaje desde su ruta y obtiene el mismo importe al centavo. Un viaje v5 sin ruta queda "sin ruta".
 - La app muestra si está cobrando por tiempo o por distancia y la velocidad de cruce; el panel muestra Tkm, Th y la velocidad de cruce por superficie, y la vista previa y la herramienta `calcular_tarifa` estiman el taxímetro.
 - La app descarta saltos imposibles del GPS (más de 120 km/h).
+
+### Quitado
+- **Factor de altitud (FH)** del cálculo: la altitud queda dentro de los costos medidos en la ciudad (consumo y mantenimiento en El Alto) y un factor aparte la contaría dos veces. Ya no se edita en el panel; la columna `factor_altitud` queda solo para las apps anteriores y los viajes del taxímetro se guardan con FH = 1.
 
 ### Añadido
 - Parámetros `bajada_bandera_bs`, `valor_salto_bs` y `modo_tarifa` (S o D) por empresa; los viajes guardan los aplicados. El listado y el CSV de viajes los incluyen.

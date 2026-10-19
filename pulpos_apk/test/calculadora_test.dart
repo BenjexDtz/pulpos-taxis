@@ -43,7 +43,6 @@ void main() {
         'costo_combustible_km': 0.696,
       });
       expect(p.costoBaseKm, 2.0);
-      expect(p.factorAltitud, 1.4);
       expect(p.factorSuperficie, 2.5);
       expect(p.costoMinutoDetencion, 0.5);
       expect(p.consumoLitrosKm, 0.1);

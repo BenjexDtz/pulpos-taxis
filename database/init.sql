@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Radio Taxis — Schema v4 (multiempresa)
--- Fórmula: T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+-- Tarifa: taxímetro v5, modo S de la Directiva 2014/32/UE con superficie por tramos (ver sección 4)
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 -- ── 1. EMPRESAS ───────────────────────────────────────────────────────────────
@@ -79,8 +79,9 @@ CREATE TABLE IF NOT EXISTS mfa_codigos_respaldo (
 --
 -- Taxímetro v5 (modo S de la Directiva 2014/32/UE, Anexo IX), tramo a tramo de la ruta GPS:
 --   T = B + S × ⌊ Σ max(d × F × Tkm, t × Th) / S ⌋      (modo D: suma en vez de max)
---   Tkm = (Cb + Cl × Pc) × FH   tarifa por km en asfalto
+--   Tkm = Cb + Cl × Pc          tarifa por km en asfalto
 --   Th  = 60 × Ct               tarifa por hora
+-- La altitud no es un factor aparte: queda dentro de los costos medidos en la ciudad.
 --   F   = 1 (asfalto), FR (tierra) o FE (empedrado), según la superficie del tramo
 -- Bajo la velocidad de cruce Th / (Tkm × F) se cobra el tiempo; encima, la distancia.
 --
@@ -94,7 +95,7 @@ CREATE TABLE IF NOT EXISTS mfa_codigos_respaldo (
 -- Cb  = costo_base_km           — ganancia del conductor + depreciación
 -- Cl  = consumo_litros_km       — cuántos litros gasta el taxi por km
 -- Pc  = precio_combustible_bs   — precio actual del litro de combustible
--- FH  = factor_altitud          — penalización por la altitud de operación
+-- FH  = factor_altitud          — solo la fórmula v4 (apps previas); el taxímetro v5 no lo usa
 -- FR  = factor_superficie       — tierra/barro (2.5); el asfalto vale 1.0
 -- FE  = factor_empedrado        — empedrado o adoquín
 -- Ct  = costo_minuto_detencion  — cobro por tiempo en tráfico o espera
@@ -110,7 +111,7 @@ CREATE TABLE IF NOT EXISTS parametros_topograficos (
     costo_base_km           NUMERIC(5, 2) NOT NULL,
     consumo_litros_km       NUMERIC(5, 3) NOT NULL DEFAULT 0.100,
     precio_combustible_bs   NUMERIC(6, 2) NOT NULL DEFAULT 6.96,
-    factor_altitud          NUMERIC(4, 2) NOT NULL,
+    factor_altitud          NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     factor_superficie       NUMERIC(4, 2) NOT NULL,
     factor_empedrado        NUMERIC(4, 2) NOT NULL DEFAULT 1.50,
     costo_minuto_detencion  NUMERIC(5, 2) NOT NULL,
@@ -138,7 +139,7 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     tarifa_cobrada               NUMERIC(8, 2) NOT NULL,
 
     tipo_superficie              VARCHAR(20)   NOT NULL DEFAULT 'asfalto',
-    factor_altitud_aplicado      NUMERIC(4, 2) NOT NULL DEFAULT 1.40,
+    factor_altitud_aplicado      NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     factor_superficie_aplicado   NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     factor_empedrado_aplicado    NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     costo_base_aplicado          NUMERIC(5, 2) NOT NULL DEFAULT 2.00,
@@ -218,8 +219,8 @@ INSERT INTO parametros_topograficos (
 )
 SELECT e.id, v.zona, v.cb, v.cl, v.pc, v.fh, v.fr, v.fe, v.ct, v.b, v.s
 FROM (VALUES
-    ('pulpos',   'El Alto - Topografía Compleja', 2.00, 0.100, 6.96, 1.40, 2.50, 2.00, 0.50, 2.00, 0.50),
-    ('illimani', 'La Paz - Laderas',              2.50, 0.110, 6.96, 1.30, 2.00, 1.80, 0.60, 2.50, 0.50)
+    ('pulpos',   'El Alto - Topografía Compleja', 2.00, 0.100, 6.96, 1.00, 2.50, 2.00, 0.50, 2.00, 0.50),
+    ('illimani', 'La Paz - Laderas',              2.50, 0.110, 6.96, 1.00, 2.00, 1.80, 0.60, 2.50, 0.50)
 ) AS v(codigo, zona, cb, cl, pc, fh, fr, fe, ct, b, s)
 JOIN empresas e ON e.codigo = v.codigo
 ON CONFLICT (empresa_id) DO NOTHING;
@@ -267,7 +268,7 @@ SELECT
     p.bajada_bandera_bs + p.valor_salto_bs * floor(
         ((v.asf + v.tie * p.factor_superficie + v.emp * p.factor_empedrado)
          * (p.costo_base_km + p.consumo_litros_km * p.precio_combustible_bs)
-         * p.factor_altitud + v.deten * p.costo_minuto_detencion) / p.valor_salto_bs),
+         + v.deten * p.costo_minuto_detencion) / p.valor_salto_bs),
     CASE WHEN v.tie = 0 AND v.emp = 0 THEN 'asfalto' WHEN v.asf = 0 AND v.emp = 0 THEN 'tierra'
          WHEN v.asf = 0 AND v.tie = 0 THEN 'empedrado' ELSE 'mixto' END,
     p.factor_altitud, p.factor_superficie, p.factor_empedrado, p.costo_base_km, p.costo_minuto_detencion,
