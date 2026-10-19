@@ -92,8 +92,8 @@ class MotorGPS {
   // ─── Envío manual (al finalizar el viaje) ─────────────────────────────────
   /// Llama esto cuando el conductor termina el viaje para asegurarte
   /// de que la última posición quede registrada en el servidor.
-  static Future<void> enviarUltimaPosicion(Position posicion) async {
-    await _enviarPosicionAlServidor(posicion.latitude, posicion.longitude);
+  static Future<void> enviarUltimaPosicion(double lat, double lng) async {
+    await _enviarPosicionAlServidor(lat, lng);
   }
 
   // ─── Reset del contador (al iniciar nuevo viaje) ──────────────────────────

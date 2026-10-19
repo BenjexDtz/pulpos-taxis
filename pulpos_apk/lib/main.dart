@@ -5,7 +5,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_sync.dart';
-import 'detector_detencion.dart';
 import 'motor_gps.dart';
 import 'calculadora.dart';
 import 'base_datos.dart';
@@ -14,6 +13,8 @@ import 'pantalla_login.dart';
 import 'rugosidad.dart';
 import 'sesion.dart';
 import 'sincronizador.dart';
+import 'taximetro.dart';
+import 'viaje_en_curso.dart';
 
 void main() {
   runApp(const AplicacionTaximetro());
@@ -79,17 +80,16 @@ class PantallaPrueba extends StatefulWidget {
 
 class _PantallaPruebaState extends State<PantallaPrueba>
     with WidgetsBindingObserver {
-  // ── GPS y métricas del viaje ───────────────────────────────────────────────
-  RecorridoPorSuperficie recorrido = RecorridoPorSuperficie();
-  List<PuntoRuta> _ruta = [];
+  // ── Taxímetro y ruta del viaje ─────────────────────────────────────────────
+  Taximetro? _taximetro;
+  ViajeEnCurso? _viaje;
   DateTime _inicioViaje = DateTime.now();
-  Position? posicionAnterior;
   bool enViaje = false;
   StreamSubscription<Position>? suscripcionGPS;
-  DetectorDetencion? _detector;
-  double get minutosDetencion => _detector?.minutosDetenido ?? 0;
-  Timer? relojDetencion;
-  bool estaDetenido = false;
+  Timer? _reloj;
+  int get _segundosViaje => DateTime.now().difference(_inicioViaje).inSeconds;
+  // Un punto que implica ir a más de 120 km/h es un salto del GPS
+  static const _velocidadMaxima = 120 / 3.6;
 
   // ── Rugosidad del camino (acelerómetro) ────────────────────────────────────
   static const _claveReferencia = 'vibracion_referencia';
@@ -99,7 +99,6 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   SugerenciaSuperficie _sugeridor = SugerenciaSuperficie();
   StreamSubscription<AccelerometerEvent>? _suscripcionSensor;
   Sugerencia _sugerencia = Sugerencia.ninguna;
-  DateTime _ultimoPunto = DateTime.now();
   // Mientras el chofer responde, el viaje no se sincroniza para no perder el monto
   bool _preguntandoMonto = false;
 
@@ -120,6 +119,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _cargarParametros();
+    _recuperarViaje();
     _sincronizarEnSegundoPlano();
     _relojSincronizacion = Timer.periodic(
       const Duration(minutes: 2),
@@ -270,19 +270,33 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   }
 
   // ── Control del viaje ──────────────────────────────────────────────────────
-  void _iniciarRelojDetencion() {
-    relojDetencion = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (enViaje && _detector != null) {
-        final detenido = _detector!.tick(DateTime.now());
-        setState(() => estaDetenido = detenido);
-      }
-    });
-  }
-
   void iniciarRastreo() async {
     final posInicial = await MotorGPS.obtenerUbicacionActual();
     if (posInicial == null) return;
+    final choferId = await Sesion.choferId();
+    if (choferId == null) {
+      if (mounted) await irAlLogin(context);
+      return;
+    }
+    final params = _params ?? ParametrosTopograficos.porDefecto;
+    final viaje = ViajeEnCurso(
+      uuid: nuevoUuid(),
+      choferId: choferId,
+      inicio: DateTime.now(),
+      parametros: params,
+    );
+    final inicio = PuntoRuta(
+      coordenada(posInicial.latitude),
+      coordenada(posInicial.longitude),
+      0,
+      superficie,
+    );
+    await viaje.guardar();
+    await BaseDatosLocal.instancia.insertarPunto(viaje.uuid, 0, inicio);
+    await _empezarRastreo(viaje, Taximetro(TarifaTaximetro.desde(params))..ocupar(inicio));
+  }
 
+  Future<void> _empezarRastreo(ViajeEnCurso viaje, Taximetro taximetro) async {
     MotorGPS.resetContador();
     final prefs = await SharedPreferences.getInstance();
     _sugeridor = SugerenciaSuperficie(referencia: prefs.getDouble(_claveReferencia));
@@ -292,105 +306,73 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     ).listen((e) => _medidor.registrar(e.x, e.y, e.z), onError: (_) {});
     setState(() {
       _sugerencia = Sugerencia.ninguna;
-      _ultimoPunto = DateTime.now();
-      recorrido = RecorridoPorSuperficie();
-      _inicioViaje = DateTime.now();
-      _ruta = [
-        PuntoRuta(posInicial.latitude, posInicial.longitude, 0, superficie),
-      ];
-      _detector = DetectorDetencion(
-        inicio: DateTime.now(),
-        velocidadInicial: posInicial.speed,
-      );
-      posicionAnterior = posInicial;
+      _viaje = viaje;
+      _taximetro = taximetro;
+      _inicioViaje = viaje.inicio;
       enViaje = true;
     });
-
-    _iniciarRelojDetencion();
-
-    suscripcionGPS = MotorGPS.obtenerFlujoUbicacion().listen((
-      Position nuevaPosicion,
-    ) {
-      if (nuevaPosicion.accuracy > 20.0) return;
-      if (posicionAnterior != null) {
-        double metros = Geolocator.distanceBetween(
-          posicionAnterior!.latitude,
-          posicionAnterior!.longitude,
-          nuevaPosicion.latitude,
-          nuevaPosicion.longitude,
-        );
-        final ahora = DateTime.now();
-        _detector?.registrarPosicion(
-          ahora,
-          velocidadReportada: nuevaPosicion.speed,
-          metros: metros,
-        );
-        final segundos = ahora.difference(_ultimoPunto).inMilliseconds / 1000;
-        _ultimoPunto = ahora;
-        final velocidad = max(nuevaPosicion.speed, segundos > 0 ? metros / segundos : 0.0);
-        final rms = _medidor.tomar();
-        final vibracion = velocidad >= _velocidadMinimaVibracion ? rms : null;
-        _ruta.add(
-          PuntoRuta(
-            nuevaPosicion.latitude,
-            nuevaPosicion.longitude,
-            ahora.difference(_inicioViaje).inSeconds,
-            superficie,
-            vibracion,
-          ),
-        );
-        final sugerencia = _sugeridor.registrar(vibracion, superficie);
-        setState(() {
-          recorrido.sumar(metros / 1000, superficie);
-          if (sugerencia != Sugerencia.ninguna) _sugerencia = sugerencia;
-        });
-      }
-      posicionAnterior = nuevaPosicion;
+    // El importe sigue subiendo con el tiempo aunque no lleguen posiciones
+    _reloj = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
     });
+    suscripcionGPS = MotorGPS.obtenerFlujoUbicacion().listen(_nuevaPosicion);
+  }
+
+  void _nuevaPosicion(Position posicion) {
+    final taximetro = _taximetro;
+    final viaje = _viaje;
+    if (taximetro == null || viaje == null || taximetro.estado != EstadoTaximetro.ocupado) return;
+    if (posicion.accuracy > 20.0) return;
+    final anterior = taximetro.ultimoPunto!;
+    final transcurrido = DateTime.now().difference(_inicioViaje).inMilliseconds / 1000;
+    final segundos = transcurrido - anterior.segundos;
+    final metros =
+        distanciaKm(anterior.lat, anterior.lng, posicion.latitude, posicion.longitude) * 1000;
+    if (segundos > 0 && metros / segundos > _velocidadMaxima) return;
+
+    final velocidad = max(posicion.speed, segundos > 0 ? metros / segundos : 0.0);
+    final rms = _medidor.tomar();
+    final vibracion = velocidad >= _velocidadMinimaVibracion ? rms : null;
+    final punto = PuntoRuta(
+      coordenada(posicion.latitude),
+      coordenada(posicion.longitude),
+      max(transcurrido.floor(), anterior.segundos),
+      superficie,
+      vibracion,
+    );
+    final orden = taximetro.ruta.length;
+    final sugerencia = _sugeridor.registrar(vibracion, superficie);
+    setState(() {
+      taximetro.registrar(punto);
+      if (sugerencia != Sugerencia.ninguna) _sugerencia = sugerencia;
+    });
+    BaseDatosLocal.instancia.insertarPunto(viaje.uuid, orden, punto);
+  }
+
+  void _detenerSensores() {
+    suscripcionGPS?.cancel();
+    _reloj?.cancel();
+    _suscripcionSensor?.cancel();
+    _suscripcionSensor = null;
   }
 
   void detenerRastreo() async {
-    suscripcionGPS?.cancel();
-    relojDetencion?.cancel();
-    _suscripcionSensor?.cancel();
-    _suscripcionSensor = null;
+    final taximetro = _taximetro;
+    final viaje = _viaje;
+    if (taximetro == null || viaje == null || taximetro.estado != EstadoTaximetro.ocupado) return;
+    _detenerSensores();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_claveReferencia, _sugeridor.referencia);
-    _detector?.tick(DateTime.now());
+    await _cobrar(viaje, taximetro, _segundosViaje);
+  }
 
-    // Enviar última posición al servidor
-    if (posicionAnterior != null) {
-      await MotorGPS.enviarUltimaPosicion(posicionAnterior!);
-    }
-
-    // Usar parámetros del servidor (o por defecto si no cargaron)
-    final params = _params ?? ParametrosTopograficos.porDefecto;
-
-    final tarifaFinal = recorrido.tarifa(params, minutosDetencion);
-
-    final idChofer = await Sesion.choferId();
-
-    final idViaje = await BaseDatosLocal.instancia.insertarViaje(ruta: _ruta, {
-      'chofer_id': idChofer,
-      'distancia_km': recorrido.kmTotal,
-      'km_asfalto': recorrido.kmAsfalto,
-      'km_tierra': recorrido.kmTierra,
-      'km_empedrado': recorrido.kmEmpedrado,
-      'tiempo_detencion_min': minutosDetencion,
-      'factor_altitud': params.factorAltitud,
-      'factor_superficie': params.factorSuperficie,
-      'factor_empedrado': params.factorEmpedrado,
-      'tarifa_total': tarifaFinal,
-      'estado_sincronizacion': 0,
-      'fecha_hora': DateTime.now().toIso8601String(),
-      'tipo_superficie': recorrido.tipo,
-      'costo_base_km': params.costoBaseKm,
-      'costo_minuto_detencion': params.costoMinutoDetencion,
-      'consumo_litros_km': params.consumoLitrosKm,
-      'precio_combustible_bs': params.precioCombustibleBs,
-      'vibracion_referencia': _sugeridor.referencia,
-    });
-    _ruta = [];
+  // OCUPADO → A_PAGAR (importe congelado) → LIBRE tras el diálogo
+  Future<void> _cobrar(ViajeEnCurso viaje, Taximetro taximetro, int segundosFinal) async {
+    taximetro.cobrar(segundosFinal, superficie);
+    final ultimo = taximetro.ultimoPunto!;
+    MotorGPS.enviarUltimaPosicion(ultimo.lat, ultimo.lng);
+    final idViaje = await _guardarViaje(viaje, taximetro);
+    final tarifaFinal = taximetro.importe;
 
     setState(() {
       enViaje = false;
@@ -404,6 +386,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
       await BaseDatosLocal.instancia.guardarTarifaTradicional(idViaje, tradicional);
     }
     _preguntandoMonto = false;
+    if (mounted) setState(taximetro.liberar);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -420,13 +403,88 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     _sincronizarEnSegundoPlano();
   }
 
+  // Se guarda con los parámetros de cuando empezó, aunque hayan cambiado durante el viaje
+  Future<int> _guardarViaje(ViajeEnCurso viaje, Taximetro taximetro) async {
+    final p = viaje.parametros;
+    final r = taximetro.recorrido;
+    final id = await BaseDatosLocal.instancia.insertarViaje(ruta: taximetro.ruta, {
+      'uuid': viaje.uuid,
+      'chofer_id': viaje.choferId,
+      'distancia_km': r.kmTotal,
+      'km_asfalto': r.kmAsfalto,
+      'km_tierra': r.kmTierra,
+      'km_empedrado': r.kmEmpedrado,
+      'tiempo_detencion_min': taximetro.minutosPorTiempo,
+      'factor_altitud': p.factorAltitud,
+      'factor_superficie': p.factorSuperficie,
+      'factor_empedrado': p.factorEmpedrado,
+      'tarifa_total': taximetro.importe,
+      'estado_sincronizacion': 0,
+      'fecha_hora': DateTime.now().toIso8601String(),
+      'tipo_superficie': r.tipo,
+      'costo_base_km': p.costoBaseKm,
+      'costo_minuto_detencion': p.costoMinutoDetencion,
+      'consumo_litros_km': p.consumoLitrosKm,
+      'precio_combustible_bs': p.precioCombustibleBs,
+      'bajada_bandera': p.bajadaBandera,
+      'valor_salto': p.valorSalto,
+      'modo_tarifa': p.modoTarifa.codigo,
+      'vibracion_referencia': _sugeridor.referencia,
+    });
+    await ViajeEnCurso.borrar();
+    return id;
+  }
+
+  // La app se cerró con un viaje abierto: se recalcula con sus puntos y el chofer decide
+  Future<void> _recuperarViaje() async {
+    final viaje = await ViajeEnCurso.leer();
+    if (viaje == null || viaje.choferId != await Sesion.choferId()) return;
+    final base = BaseDatosLocal.instancia;
+    final ruta = await base.puntosDeViaje(viaje.uuid);
+    if (ruta.isEmpty || await base.existeViaje(viaje.uuid)) {
+      await ViajeEnCurso.borrar();
+      return;
+    }
+    final taximetro = Taximetro.desdeRuta(TarifaTaximetro.desde(viaje.parametros), ruta);
+    final moneda = (await Sesion.empresa())?.monedaSimbolo ?? 'Bs';
+    if (!mounted) return;
+    final hora = TimeOfDay.fromDateTime(viaje.inicio).format(context);
+    final continuar = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Viaje sin terminar'),
+        content: Text(
+          'La app se cerró durante un viaje que empezó a las $hora. '
+          'Lleva ${taximetro.recorrido.kmTotal.toStringAsFixed(2)} km y marca '
+          '$moneda ${taximetro.importe.toStringAsFixed(2)}. '
+          'Puedes seguir el viaje o cobrarlo tal como quedó.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('COBRAR ASÍ'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('CONTINUAR'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (continuar == true) {
+      await _empezarRastreo(viaje, taximetro);
+    } else {
+      await _cobrar(viaje, taximetro, ruta.last.segundos);
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _relojSincronizacion?.cancel();
-    suscripcionGPS?.cancel();
-    relojDetencion?.cancel();
-    _suscripcionSensor?.cancel();
+    _detenerSensores();
     super.dispose();
   }
 
@@ -510,7 +568,14 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   Widget build(BuildContext context) {
     final params = _params ?? ParametrosTopograficos.porDefecto;
 
-    final tarifaEnVivo = recorrido.tarifa(params, minutosDetencion);
+    final taximetro = _taximetro;
+    final recorrido = taximetro?.recorrido ?? RecorridoPorSuperficie();
+    final tarifaEnVivo = (taximetro?.centavosEn(_segundosViaje) ?? 0) / 100;
+    // Sin posiciones nuevas el auto está detenido o muy lento: corre el tiempo
+    final porTiempo = taximetro != null &&
+        (taximetro.ultimoTramoPorTiempo ||
+            _segundosViaje - taximetro.ultimoPunto!.segundos >= 10);
+    final cruce = TarifaTaximetro.desde(params).velocidadCruceKmh(superficie);
 
     return Scaffold(
       backgroundColor: enViaje ? Colors.black : Colors.grey[100],
@@ -621,6 +686,17 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                           color: enViaje ? Colors.white : Colors.green[700],
                         ),
                       ),
+                      if (enViaje)
+                        Text(
+                          porTiempo
+                              ? 'COBRANDO POR TIEMPO · bajo ${cruce.toStringAsFixed(0)} km/h'
+                              : 'COBRANDO POR DISTANCIA · sobre ${cruce.toStringAsFixed(0)} km/h',
+                          style: TextStyle(
+                            fontSize: 12,
+                            letterSpacing: 1,
+                            color: porTiempo ? Colors.amber : Colors.greenAccent,
+                          ),
+                        ),
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 40,
@@ -708,9 +784,12 @@ class _PantallaPruebaState extends State<PantallaPrueba>
                       if (!enViaje) ...[
                         const SizedBox(height: 16),
                         Text(
+                          'Bajada: $_moneda ${params.bajadaBandera.toStringAsFixed(2)} · '
+                          'Salto: $_moneda ${params.valorSalto.toStringAsFixed(2)} · Modo ${params.modoTarifa.codigo}\n'
                           'Cb: $_moneda ${params.costoBaseKm}/km · FH: ${params.factorAltitud}× · '
                           'FR: ${params.factorSuperficie}× · FE: ${params.factorEmpedrado}× · '
-                          'Ct: $_moneda ${params.costoMinutoDetencion}/min',
+                          'Ct: $_moneda ${params.costoMinutoDetencion}/min · '
+                          'Cruce: ${cruce.toStringAsFixed(1)} km/h',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.grey[400],
