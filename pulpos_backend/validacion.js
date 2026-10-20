@@ -48,10 +48,11 @@ const RANGOS_PARAMETROS = {
     valor_salto_bs:         [0.01, 5],
 };
 
+// Mismos valores que ParametrosTopograficos.porDefecto de la app y la semilla de Pulpos
 const PARAMETROS_INICIALES = {
     costo_base_km: 2.00, consumo_litros_km: 0.100, precio_combustible_bs: 6.96,
-    factor_altitud: 1.00, factor_superficie: 2.00, factor_empedrado: 1.50, costo_minuto_detencion: 0.50,
-    bajada_bandera_bs: 0, valor_salto_bs: 0.10, modo_tarifa: 'S',
+    factor_altitud: 1.00, factor_superficie: 2.50, factor_empedrado: 2.00, costo_minuto_detencion: 0.50,
+    bajada_bandera_bs: 2.00, valor_salto_bs: 0.50, modo_tarifa: 'S',
 };
 
 const CAMPOS_EMPRESA = [

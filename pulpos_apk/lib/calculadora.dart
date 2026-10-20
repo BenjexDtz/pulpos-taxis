@@ -87,6 +87,7 @@ class ParametrosTopograficos {
   };
 
   // Valores por defecto si el servidor no responde (modo offline)
+  // Mismos valores que PARAMETROS_INICIALES del servidor (validacion.js)
   static const ParametrosTopograficos porDefecto = ParametrosTopograficos(
     id: 1,
     zonaCiudad: 'El Alto - Topografía Compleja',
