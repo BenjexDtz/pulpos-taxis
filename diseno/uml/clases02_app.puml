@@ -1,0 +1,174 @@
+@startuml clases02_app
+!include estilo.iuml
+title Diagrama de clases – Aplicación móvil (taxímetro offline-first)
+
+enum EstadoTaximetro {
+  libre
+  ocupado
+  aPagar
+}
+
+enum Superficie {
+  asfalto
+  tierra
+  empedrado
+}
+
+enum ModoTarifa {
+  s
+  d
+}
+
+enum FallaGPS {
+  apagado
+  sinPermiso
+  bloqueado
+  aproximada
+  sinSenal
+  + mensaje : String
+}
+
+class PantallaPrueba <<interfaz>> {
+  - superficie : Superficie
+  - buscandoGps : boolean
+  + iniciarRastreo()
+  + detenerRastreo()
+  + sincronizarViajesPendientes()
+  - nuevaPosicion(p : Position)
+  - elegirSuperficie(s : Superficie)
+  - avisarFallaGps(f : FallaGPS)
+  - cobrar(viaje, taximetro, segundosFinal)
+  - guardarViaje(viaje, taximetro) : int
+  - recuperarViaje()
+}
+
+class ParametrosTopograficos {
+  + costoBaseKm : double
+  + consumoLitrosKm : double
+  + precioCombustibleBs : double
+  + factorSuperficie : double
+  + factorEmpedrado : double
+  + costoMinutoDetencion : double
+  + bajadaBandera : double
+  + valorSalto : double
+  + modoTarifa : ModoTarifa
+  + costoVariableKm() : double
+  + {static} fromJson(json) : ParametrosTopograficos
+}
+
+class ParametrosService {
+  + {static} obtener() : ParametrosTopograficos
+}
+
+class TarifaTaximetro {
+  + modo : ModoTarifa
+  + bajada : int
+  + salto : int
+  + porKm : Map<Superficie, int>
+  + porHora : int
+  + {static} desde(p : ParametrosTopograficos) : TarifaTaximetro
+  + velocidadCruceKmh(s : Superficie) : double
+}
+
+class Taximetro {
+  - estado : EstadoTaximetro
+  - acumulado : int
+  - saltos : int
+  - segundosPorTiempo : int
+  + centavos() : int
+  + ocupar(inicio : PuntoRuta)
+  + registrar(p : PuntoRuta)
+  + tramo(mm : int, segundos : int, s : Superficie)
+  + centavosEn(segundosAhora : int) : int
+  + cobrar(segundosFinal : int, s : Superficie)
+  + liberar()
+  + {static} desdeRuta(t : TarifaTaximetro, ruta) : Taximetro
+}
+
+class RecorridoPorSuperficie {
+  + kmAsfalto() : double
+  + kmTierra() : double
+  + kmEmpedrado() : double
+  + kmTotal() : double
+  + tipo() : String
+  + sumar(km : double, s : Superficie)
+}
+
+class PuntoRuta {
+  + lat : double
+  + lng : double
+  + segundos : int
+  + superficie : Superficie
+  + vibracion : double
+  + paraServidor() : List
+}
+
+class MotorGPS {
+  + {static} obtenerUbicacionActual() : (Position?, FallaGPS?)
+  + {static} obtenerFlujoUbicacion() : Stream<Position>
+  + {static} enviarUltimaPosicion(lat, lng)
+}
+
+class MedidorVibracion {
+  + registrar(x, y, z : double)
+  + tomar() : double
+}
+
+class SugerenciaSuperficie {
+  + referencia : double
+  + registrar(vibracion : double, marcada : Superficie) : Sugerencia
+  + descartar()
+}
+
+class ViajeEnCurso {
+  + uuid : String
+  + choferId : int
+  + inicio : DateTime
+  + guardar()
+  + {static} leer() : ViajeEnCurso
+  + {static} borrar()
+}
+
+class BaseDatosLocal <<SQLite>> {
+  + insertarPunto(uuid, orden, p : PuntoRuta)
+  + insertarViaje(viaje, ruta)
+  + viajesPendientes(choferId : int) : List
+  + puntosDeViaje(uuid) : List<PuntoRuta>
+  + marcarSincronizado(viaje)
+}
+
+class Sincronizador {
+  - enCurso : boolean
+  + ejecutar(token, choferId) : ResultadoSincronizacion
+}
+
+class Sesion {
+  + {static} guardar(token, chofer, empresa)
+  + {static} tokenValido() : String
+  + {static} choferId() : int
+  + {static} cerrar()
+}
+
+PantallaPrueba --> Taximetro
+PantallaPrueba --> MotorGPS
+PantallaPrueba --> MedidorVibracion
+PantallaPrueba --> SugerenciaSuperficie
+PantallaPrueba --> ViajeEnCurso
+PantallaPrueba --> BaseDatosLocal
+PantallaPrueba --> Sincronizador
+PantallaPrueba ..> ParametrosService
+PantallaPrueba ..> Sesion
+
+ParametrosService ..> ParametrosTopograficos : crea
+TarifaTaximetro ..> ParametrosTopograficos : se construye desde
+Taximetro "1" o-- "1" TarifaTaximetro
+Taximetro "1" *-- "1" RecorridoPorSuperficie
+Taximetro "1" *-- "1..*" PuntoRuta : ruta
+Taximetro --> EstadoTaximetro
+ViajeEnCurso "1" o-- "1" ParametrosTopograficos
+Sincronizador ..> BaseDatosLocal
+BaseDatosLocal ..> PuntoRuta
+PuntoRuta --> Superficie
+TarifaTaximetro --> ModoTarifa
+MotorGPS ..> FallaGPS
+@enduml
