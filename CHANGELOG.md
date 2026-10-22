@@ -3,6 +3,14 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [Sin publicar]
+
+### Cambiado
+- Los valores por defecto de las columnas de la tarifa (FE 2,00, bajada 2,00, salto 0,50) son los mismos que usan la app y el servidor al crear una empresa.
+
+### Migraciones
+- `012_valores_por_defecto.sql`: solo cambia los DEFAULT; no toca la tarifa de las empresas existentes.
+
 ## [1.4.0] - 2026-10-22
 
 ### Añadido

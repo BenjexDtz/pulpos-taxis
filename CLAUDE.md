@@ -42,7 +42,7 @@ flutter analyze
 
 # Migrar una BD sin empresas (v3) a multiempresa
 psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
-# (luego 002 a 011 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación, 007 el empedrado, 008 la rugosidad, 009 la tarifa sin taxímetro, 010 el taxímetro modo S, 011 el historial de parámetros)
+# (luego 002 a 012 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación, 007 el empedrado, 008 la rugosidad, 009 la tarifa sin taxímetro, 010 el taxímetro modo S, 011 el historial de parámetros, 012 los DEFAULT de la tarifa)
 ```
 
 Versiones: SemVer única para todo el sistema. Al publicar, subir `version` en `pulpos_backend/package.json`, `pulpos_web_admin/package.json` (`npm version X.Y.Z --no-git-tag-version`) y `pulpos_apk/pubspec.yaml` (el `+N` sube en cada APK), anotar en `CHANGELOG.md` y crear la etiqueta anotada `vX.Y.Z`.
