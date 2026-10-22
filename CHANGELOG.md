@@ -5,11 +5,16 @@ Backend, panel web y app comparten un único número de versión: se entregan ju
 
 ## [Sin publicar]
 
+### Añadido
+- **Modo demostración en la app**: reproduce un recorrido simulado por El Alto (avenida, semáforo, calle de tierra, empedrado y vuelta al asfalto) cinco veces más rápido, sin GPS, para mostrar el sistema en un aula. El chofer marca la superficie de cada tramo y la vibración simulada le sugiere el cambio; el taxímetro y la verificación son los mismos de un viaje real. El viaje se sincroniza marcado como demostración: el panel lo muestra con la insignia "Demo", su ruta y su verificación, pero no cuenta en las cifras, informes, CSV, asistente ni en el total del historial de la app.
+
 ### Cambiado
 - Los valores por defecto de las columnas de la tarifa (FE 2,00, bajada 2,00, salto 0,50) son los mismos que usan la app y el servidor al crear una empresa.
 
 ### Migraciones
 - `012_valores_por_defecto.sql`: solo cambia los DEFAULT; no toca la tarifa de las empresas existentes.
+- `013_viajes_demostracion.sql`: columna `demostracion` en `viajes_historial`.
+- App: SQLite versión 11 (columna `demostracion`).
 
 ## [1.4.0] - 2026-10-22
 

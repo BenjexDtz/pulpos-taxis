@@ -8,6 +8,7 @@ import 'api_sync.dart';
 import 'motor_gps.dart';
 import 'calculadora.dart';
 import 'base_datos.dart';
+import 'demostracion.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_login.dart';
 import 'rugosidad.dart';
@@ -87,7 +88,15 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   bool _buscandoGps = false;
   StreamSubscription<Position>? suscripcionGPS;
   Timer? _reloj;
-  int get _segundosViaje => DateTime.now().difference(_inicioViaje).inSeconds;
+  int get _segundosViaje =>
+      _demo != null ? _segundosDemo : DateTime.now().difference(_inicioViaje).inSeconds;
+
+  // ── Modo demostración: recorrido simulado en lugar del GPS ─────────────────
+  RecorridoDemostracion? _demo;
+  int _segundosDemo = 0;
+  int _siguientePuntoDemo = 1;
+  // Un segundo del viaje simulado cada 200 ms: el recorrido corre 5 veces más rápido
+  static const _pasoDemo = Duration(milliseconds: 200);
   // Un punto que implica ir a más de 120 km/h es un salto del GPS
   static const _velocidadMaxima = 120 / 3.6;
 
@@ -349,8 +358,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
 
   void _nuevaPosicion(Position posicion) {
     final taximetro = _taximetro;
-    final viaje = _viaje;
-    if (taximetro == null || viaje == null || taximetro.estado != EstadoTaximetro.ocupado) return;
+    if (taximetro == null || _viaje == null || taximetro.estado != EstadoTaximetro.ocupado) return;
     if (posicion.accuracy > 20.0) return;
     final anterior = taximetro.ultimoPunto!;
     final transcurrido = DateTime.now().difference(_inicioViaje).inMilliseconds / 1000;
@@ -361,21 +369,84 @@ class _PantallaPruebaState extends State<PantallaPrueba>
 
     final velocidad = max(posicion.speed, segundos > 0 ? metros / segundos : 0.0);
     final rms = _medidor.tomar();
-    final vibracion = velocidad >= _velocidadMinimaVibracion ? rms : null;
-    final punto = PuntoRuta(
-      coordenada(posicion.latitude),
-      coordenada(posicion.longitude),
+    _agregarPunto(
+      posicion.latitude,
+      posicion.longitude,
       max(transcurrido.floor(), anterior.segundos),
-      superficie,
-      vibracion,
+      velocidad >= _velocidadMinimaVibracion ? rms : null,
     );
+  }
+
+  // Mismo camino para el GPS y para la demostración: el taxímetro no distingue
+  void _agregarPunto(double lat, double lng, int segundos, double? vibracion) {
+    final taximetro = _taximetro!;
+    final punto = PuntoRuta(coordenada(lat), coordenada(lng), segundos, superficie, vibracion);
     final orden = taximetro.ruta.length;
     final sugerencia = _sugeridor.registrar(vibracion, superficie);
     setState(() {
       taximetro.registrar(punto);
       if (sugerencia != Sugerencia.ninguna) _sugerencia = sugerencia;
     });
-    BaseDatosLocal.instancia.insertarPunto(viaje.uuid, orden, punto);
+    // La demostración no deja viaje en curso que recuperar: su ruta se guarda al cobrar
+    if (_demo == null) BaseDatosLocal.instancia.insertarPunto(_viaje!.uuid, orden, punto);
+  }
+
+  Future<void> iniciarDemostracion() async {
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Modo demostración'),
+        content: const Text(
+          'Reproduce un recorrido simulado por El Alto, sin GPS, cinco veces más rápido: '
+          'avenida, semáforo, calle de tierra, empedrado y vuelta al asfalto. '
+          'Marca la superficie de cada tramo como en un viaje real; la vibración '
+          'simulada te sugerirá el cambio.\n\n'
+          'El viaje se envía a la central marcado como demostración: se ve en el panel '
+          'con su ruta y verificación, pero no cuenta en los informes.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('EMPEZAR')),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+    final choferId = await Sesion.choferId();
+    if (choferId == null) {
+      if (mounted) await irAlLogin(context);
+      return;
+    }
+    final demo = RecorridoDemostracion();
+    final params = _params ?? ParametrosTopograficos.porDefecto;
+    final viaje = ViajeEnCurso(uuid: nuevoUuid(), choferId: choferId, inicio: DateTime.now(), parametros: params);
+    final p0 = demo.puntos.first;
+    final inicio = PuntoRuta(coordenada(p0.lat), coordenada(p0.lng), 0, superficie);
+    MotorGPS.enviarUltimaPosicion(inicio.lat, inicio.lng);
+    setState(() {
+      _demo = demo;
+      _segundosDemo = 0;
+      _siguientePuntoDemo = 1;
+      _sugeridor = SugerenciaSuperficie(referencia: RecorridoDemostracion.referencia);
+      _sugerencia = Sugerencia.ninguna;
+      _viaje = viaje;
+      _taximetro = Taximetro(TarifaTaximetro.desde(params))..ocupar(inicio);
+      _inicioViaje = viaje.inicio;
+      enViaje = true;
+    });
+    _reloj = Timer.periodic(_pasoDemo, (_) => _avanzarDemostracion());
+  }
+
+  void _avanzarDemostracion() {
+    final demo = _demo;
+    if (demo == null || !mounted) return;
+    _segundosDemo++;
+    while (_siguientePuntoDemo < demo.puntos.length &&
+        demo.puntos[_siguientePuntoDemo].segundos <= _segundosDemo) {
+      final p = demo.puntos[_siguientePuntoDemo++];
+      _agregarPunto(p.lat, p.lng, p.segundos, p.vibracion);
+      if (_siguientePuntoDemo % 10 == 0) MotorGPS.enviarUltimaPosicion(p.lat, p.lng);
+    }
+    setState(() {});
   }
 
   void _detenerSensores() {
@@ -390,8 +461,11 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     final viaje = _viaje;
     if (taximetro == null || viaje == null || taximetro.estado != EstadoTaximetro.ocupado) return;
     _detenerSensores();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_claveReferencia, _sugeridor.referencia);
+    // La referencia simulada no debe reemplazar la que el teléfono aprendió del asfalto real
+    if (_demo == null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_claveReferencia, _sugeridor.referencia);
+    }
     await _cobrar(viaje, taximetro, _segundosViaje);
   }
 
@@ -400,28 +474,34 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     taximetro.cobrar(segundosFinal, superficie);
     final ultimo = taximetro.ultimoPunto!;
     MotorGPS.enviarUltimaPosicion(ultimo.lat, ultimo.lng);
-    final idViaje = await _guardarViaje(viaje, taximetro);
+    final demostracion = _demo != null;
+    final idViaje = await _guardarViaje(viaje, taximetro, demostracion: demostracion);
     final tarifaFinal = taximetro.importe;
 
     setState(() {
       enViaje = false;
+      _demo = null;
       superficie = Superficie.asfalto;
       _sugerencia = Sugerencia.ninguna;
-      _preguntandoMonto = true;
+      _preguntandoMonto = !demostracion;
     });
 
-    final tradicional = await _preguntarTarifaTradicional(tarifaFinal);
-    if (tradicional != null) {
-      await BaseDatosLocal.instancia.guardarTarifaTradicional(idViaje, tradicional);
+    // La comparación con la tarifa de palabra (objetivo 4) solo tiene sentido en viajes reales
+    if (!demostracion) {
+      final tradicional = await _preguntarTarifaTradicional(tarifaFinal);
+      if (tradicional != null) {
+        await BaseDatosLocal.instancia.guardarTarifaTradicional(idViaje, tradicional);
+      }
+      _preguntandoMonto = false;
     }
-    _preguntandoMonto = false;
     if (mounted) setState(taximetro.liberar);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Viaje guardado. Total: $_moneda ${tarifaFinal.toStringAsFixed(2)}',
+            '✅ ${demostracion ? 'Viaje de demostración' : 'Viaje'} guardado. '
+            'Total: $_moneda ${tarifaFinal.toStringAsFixed(2)}',
           ),
           backgroundColor: Colors.green[800],
           duration: const Duration(seconds: 4),
@@ -433,7 +513,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   }
 
   // Se guarda con los parámetros de cuando empezó, aunque hayan cambiado durante el viaje
-  Future<int> _guardarViaje(ViajeEnCurso viaje, Taximetro taximetro) async {
+  Future<int> _guardarViaje(ViajeEnCurso viaje, Taximetro taximetro, {bool demostracion = false}) async {
     final p = viaje.parametros;
     final r = taximetro.recorrido;
     final id = await BaseDatosLocal.instancia.insertarViaje(ruta: taximetro.ruta, {
@@ -459,6 +539,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
       'valor_salto': p.valorSalto,
       'modo_tarifa': p.modoTarifa.codigo,
       'vibracion_referencia': _sugeridor.referencia,
+      'demostracion': demostracion ? 1 : 0,
     });
     await ViajeEnCurso.borrar();
     return id;
@@ -589,6 +670,46 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     );
   }
 
+  // Guía al presentador: qué tramo simula el recorrido y qué superficie marcar
+  Widget _avisoDemostracion(RecorridoDemostracion demo) {
+    final terminado = _segundosDemo >= demo.duracion;
+    final tramo = demo.tramoEn(_segundosDemo);
+    final numero = demo.tramos.indexOf(tramo) + 1;
+    final marcar = tramo.superficie == superficie ? '' : ' · marca ${nombreSuperficie(tramo.superficie)}';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.marca.withValues(alpha: context.oscuro ? 0.14 : 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.marca.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.slideshow_outlined, color: context.marca, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MODO DEMOSTRACIÓN · ruta simulada',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.marca, letterSpacing: 0.4),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  terminado
+                      ? 'Fin del recorrido: el auto espera detenido. Presiona FINALIZAR.'
+                      : 'Tramo $numero de ${demo.tramos.length}: ${tramo.descripcion}$marcar',
+                  style: TextStyle(fontSize: 13, color: context.texto),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatoReloj(int segundos) {
     final m = segundos ~/ 60, s = segundos % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
@@ -700,6 +821,12 @@ class _PantallaPruebaState extends State<PantallaPrueba>
           ),
           if (!enViaje)
             IconButton(
+              icon: const Icon(Icons.slideshow_outlined),
+              tooltip: 'Modo demostración',
+              onPressed: iniciarDemostracion,
+            ),
+          if (!enViaje)
+            IconButton(
               icon: const Icon(Icons.logout),
               tooltip: 'Cerrar sesión',
               onPressed: _confirmarCierreSesion,
@@ -714,6 +841,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 children: [
+                  if (_demo != null) ...[_avisoDemostracion(_demo!), const SizedBox(height: 12)],
                   Visor(
                     titulo: 'Taxímetro',
                     resaltado: enViaje ? context.marca : null,

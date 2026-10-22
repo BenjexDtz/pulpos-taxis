@@ -3,6 +3,7 @@ import axios from 'axios';
 import MapaFlota from '../componentes/MapaFlota.jsx';
 import Mensaje from '../componentes/Mensaje.jsx';
 import RutaViaje from '../componentes/RutaViaje.jsx';
+import Insignia from '../componentes/ui/Insignia.jsx';
 import Visor from '../componentes/tablero/Visor.jsx';
 import { tarjeta } from '../componentes/ui/estilos.js';
 import {
@@ -25,7 +26,10 @@ function Entrada({ viaje: v, moneda, onAbrir }) {
         className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]">
         <span className="pt-0.5 font-mono text-theme-sm text-gray-500 tabular-nums dark:text-gray-400">{hora(v.fecha_hora)}</span>
         <span className="min-w-0">
-          <span className="block truncate text-theme-sm font-medium text-gray-800 dark:text-white/90">{v.chofer}</span>
+          <span className="flex items-center gap-2 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+            <span className="truncate">{v.chofer}</span>
+            {v.demostracion && <Insignia color="marca" className="shrink-0">Demo</Insignia>}
+          </span>
           <span className="block truncate text-theme-xs text-gray-500 dark:text-gray-400">
             <span className="font-mono">{v.placa_vehiculo}</span> · {formatoNumero(v.distancia_km, 2)} km · {superficie}
           </span>
@@ -69,10 +73,13 @@ export default function Central({ choferes, empresa, cargarChoferes, urlServidor
   }, [cargarChoferes, cargarViajes]);
 
   const { activosCount, conGPSVivo } = resumenFlota(choferes);
-  const recaudado = viajes.reduce((s, v) => s + Number(v.tarifa_total || 0), 0);
-  const km = viajes.reduce((s, v) => s + Number(v.distancia_km || 0), 0);
-  const espera = viajes.reduce((s, v) => s + Number(v.tiempo_detencion_min || 0), 0);
-  const conDiferencia = viajes.filter(v => v.verificacion === 'diferencia').length;
+  // Los viajes del modo demostración se listan, pero no suman en las cifras del día
+  const reales = viajes.filter(v => !v.demostracion);
+  const demos = viajes.length - reales.length;
+  const recaudado = reales.reduce((s, v) => s + Number(v.tarifa_total || 0), 0);
+  const km = reales.reduce((s, v) => s + Number(v.distancia_km || 0), 0);
+  const espera = reales.reduce((s, v) => s + Number(v.tiempo_detencion_min || 0), 0);
+  const conDiferencia = reales.filter(v => v.verificacion === 'diferencia').length;
 
   return (
     <div className="space-y-5">
@@ -85,8 +92,8 @@ export default function Central({ choferes, empresa, cargarChoferes, urlServidor
         nota={actualizado && `Actualizado ${hora(actualizado)} · cada 15 s`}
         cifras={[
           { etiqueta: 'Recaudado', valor: formatoMoneda(recaudado, m),
-            detalle: viajes.length ? `promedio ${formatoMoneda(recaudado / viajes.length, m)}` : 'sin viajes aún' },
-          { etiqueta: 'Viajes', valor: formatoNumero(viajes.length),
+            detalle: reales.length ? `promedio ${formatoMoneda(recaudado / reales.length, m)}` : 'sin viajes aún' },
+          { etiqueta: 'Viajes', valor: formatoNumero(reales.length),
             detalle: conDiferencia ? `${conDiferencia} con diferencia` : 'todos cuadran' },
           { etiqueta: 'Kilómetros', valor: formatoNumero(km, 1), detalle: `${formatoNumero(espera)} min de espera` },
           { etiqueta: 'Unidades en línea', valor: formatoNumero(conGPSVivo),
@@ -97,13 +104,15 @@ export default function Central({ choferes, empresa, cargarChoferes, urlServidor
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className={`${tarjeta} isolate h-[420px] overflow-hidden xl:h-[600px]`}>
-          <MapaFlota choferes={choferes} viajes={viajes} empresa={empresa} />
+          <MapaFlota choferes={choferes} viajes={reales} empresa={empresa} />
         </div>
 
         <section className={`${tarjeta} flex flex-col overflow-hidden xl:h-[600px]`} aria-labelledby="titulo-bitacora">
           <header className="flex items-baseline justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
             <h2 id="titulo-bitacora" className="text-sm font-semibold tracking-wide text-gray-800 uppercase dark:text-white/90">Bitácora de hoy</h2>
-            <span className="font-mono text-theme-xs text-gray-500 dark:text-gray-400">{viajes.length} viajes</span>
+            <span className="font-mono text-theme-xs text-gray-500 dark:text-gray-400">
+              {reales.length} viajes{demos > 0 && ` · ${demos} demo`}
+            </span>
           </header>
           {viajes.length === 0 ? (
             <p className="px-6 py-12 text-center text-theme-sm text-gray-500 dark:text-gray-400">

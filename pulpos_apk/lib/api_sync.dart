@@ -92,6 +92,7 @@ Map<String, dynamic> viajeParaServidor(
     'modo_tarifa_aplicado': viaje['modo_tarifa'],
     'bajada_bandera_aplicada': viaje['bajada_bandera'],
     'valor_salto_aplicado': viaje['valor_salto'],
+    'demostracion': viaje['demostracion'] == 1 ? true : null,
   };
   body.removeWhere((_, valor) => valor == null);
   if (ruta.isNotEmpty) body['ruta'] = ruta.map((p) => p.paraServidor()).toList();

@@ -46,6 +46,8 @@ class PantallaPrueba <<interfaz>> {
   - cobrar(viaje, taximetro, segundosFinal)
   - guardarViaje(viaje, taximetro) : int
   - recuperarViaje()
+  + iniciarDemostracion()
+  - avanzarDemostracion()
 }
 
 class ParametrosTopograficos {
@@ -161,6 +163,32 @@ class EmpresaActual {
   + colorPrimario : String
 }
 
+class RecorridoDemostracion {
+  + {static} intervalo : int = 5
+  + {static} referencia : double = 0.55
+  + tramos : List<TramoDemostracion>
+  + puntos : List<PuntoDemostracion>
+  + duracion : int {readOnly}
+  + tramoEn(segundos : int) : TramoDemostracion
+}
+
+class TramoDemostracion {
+  + descripcion : String
+  + superficie : Superficie
+  + segundos : int
+  + kmh : double
+  + rumbo : double
+  + vibracion : double
+}
+
+class PuntoDemostracion {
+  + lat : double
+  + lng : double
+  + segundos : int
+  + vibracion : double
+  + tramo : int
+}
+
 class Sesion {
   + {static} guardar(token, chofer, empresa : EmpresaActual)
   + {static} tokenValido() : String
@@ -177,6 +205,10 @@ PantallaPrueba --> BaseDatosLocal
 PantallaPrueba --> Sincronizador
 PantallaPrueba ..> ParametrosService
 PantallaPrueba ..> Sesion
+PantallaPrueba --> "0..1" RecorridoDemostracion : modo demostración
+RecorridoDemostracion "1" *-- "1..*" TramoDemostracion
+RecorridoDemostracion "1" *-- "1..*" PuntoDemostracion
+TramoDemostracion --> Superficie
 
 ParametrosService ..> ParametrosTopograficos : crea
 TarifaTaximetro ..> ParametrosTopograficos : se construye desde

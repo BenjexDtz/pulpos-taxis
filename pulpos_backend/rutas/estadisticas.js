@@ -15,7 +15,8 @@ const RANGO = `
         FROM (SELECT COALESCE($2::date, COALESCE($3::date, CURRENT_DATE) - ${DIAS_POR_DEFECTO - 1}) AS d,
                      COALESCE($3::date, CURRENT_DATE) AS h) x
     )`;
-const EN_RANGO = `v.empresa_id = $1 AND v.fecha_hora_viaje >= r.d AND v.fecha_hora_viaje < r.h + 1`;
+// Los viajes del modo demostración no cuentan en ninguna cifra
+const EN_RANGO = `v.empresa_id = $1 AND NOT v.demostracion AND v.fecha_hora_viaje >= r.d AND v.fecha_hora_viaje < r.h + 1`;
 const TOTALES = `json_build_object(
     'viajes', count(*),
     'recaudado', coalesce(round(sum(v.tarifa_cobrada)::numeric, 2), 0),
@@ -40,7 +41,7 @@ router.get('/api/admin/estadisticas', verificarToken, soloAdmin, async (req, res
             SELECT r.d::text AS desde, r.h::text AS hasta,
                    (SELECT ${TOTALES} FROM viajes_historial v WHERE ${EN_RANGO}) AS resumen,
                    (SELECT ${TOTALES} FROM viajes_historial v
-                     WHERE v.empresa_id = $1 AND v.fecha_hora_viaje >= r.d - r.n AND v.fecha_hora_viaje < r.d) AS anterior
+                     WHERE v.empresa_id = $1 AND NOT v.demostracion AND v.fecha_hora_viaje >= r.d - r.n AND v.fecha_hora_viaje < r.d) AS anterior
             FROM rango r`, params),
         pool.query(`${RANGO}
             SELECT g.dia::date::text AS dia, count(v.id_servidor)::int AS viajes,
@@ -48,7 +49,7 @@ router.get('/api/admin/estadisticas', verificarToken, soloAdmin, async (req, res
                    coalesce(sum(v.distancia_km), 0)::float AS km
             FROM rango r
             CROSS JOIN generate_series(r.d, r.h, interval '1 day') g(dia)
-            LEFT JOIN viajes_historial v ON v.empresa_id = $1
+            LEFT JOIN viajes_historial v ON v.empresa_id = $1 AND NOT v.demostracion
                  AND v.fecha_hora_viaje >= g.dia AND v.fecha_hora_viaje < g.dia + interval '1 day'
             GROUP BY g.dia ORDER BY g.dia`, params),
         pool.query(`${RANGO}

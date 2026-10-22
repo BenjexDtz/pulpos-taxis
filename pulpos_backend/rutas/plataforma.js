@@ -49,7 +49,7 @@ router.get('/api/plataforma/empresas', verificarToken, soloSuperadmin, async (re
     const r = await pool.query(
         `SELECT e.*,
                 (SELECT count(*) FROM choferes c WHERE c.empresa_id = e.id)::int         AS total_choferes,
-                (SELECT count(*) FROM viajes_historial v WHERE v.empresa_id = e.id)::int AS total_viajes
+                (SELECT count(*) FROM viajes_historial v WHERE v.empresa_id = e.id AND NOT v.demostracion)::int AS total_viajes
          FROM empresas e ORDER BY e.nombre`
     );
     res.json(r.rows);

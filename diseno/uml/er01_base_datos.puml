@@ -144,6 +144,7 @@ package "Base principal (database/init.sql)" {
     vibracion_irregular : NUMERIC(5,2)
     superficie_respaldo : VARCHAR(12)
     tarifa_tradicional : NUMERIC(8,2)
+    * demostracion : BOOLEAN
     ..
     UNIQUE (chofer_id, uuid)
   }

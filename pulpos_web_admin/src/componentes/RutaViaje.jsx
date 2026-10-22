@@ -116,6 +116,7 @@ export default function RutaViaje({ id, urlServidor, headers, manejarErrorApi, m
           <>
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <Insignia color={estado.color}>{estado.texto}</Insignia>
+              {v.demostracion && <Insignia color="marca">Demostración · ruta simulada</Insignia>}
               <span className="text-theme-sm text-gray-500 dark:text-gray-400">{estado.ayuda}</span>
             </div>
             {v.verificacion === 'diferencia' && v.verificacion_detalle && (

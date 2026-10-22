@@ -138,6 +138,18 @@ void main() {
       });
     });
 
+    test('marca el viaje de demostración solo si lo es', () {
+      final base = {
+        'distancia_km': 1.0,
+        'tiempo_detencion_min': 0.0,
+        'tarifa_total': 2.0,
+        'fecha_hora': '2026-10-07T10:00:00.000',
+      };
+      expect(viajeParaServidor({...base, 'demostracion': 1})['demostracion'], isTrue);
+      expect(viajeParaServidor({...base, 'demostracion': 0}).containsKey('demostracion'), isFalse);
+      expect(viajeParaServidor(base).containsKey('demostracion'), isFalse);
+    });
+
     test('no envía chofer_id ni campos internos de SQLite', () {
       final body = viajeParaServidor({
         'id': 1,

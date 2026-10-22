@@ -3,19 +3,18 @@ import 'base_datos.dart'; // Tu conexión a SQLite
 import 'sesion.dart';
 import 'tema.dart';
 
-double totalDelDia(List<Map<String, dynamic>> viajes, DateTime dia) {
-  double total = 0;
-  for (final viaje in viajes) {
-    final fecha = DateTime.tryParse(viaje['fecha_hora']?.toString() ?? '');
-    if (fecha == null) continue;
-    if (fecha.year == dia.year &&
-        fecha.month == dia.month &&
-        fecha.day == dia.day) {
-      total += (viaje['tarifa_total'] as num? ?? 0).toDouble();
-    }
-  }
-  return total;
-}
+bool esDemostracion(Map<String, dynamic> viaje) => viaje['demostracion'] == 1;
+
+// Viajes reales de ese día: los de demostración no son ganancias
+List<Map<String, dynamic>> viajesDelDia(List<Map<String, dynamic>> viajes, DateTime dia) =>
+    viajes.where((viaje) {
+      final fecha = DateTime.tryParse(viaje['fecha_hora']?.toString() ?? '');
+      return fecha != null && !esDemostracion(viaje) &&
+          fecha.year == dia.year && fecha.month == dia.month && fecha.day == dia.day;
+    }).toList();
+
+double totalDelDia(List<Map<String, dynamic>> viajes, DateTime dia) =>
+    viajesDelDia(viajes, dia).fold(0.0, (total, v) => total + (v['tarifa_total'] as num? ?? 0).toDouble());
 
 class PantallaHistorial extends StatefulWidget {
   const PantallaHistorial({super.key});
@@ -78,10 +77,7 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
           final viajes = snapshot.data!;
           final hoy = DateTime.now();
           final totalGanado = totalDelDia(viajes, hoy);
-          final viajesHoy = viajes.where((v) {
-            final f = DateTime.tryParse(v['fecha_hora']?.toString() ?? '');
-            return f != null && f.year == hoy.year && f.month == hoy.month && f.day == hoy.day;
-          }).length;
+          final viajesHoy = viajesDelDia(viajes, hoy).length;
           final pendientes = viajes.where((v) => v['estado_sincronizacion'] == 0).length;
 
           return ListView.separated(
@@ -123,6 +119,10 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
                                 enviado
                                     ? const Insignia('Enviado', color: Paleta.exito600)
                                     : const Insignia('Pendiente', color: Paleta.aviso600),
+                                if (esDemostracion(viaje)) ...[
+                                  const SizedBox(width: 6),
+                                  Insignia('Demo', color: context.marca, icono: Icons.slideshow_outlined),
+                                ],
                               ],
                             ),
                             const SizedBox(height: 4),

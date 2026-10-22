@@ -208,6 +208,8 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
 
     -- Opcional: lo que el chofer habría cobrado negociando de palabra (comparación con el sistema)
     tarifa_tradicional           NUMERIC(8, 2),
+    -- Viaje del modo demostración de la app (ruta simulada): fuera de informes y estadísticas
+    demostracion                 BOOLEAN NOT NULL DEFAULT FALSE,
 
     -- Taxímetro v5 aplicado; NULL = viaje cobrado con la fórmula v4
     modo_tarifa_aplicado         CHAR(1),
