@@ -154,9 +154,46 @@ const tarifaCalculada = (cuerpo, km, ruta, aplicados) => {
     return ruta ? taximetro(ruta, tarifasEnteras(aplicados)).centavos / 100 : null;
 };
 
+const CAMPOS_VERSION = [
+    ['costo_base_aplicado', 'costo_base_km', 'Cb'],
+    ['consumo_litros_aplicado', 'consumo_litros_km', 'Cl'],
+    ['precio_combustible_aplicado', 'precio_combustible_bs', 'Pc'],
+    ['costo_minuto_aplicado', 'costo_minuto_detencion', 'Ct'],
+    ['factor_superficie_aplicado', 'factor_superficie', 'FR'],
+    ['factor_empedrado_aplicado', 'factor_empedrado', 'FE'],
+];
+const CAMPOS_V5 = [
+    ['bajada_bandera_aplicada', 'bajada_bandera_bs', 'B'],
+    ['valor_salto_aplicado', 'valor_salto_bs', 'S'],
+    ['modo_tarifa_aplicado', 'modo_tarifa', 'modo'],
+];
+const CAMPOS_V4 = [['factor_altitud_aplicado', 'factor_altitud', 'FH']];
+
+const mismoValor = (enviado, guardado) => typeof enviado === 'string'
+    ? enviado === String(guardado).trim()
+    : Math.abs(enviado - Number(guardado)) < 1e-9;
+
+// versiones: historial de la empresa, la vigente primero. Solo se comparan los valores que la app envió
+const parametrosFueraDeVersion = (cuerpo, versiones) => {
+    if (!versiones?.length) return null;
+    const campos = [...CAMPOS_VERSION, ...(esTaximetro(cuerpo) ? CAMPOS_V5 : CAMPOS_V4)]
+        .filter(([c]) => typeof cuerpo[c] === 'number' || (c === 'modo_tarifa_aplicado' && typeof cuerpo[c] === 'string'));
+    if (!campos.length) return null;
+    const coincide = (v) => campos.every(([c, col]) => mismoValor(cuerpo[c], v[col]));
+    if (versiones.some(coincide)) return null;
+    const distintos = campos.filter(([c, col]) => !mismoValor(cuerpo[c], versiones[0][col]))
+        .map(([c, col, nombre]) => `${nombre} ${cuerpo[c]} (vigente ${String(versiones[0][col]).trim()})`);
+    return `los parámetros aplicados no corresponden a ninguna tarifa de la empresa: ${distintos.join(', ')}`;
+};
+
 // ruta: undefined si la app no la envió, null si llegó con formato inválido
-const verificarViaje = ({ cuerpo, km, ruta }) => {
+const verificarViaje = ({ cuerpo, km, ruta, versiones, ahora = Date.now() }) => {
     const problemas = [];
+    const fuera = parametrosFueraDeVersion(cuerpo, versiones);
+    if (fuera) problemas.push(fuera);
+    // Un reloj del teléfono adelantado no bloquea el viaje, pero queda anotado
+    if (Date.parse(cuerpo.fecha_hora_viaje) > ahora + 24 * 3600 * 1000)
+        problemas.push(`la fecha del viaje (${cuerpo.fecha_hora_viaje}) está en el futuro`);
     const aplicados = aplicadosDe(cuerpo, km);
     let tarifa_calculada = null;
     if (aplicados && typeof cuerpo.tarifa_cobrada === 'number') {
@@ -190,5 +227,5 @@ const verificarViaje = ({ cuerpo, km, ruta }) => {
 
 module.exports = {
     tarifaV4, tarifasEnteras, velocidadCruceKmh, crearTaximetro, taximetro, tarifaEstimada, MODOS_TARIFA,
-    leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, MAX_PUNTOS, MIN_LECTURAS,
+    leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, parametrosFueraDeVersion, MAX_PUNTOS, MIN_LECTURAS,
 };

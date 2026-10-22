@@ -17,14 +17,22 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
         return res.status(400).json({ error: 'Identificador de viaje inválido.' });
     const km = kmPorSuperficie(req.body);
     if (!km) return res.status(400).json({ error: 'Distancia inválida o km por superficie que no suman la distancia.' });
+    const tarifa = numeroEnRango(tarifa_cobrada, 0, 10000);
+    const detencion = numeroEnRango(tiempo_detencion_min, 0, 1440);
+    if (tarifa === null || detencion === null)
+        return res.status(400).json({ error: 'Tarifa o tiempo de detención inválidos.' });
+    if (typeof fecha_hora_viaje !== 'string' || fecha_hora_viaje.length > 40 || Number.isNaN(Date.parse(fecha_hora_viaje)))
+        return res.status(400).json({ error: 'Fecha del viaje inválida.' });
+
+    const [parametros, historial] = await Promise.all([
+        pool.query('SELECT * FROM parametros_topograficos WHERE empresa_id = $1', [req.empresa.id]),
+        pool.query('SELECT * FROM parametros_historial WHERE empresa_id = $1 ORDER BY vigente_desde DESC, id DESC', [req.empresa.id]),
+    ]);
+    const p = parametros.rows[0] ?? {};
 
     // Una ruta dañada no bloquea el viaje (el pasajero ya pagó): se guarda marcado como diferencia
     const ruta = req.body.ruta === undefined ? undefined : leerRuta(req.body.ruta);
-    const v = verificarViaje({ cuerpo: req.body, km, ruta });
-
-    const p = (await pool.query(
-        'SELECT * FROM parametros_topograficos WHERE empresa_id = $1', [req.empresa.id]
-    )).rows[0] ?? {};
+    const v = verificarViaje({ cuerpo: req.body, km, ruta, versiones: historial.rows });
     const b = req.body;
 
     const viaje = await enTransaccion(async (cliente) => {
@@ -44,7 +52,7 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
              RETURNING *`,
             [
                 req.empresa.id, req.usuario.id, distancia_km, km.km_asfalto, km.km_tierra, km.km_empedrado,
-                tiempo_detencion_min, tarifa_cobrada, km.tipo,
+                detencion, tarifa, km.tipo,
                 // El taxímetro v5 no aplica factor de altitud
                 b.modo_tarifa_aplicado !== undefined ? 1 : b.factor_altitud_aplicado ?? p.factor_altitud ?? 1,
                 b.factor_superficie_aplicado ?? (km.km_tierra > 0 ? p.factor_superficie : null) ?? 1,

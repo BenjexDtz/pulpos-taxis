@@ -3,6 +3,18 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [Sin publicar]
+
+### Añadido
+- **Parámetros verificables**: cada cambio de tarifa queda en un historial (`parametros_historial`, lo guarda un trigger). Al recibir un viaje, el servidor comprueba que se cobró con alguna tarifa que la empresa tuvo; si no (por ejemplo, una app modificada que sube el factor de la tierra), el viaje queda como diferencia con el detalle de qué parámetro no coincide y cuál es el vigente. Antes solo se comprobaba que el importe fuera coherente con los parámetros que enviaba la propia app.
+- **Content-Security-Policy** y cabeceras de seguridad en el nginx del panel (Docker).
+
+### Cambiado
+- Al sincronizar, la tarifa (0 a 10 000), el tiempo de detención (0 a 1440 min) y la fecha del viaje se validan (400 si son inválidos). Una fecha más de un día en el futuro no rechaza el viaje: lo marca como diferencia.
+
+### Migraciones
+- `011_historial_parametros.sql`: tabla, función y trigger del historial; la tarifa actual de cada empresa queda como su primera versión.
+
 ## [1.3.0] - 2026-10-22
 
 ### Cambiado

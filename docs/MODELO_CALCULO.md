@@ -44,6 +44,7 @@ El mismo algoritmo está en `pulpos_apk/lib/taximetro.dart` (la app cobra con é
 - **Entre dos puntos** la app muestra el importe que el tramo abierto ya debe por tiempo; al llegar el punto se cobra el mayor de ambos componentes, así que el importe mostrado nunca baja.
 - **Filtrado GPS**: se descartan posiciones con precisión peor que 20 m y saltos que implican más de 120 km/h. La deriva estando detenido apenas suma distancia, y en modo S un tramo lento se cobra igual por tiempo.
 - **Persistencia**: cada punto se guarda en SQLite al llegar, junto con los parámetros del inicio. Si la app se cierra, el viaje se recalcula con sus puntos y el chofer elige continuarlo o cobrarlo como quedó; el importe no se reinicia ni se infla.
+- **Parámetros verificables**: cada cambio de tarifa queda en `parametros_historial` (un trigger lo guarda, también si se cambia fuera del panel). El servidor comprueba que los parámetros con que se cobró el viaje sean los de alguna versión de la empresa; si no, el viaje queda como `diferencia`. Así la verificación demuestra que el importe sale de la ruta **y** de la tarifa de la empresa, no solo que es coherente con lo que dice la app.
 - **Superficie**: la marca el chofer. El acelerómetro solo sugiere cambiarla y el servidor anota si lo cobrado como tierra o empedrado vibró como tal (`superficie_respaldo`); la tarifa nunca cambia sola por la vibración.
 
 ## Relación con el modelo de costos
@@ -55,6 +56,7 @@ El mismo algoritmo está en `pulpos_apk/lib/taximetro.dart` (la app cobra con é
 - **GPS en lugar de un sensor de pulsos de rueda.** La Directiva exige errores máximos de ±0,2 % en distancia (mínimo 4 m) y ±0,1 % en tiempo (mínimo 0,2 s); con GPS de teléfono no se puede prometer eso. El sistema adopta el *modo de cálculo* de la Directiva, no su certificación metrológica.
 - **Parámetros por calibrar.** Los valores de las semillas son de demostración. B, S, Cb, Cl, Pc, FR, FE y Ct deben salir de mediciones y encuestas en El Alto (ver `JUSTIFICACION FORMULA/`).
 - **Superficie por categorías, no continua.** Un factor continuo `F(IRI)` derivado de HDM-4 queda como trabajo futuro: requiere calibrar la relación vibración → IRI con perfiles de referencia, y HDM-4 está pensado para carreteras interurbanas, con menor precisión a baja velocidad urbana. Los puntos con vibración que la app ya envía sirven de datos para esa calibración.
+- **Cualquier versión anterior de la tarifa se acepta.** Un viaje hecho sin red usa la tarifa que el teléfono tenía guardada, así que el servidor no exige la vigente en la fecha del viaje (la hora del teléfono no es confiable). Un chofer podría cobrar a propósito con una tarifa vieja sin que quede marcado.
 - **No hay distancia ni tiempo incluidos en la bajada** (`d₀`, `t₀` de la Directiva): B es un importe fijo.
 
 ## Fuentes
