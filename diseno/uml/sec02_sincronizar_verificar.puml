@@ -22,7 +22,11 @@ loop por cada viaje pendiente
     SY -> SY : detener (se reintenta más tarde)
   else conexión disponible
     API -> API : verificarToken() y soloChofer()\n(chofer y empresa salen del token)
-    API -> VER : verificarViaje(viaje, km, ruta)
+    API -> API : validar tarifa, detención y fecha\n(400 si son inválidas)
+    API -> PG : parámetros e historial de tarifas de la empresa
+    PG --> API : versiones de la tarifa
+    API -> VER : verificarViaje(viaje, km, ruta, versiones)
+    VER -> VER : comprobar que los parámetros aplicados\nsean de alguna versión de la empresa
     VER -> VER : medir la ruta con Haversine
     VER -> VER : recalcular la tarifa con el taxímetro
     VER -> VER : evaluar la superficie por vibración

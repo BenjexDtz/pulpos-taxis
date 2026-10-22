@@ -49,6 +49,23 @@ package "Base principal (database/init.sql)" {
     fecha_actualizacion : TIMESTAMP
   }
 
+  entity parametros_historial {
+    * id : SERIAL <<PK>>
+    --
+    * empresa_id : INTEGER <<FK>>
+    * costo_base_km : NUMERIC(5,2)
+    * consumo_litros_km : NUMERIC(5,3)
+    * precio_combustible_bs : NUMERIC(6,2)
+    * factor_altitud : NUMERIC(4,2)
+    * factor_superficie : NUMERIC(4,2)
+    * factor_empedrado : NUMERIC(4,2)
+    * costo_minuto_detencion : NUMERIC(5,2)
+    * bajada_bandera_bs : NUMERIC(5,2)
+    * valor_salto_bs : NUMERIC(4,2)
+    * modo_tarifa : CHAR(1)
+    * vigente_desde : TIMESTAMPTZ
+  }
+
   entity administradores {
     * id : SERIAL <<PK>>
     --
@@ -185,6 +202,7 @@ package "Base de auditoría (database/auditoria/esquema.sql)" {
 }
 
 empresas ||--|| parametros_topograficos : tiene
+empresas ||--o{ parametros_historial : versiona
 empresas |o--o{ administradores : administra
 administradores ||--o{ mfa_codigos_respaldo : posee
 empresas ||--o{ choferes : emplea
@@ -197,6 +215,12 @@ note bottom of eventos
   Sin claves foráneas hacia la base principal.
   Triggers: eventos_encadenar (id y hash),
   eventos_inmutables y eventos_sin_truncate.
+end note
+
+note bottom of parametros_historial
+  El trigger parametros_versionar guarda una fila
+  por cada cambio de tarifa; un viaje debe cobrarse
+  con alguna versión de su empresa.
 end note
 
 note right of viajes_historial
