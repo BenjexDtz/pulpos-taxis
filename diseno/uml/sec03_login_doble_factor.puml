@@ -46,17 +46,27 @@ else credenciales correctas
     WEB --> Administrador : pedir código de 6 dígitos
     Administrador -> WEB : código TOTP\n(o código de respaldo)
     WEB -> API : POST /api/admin/mfa/verificar (token_mfa, código)
-    API -> PG : leer secreto cifrado y último paso usado
-    API -> API : descifrar (AES-256-GCM) y validar TOTP (RFC 6238)
-    alt código válido y no reutilizado
-      API -> PG : guardar mfa_ultimo_paso, reiniciar fallos
-      API -> AUD : auditar(sesion.login_admin, éxito)
-      API --> WEB : token de sesión JWT (8 h)
-      WEB --> Administrador : mostrar la central
-    else código inválido o ya usado
-      API -> PG : sumar fallo (5 fallos → bloqueo de 15 min)
-      API -> AUD : auditar(sesion.mfa_fallido)
-      API --> WEB : 401 código incorrecto (429 si quedó bloqueado)
+    alt token temporal vencido (más de 5 min)
+      API -> AUD : auditar(acceso.token_invalido, rechazado)
+      API --> WEB : 401 la verificación expiró
+      WEB --> Administrador : volver a pedir email y contraseña
+    else cuenta ya bloqueada
+      API -> PG : leer administrador (bloqueado hasta)
+      API -> AUD : auditar(sesion.mfa_bloqueado, rechazado)
+      API --> WEB : 429 espera 15 minutos (sin validar el código)
+    else token vigente y cuenta sin bloqueo
+      API -> PG : leer secreto cifrado y último paso usado
+      API -> API : descifrar (AES-256-GCM) y validar TOTP (RFC 6238)
+      alt código válido y no reutilizado
+        API -> PG : guardar mfa_ultimo_paso, reiniciar fallos
+        API -> AUD : auditar(sesion.login_admin, éxito)
+        API --> WEB : token de sesión JWT (8 h)
+        WEB --> Administrador : mostrar la central
+      else código inválido o ya usado
+        API -> PG : sumar fallo (5 fallos → bloqueo de 15 min)
+        API -> AUD : auditar(sesion.mfa_fallido)
+        API --> WEB : 401 código incorrecto (429 si quedó bloqueado)
+      end
     end
   end
 end

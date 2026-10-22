@@ -82,6 +82,19 @@ class ParametrosTarifa {
   - modoTarifa : ModoTarifa
 }
 
+class ParametrosHistorial {
+  - costoBaseKm : decimal
+  - consumoLitrosKm : decimal
+  - precioCombustible : decimal
+  - factorSuperficie : decimal
+  - factorEmpedrado : decimal
+  - costoMinutoDetencion : decimal
+  - bajadaBandera : decimal
+  - valorSalto : decimal
+  - modoTarifa : ModoTarifa
+  - vigenteDesde : Timestamp
+}
+
 class Viaje {
   - idServidor : int
   - uuid : UUID
@@ -97,6 +110,9 @@ class Viaje {
   - distanciaRutaKm : decimal
   - tarifaCalculada : decimal
   - verificacion : EstadoVerificacion
+  - verificacionDetalle : String
+  - vibracionReferencia : decimal
+  - vibracionIrregular : decimal
   - superficieRespaldo : String
   - tarifaTradicional : decimal
 }
@@ -130,6 +146,7 @@ class AnclaAuditoria {
 }
 
 Empresa "1" -- "1" ParametrosTarifa : tiene >
+Empresa "1" -- "0..*" ParametrosHistorial : versiona >
 Empresa "0..1" -- "0..*" Administrador : administra <
 Empresa "1" -- "0..*" Chofer : emplea >
 Empresa "1" -- "0..*" Viaje : registra >
@@ -141,6 +158,7 @@ EventoAuditoria "0..1" -- "1" EventoAuditoria : encadena con el anterior >
 
 Administrador ..> Rol
 ParametrosTarifa ..> ModoTarifa
+ParametrosHistorial ..> ModoTarifa
 PuntoRuta ..> Superficie
 Viaje ..> EstadoVerificacion
 @enduml

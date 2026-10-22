@@ -7,7 +7,7 @@ actor "Chofer" as Chofer
 
 rectangle "Aplicación móvil Pulpos" {
   usecase "CU-01 Iniciar sesión\n(empresa, placa y contraseña)" as UC1
-  usecase "CU-02 Iniciar viaje" as UC2
+  usecase "CU-02 Registrar viaje" as UC2
   usecase "CU-03 Calcular tarifa\nen tiempo real (modo S/D)" as UC3
   usecase "Obtener parámetros\nde tarifa" as UC2a
   usecase "CU-04 Marcar superficie\n(asfalto, tierra, empedrado)" as UC4
@@ -17,9 +17,9 @@ rectangle "Aplicación móvil Pulpos" {
   usecase "Guardar viaje y ruta\nen el teléfono" as UC5b
   usecase "CU-06 Recuperar viaje\ninterrumpido" as UC6
   usecase "CU-08 Consultar historial\nde viajes" as UC8
-  usecase "CU-01 Iniciar sesión\n(empresa, placa y contraseña)" as UC1
   usecase "CU-07 Sincronizar viajes" as UC7
   usecase "Enviar posición\na la central" as UC9
+  usecase "CU-20 Cerrar sesión\n(avisa si hay viajes\nsin sincronizar)" as UC20
 }
 
 actor "Receptor GPS" as GPS <<sistema>>
@@ -32,6 +32,7 @@ Chofer --> UC5
 Chofer --> UC6
 Chofer --> UC8
 Chofer --> UC7
+Chofer --> UC20
 
 UC2 ..> UC3 : <<include>>
 UC2 ..> UC2a : <<include>>

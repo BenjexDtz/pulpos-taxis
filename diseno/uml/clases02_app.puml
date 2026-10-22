@@ -19,6 +19,12 @@ enum ModoTarifa {
   d
 }
 
+enum Sugerencia {
+  ninguna
+  caminoIrregular
+  caminoLiso
+}
+
 enum FallaGPS {
   apagado
   sinPermiso
@@ -75,7 +81,7 @@ class Taximetro {
   - acumulado : int
   - saltos : int
   - segundosPorTiempo : int
-  + centavos() : int
+  + centavos : int {readOnly}
   + ocupar(inicio : PuntoRuta)
   + registrar(p : PuntoRuta)
   + tramo(mm : int, segundos : int, s : Superficie)
@@ -137,13 +143,26 @@ class BaseDatosLocal <<SQLite>> {
   + marcarSincronizado(viaje)
 }
 
+class ResultadoSincronizacion {
+  + enviados : int
+  + pendientes : int
+  + sesionRechazada : boolean
+}
+
 class Sincronizador {
   - enCurso : boolean
   + ejecutar(token, choferId) : ResultadoSincronizacion
 }
 
+class EmpresaActual {
+  + codigo : String
+  + nombre : String
+  + monedaSimbolo : String
+  + colorPrimario : String
+}
+
 class Sesion {
-  + {static} guardar(token, chofer, empresa)
+  + {static} guardar(token, chofer, empresa : EmpresaActual)
   + {static} tokenValido() : String
   + {static} choferId() : int
   + {static} cerrar()
@@ -171,4 +190,7 @@ BaseDatosLocal ..> PuntoRuta
 PuntoRuta --> Superficie
 TarifaTaximetro --> ModoTarifa
 MotorGPS ..> FallaGPS
+SugerenciaSuperficie ..> Sugerencia
+Sincronizador ..> ResultadoSincronizacion : devuelve
+Sesion ..> EmpresaActual
 @enduml
