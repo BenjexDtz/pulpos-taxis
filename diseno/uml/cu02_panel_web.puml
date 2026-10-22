@@ -28,6 +28,7 @@ rectangle "Panel web Pulpos" {
   usecase "Verificar integridad\nde la bitácora" as UC17a
   usecase "CU-18 Gestionar empresas" as UC18
   usecase "CU-19 Gestionar administradores\n(restablecer segundo factor)" as UC19
+  usecase "CU-21 Regenerar códigos\nde respaldo" as UC21
 }
 
 Admin --> UC9
@@ -39,16 +40,18 @@ Admin --> UC14
 Admin --> UC15
 Admin --> UC16
 Admin --> UC17
+Admin --> UC21
 
 Super --> UC9
 Super --> UC17
 Super --> UC18
 Super --> UC19
+Super --> UC17a
+Super --> UC21
 
 UC9 <.. UC9a : <<extend>>
 UC11 <.. UC11a : <<extend>>
 UC11 <.. UC11b : <<extend>>
-UC17 <.. UC17a : <<extend>>
 
 UC16 -- LLM
 @enduml

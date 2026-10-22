@@ -9,6 +9,7 @@ participant ":ParametrosService" as PS
 participant ":MotorGPS" as GPS
 participant ":ViajeEnCurso" as VC
 participant ":Taximetro" as TX
+participant ":MedidorVibracion" as MV
 participant ":SugerenciaSuperficie" as SS
 database ":BaseDatosLocal\n(SQLite)" as BD
 
@@ -35,6 +36,8 @@ else posición obtenida
 
   loop cada posición GPS (precisión ≤ 20 m, ≤ 120 km/h)
     GPS --> UI : posición
+    UI -> MV : tomar()
+    MV --> UI : vibración (RMS desde el punto anterior)
     UI -> SS : registrar(vibración, superficieMarcada)
     SS --> UI : sugerencia
     opt la vibración no coincide con la superficie marcada
@@ -58,6 +61,8 @@ else posición obtenida
   UI -> TX : cobrar(segundosFinal, superficie)
   note right of TX : OCUPADO → A_PAGAR
   TX --> UI : importe final
+  UI -> GPS : enviarUltimaPosicion(lat, lng)
+  note right of GPS : la central ve dónde terminó el viaje
   UI --> Chofer : mostrar tarifa a cobrar
   UI -> BD : insertarViaje(viaje, ruta)\nestado_sincronizacion = 0
   UI -> VC : borrar()
