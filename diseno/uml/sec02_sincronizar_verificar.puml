@@ -1,0 +1,43 @@
+@startuml sec02_sincronizar_verificar
+!include estilo.iuml
+title Diagrama de secuencia – Sincronizar y verificar un viaje
+autonumber
+
+participant ":Sincronizador" as SY
+database ":BaseDatosLocal\n(SQLite)" as BD
+participant ":API REST\n(/api/viajes/sincronizar)" as API
+participant ":Verificacion" as VER
+database ":PostgreSQL" as PG
+participant ":Auditoria" as AUD
+
+SY -> BD : viajesPendientes(choferId)
+BD --> SY : viajes con estado_sincronizacion = 0
+
+loop por cada viaje pendiente
+  SY -> BD : puntosDeViaje(uuid)
+  BD --> SY : ruta
+  SY -> API : POST viaje + ruta (token JWT)
+  alt sin conexión o error de red
+    API --> SY : sin respuesta
+    SY -> SY : detener (se reintenta más tarde)
+  else conexión disponible
+    API -> API : verificarToken() y soloChofer()\n(chofer y empresa salen del token)
+    API -> VER : verificarViaje(viaje, km, ruta)
+    VER -> VER : medir la ruta con Haversine
+    VER -> VER : recalcular la tarifa con el taxímetro
+    VER -> VER : evaluar la superficie por vibración
+    VER --> API : verificación (ok | diferencia | sin_ruta)
+    API -> PG : BEGIN\nINSERT viaje ON CONFLICT (chofer_id, uuid) DO NOTHING\nINSERT puntos de la ruta\nCOMMIT
+    alt viaje nuevo
+      PG --> API : viaje insertado
+      API -> AUD : auditar(viaje.sincronizar)
+      API --> SY : 201 {id_servidor, verificacion}
+    else reenvío (el uuid ya existe)
+      PG --> API : sin filas
+      API --> SY : 200 {id_servidor, duplicado: true}
+    end
+    SY -> BD : marcarSincronizado(viaje)
+    note right of BD : se borra la ruta del teléfono
+  end
+end
+@enduml

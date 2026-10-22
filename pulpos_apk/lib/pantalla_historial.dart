@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'base_datos.dart'; // Tu conexión a SQLite
 import 'sesion.dart';
+import 'tema.dart';
 
 double totalDelDia(List<Map<String, dynamic>> viajes, DateTime dia) {
   double total = 0;
@@ -51,127 +52,94 @@ class _PantallaHistorialState extends State<PantallaHistorial> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text('Historial de Ganancias'),
-        backgroundColor: Colors.blue[800],
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: const Text('Historial de ganancias')),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _historialViajes,
         builder: (context, snapshot) {
-          // 1. Mientras está cargando
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          // 2. Si hay un error
           if (snapshot.hasError) {
-            return Center(
-              child: Text('Error al leer la caja negra: ${snapshot.error}'),
-            );
+            return Center(child: Text('No se pudo leer el historial: ${snapshot.error}'));
           }
-
-          // 3. Si la base de datos está vacía
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-              child: Text(
-                'No has realizado ninguna carrera aún.',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.receipt_long_outlined, size: 48, color: context.textoSuave),
+                  const SizedBox(height: 12),
+                  Text('Todavía no hiciste ningún viaje.', style: TextStyle(fontSize: 15, color: context.textoSuave)),
+                ],
               ),
             );
           }
 
-          // 4. Si hay datos, los mostramos
           final viajes = snapshot.data!;
-          final totalGanado = totalDelDia(viajes, DateTime.now());
+          final hoy = DateTime.now();
+          final totalGanado = totalDelDia(viajes, hoy);
+          final viajesHoy = viajes.where((v) {
+            final f = DateTime.tryParse(v['fecha_hora']?.toString() ?? '');
+            return f != null && f.year == hoy.year && f.month == hoy.month && f.day == hoy.day;
+          }).length;
+          final pendientes = viajes.where((v) => v['estado_sincronizacion'] == 0).length;
 
-          return Column(
-            children: [
-              // Panel de Total Ganado (El resumen del día)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: viajes.length + 1,
+            separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 16 : 10),
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Visor(
+                  titulo: 'Hoy',
+                  nota: pendientes > 0
+                      ? Insignia('$pendientes sin enviar', color: Paleta.aviso600, icono: Icons.cloud_off)
+                      : const Insignia('Todo enviado', color: Paleta.exito600, icono: Icons.cloud_done),
+                  cifras: [
+                    CifraVisor('Recaudado', '$_moneda ${totalGanado.toStringAsFixed(2)}'),
+                    CifraVisor('Viajes', '$viajesHoy'),
                   ],
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'TOTAL RECAUDADO HOY',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '$_moneda ${totalGanado.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                );
+              }
+              final viaje = viajes[index - 1];
+              final enviado = viaje['estado_sincronizacion'] != 0;
+              final fechaLimpia = viaje['fecha_hora'].toString().substring(0, 16).replaceFirst('T', ' ');
+              final km = (viaje['distancia_km'] as num? ?? 0).toDouble();
 
-              // Lista de viajes (El detalle)
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(10),
-                  itemCount: viajes.length,
-                  itemBuilder: (context, index) {
-                    final viaje = viajes[index];
-                    // Formateamos la fecha para que se vea bonita (cortamos los milisegundos)
-                    String fechaLimpia = viaje['fecha_hora']
-                        .toString()
-                        .substring(0, 16)
-                        .replaceFirst('T', ' ');
-
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: viaje['estado_sincronizacion'] == 0
-                              ? Colors.orange[100]
-                              : Colors.green[100],
-                          child: Icon(
-                            viaje['estado_sincronizacion'] == 0
-                                ? Icons.cloud_off
-                                : Icons.cloud_done,
-                            color: viaje['estado_sincronizacion'] == 0
-                                ? Colors.orange
-                                : Colors.green,
-                          ),
-                        ),
-                        title: Text('Ticket #${viaje['id']}'),
-                        subtitle: Text(
-                          'Distancia: ${viaje['distancia_km']} km\nFecha: $fechaLimpia',
-                        ),
-                        trailing: Text(
-                          '$_moneda ${viaje['tarifa_total'].toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text('Viaje #${viaje['id']}',
+                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: context.texto)),
+                                const SizedBox(width: 8),
+                                enviado
+                                    ? const Insignia('Enviado', color: Paleta.exito600)
+                                    : const Insignia('Pendiente', color: Paleta.aviso600),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text('${km.toStringAsFixed(2)} km · $fechaLimpia',
+                                style: TextStyle(fontSize: 13, color: context.textoSuave)),
+                          ],
                         ),
                       ),
-                    );
-                  },
+                      Text(
+                        '$_moneda ${(viaje['tarifa_total'] as num? ?? 0).toStringAsFixed(2)}',
+                        style: estiloCifra.copyWith(fontSize: 17, color: context.marcaCifra),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              );
+            },
           );
         },
       ),

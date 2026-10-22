@@ -30,6 +30,9 @@ router.get('/api/admin/viajes', verificarToken, soloAdmin, async (req, res) => {
             v.costo_minuto_aplicado,
             v.consumo_litros_aplicado,
             v.precio_combustible_aplicado,
+            v.modo_tarifa_aplicado,
+            v.bajada_bandera_aplicada,
+            v.valor_salto_aplicado,
             ROUND((v.consumo_litros_aplicado * v.precio_combustible_aplicado
                    * (v.km_asfalto + v.km_tierra * v.factor_superficie_aplicado
                       + v.km_empedrado * v.factor_empedrado_aplicado)
@@ -100,6 +103,9 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
             v.precio_combustible_aplicado,
             ROUND((v.consumo_litros_aplicado * v.precio_combustible_aplicado)::numeric, 3),
             ROUND((v.costo_base_aplicado + v.consumo_litros_aplicado * v.precio_combustible_aplicado)::numeric, 3),
+            COALESCE(v.modo_tarifa_aplicado, 'v4'),
+            v.bajada_bandera_aplicada,
+            v.valor_salto_aplicado,
             ROUND(v.tarifa_cobrada::numeric, 2),
             v.tarifa_calculada,
             v.tarifa_tradicional,
@@ -125,7 +131,7 @@ router.get('/api/admin/viajes/exportar', verificarToken, soloAdmin, async (req, 
     const m = req.empresa.moneda_simbolo;
     const encabezados = [
         'ID', 'Conductor', 'Placa', 'Km', 'Km asfalto', 'Km tierra', 'Km empedrado', 'Min Espera', 'Superficie', 'FH', 'FR tierra', 'FE empedrado',
-        `Cb (${m}/km)`, 'Cl (L/km)', `Pc (${m}/L)`, `Cl×Pc (${m}/km)`, 'Cb+Cl×Pc',
+        `Cb (${m}/km)`, 'Cl (L/km)', `Pc (${m}/L)`, `Cl×Pc (${m}/km)`, 'Cb+Cl×Pc', 'Modo tarifa', `Bajada (${m})`, `Salto (${m})`,
         `Tarifa Total (${m})`, `Tarifa calculada (${m})`, `Sin taxímetro (${m})`, 'Km ruta GPS', 'Verificación', 'Detalle verificación',
         'Respaldo superficie', 'Vibración asfalto (m/s²)', 'Vibración tierra/empedrado (m/s²)', 'Fecha',
     ];

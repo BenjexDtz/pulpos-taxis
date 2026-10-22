@@ -1,0 +1,63 @@
+@startuml sec03_login_doble_factor
+!include estilo.iuml
+title Diagrama de secuencia – Inicio de sesión en el panel con doble factor
+autonumber
+
+actor Administrador
+participant ":Panel web\n(React)" as WEB
+participant ":API REST" as API
+database ":PostgreSQL" as PG
+participant ":Auditoria" as AUD
+
+Administrador -> WEB : email y contraseña
+WEB -> API : POST /api/admin/login
+note right of API : máx. 10 fallos por IP en 15 min (429)
+API -> PG : buscar administrador activo por email
+PG --> API : administrador
+API -> API : comparar contraseña (bcrypt)
+alt credenciales incorrectas
+  API -> AUD : auditar(sesion.login_admin, rechazado)
+  API --> WEB : 401 credenciales inválidas
+else credenciales correctas
+  API -> AUD : auditar(sesion.password_correcta)
+  alt primer ingreso (segundo factor sin configurar)
+    API --> WEB : {mfa: "configurar", token_mfa (5 min)}
+    WEB -> API : POST /api/admin/mfa/configurar (token_mfa)
+    API -> API : generar secreto TOTP y cifrarlo (AES-256-GCM)
+    API -> PG : guardar secreto cifrado
+    API -> AUD : auditar(mfa.configurar)
+    API --> WEB : código QR (otpauth://)
+    WEB --> Administrador : mostrar QR
+    Administrador -> WEB : escanea el QR e ingresa el primer código
+    WEB -> API : POST /api/admin/mfa/activar (token_mfa, código)
+    API -> API : validar TOTP (RFC 6238)
+    alt código válido
+      API -> PG : mfa_activo = TRUE y 10 códigos de respaldo (SHA-256)
+      API -> AUD : auditar(mfa.activar) y auditar(sesion.login_admin)
+      API --> WEB : token de sesión JWT (8 h) y códigos de respaldo
+      WEB --> Administrador : mostrar códigos de respaldo (una sola vez)
+    else código inválido
+      API -> PG : sumar fallo (5 fallos → bloqueo de 15 min)
+      API -> AUD : auditar(mfa.activar, rechazado)
+      API --> WEB : 401 código incorrecto
+    end
+  else segundo factor ya activo
+    API --> WEB : {mfa: "verificar", token_mfa (5 min)}
+    WEB --> Administrador : pedir código de 6 dígitos
+    Administrador -> WEB : código TOTP\n(o código de respaldo)
+    WEB -> API : POST /api/admin/mfa/verificar (token_mfa, código)
+    API -> PG : leer secreto cifrado y último paso usado
+    API -> API : descifrar (AES-256-GCM) y validar TOTP (RFC 6238)
+    alt código válido y no reutilizado
+      API -> PG : guardar mfa_ultimo_paso, reiniciar fallos
+      API -> AUD : auditar(sesion.login_admin, éxito)
+      API --> WEB : token de sesión JWT (8 h)
+      WEB --> Administrador : mostrar la central
+    else código inválido o ya usado
+      API -> PG : sumar fallo (5 fallos → bloqueo de 15 min)
+      API -> AUD : auditar(sesion.mfa_fallido)
+      API --> WEB : 401 código incorrecto (429 si quedó bloqueado)
+    end
+  end
+end
+@enduml

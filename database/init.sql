@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Radio Taxis — Schema v4 (multiempresa)
--- Fórmula: T = D × (Cb + Cl × Pc) × FH × FR + Ct × Td
+-- Tarifa: taxímetro v5, modo S de la Directiva 2014/32/UE con superficie por tramos (ver sección 4)
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 -- ── 1. EMPRESAS ───────────────────────────────────────────────────────────────
@@ -77,13 +77,25 @@ CREATE TABLE IF NOT EXISTS mfa_codigos_respaldo (
 
 -- ── 4. PARÁMETROS TOPOGRÁFICOS ────────────────────────────────────────────────
 --
--- Fórmula completa:
+-- Taxímetro v5 (modo S de la Directiva 2014/32/UE, Anexo IX), tramo a tramo de la ruta GPS:
+--   T = B + S × ⌊ Σ max(d × F × Tkm, t × Th) / S ⌋      (modo D: suma en vez de max)
+--   Tkm = Cb + Cl × Pc          tarifa por km en asfalto
+--   Th  = 60 × Ct               tarifa por hora
+-- La altitud no es un factor aparte: queda dentro de los costos medidos en la ciudad.
+--   F   = 1 (asfalto), FR (tierra) o FE (empedrado), según la superficie del tramo
+-- Bajo la velocidad de cruce Th / (Tkm × F) se cobra el tiempo; encima, la distancia.
+--
+-- B   = bajada_bandera_bs       — importe inicial del viaje
+-- S   = valor_salto_bs          — el importe avanza de S en S
+-- modo_tarifa                   — S: tiempo o distancia; D: ambos a la vez
+--
+-- Fórmula anterior (v4, viajes con modo_tarifa_aplicado NULL):
 --   T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td
 --
 -- Cb  = costo_base_km           — ganancia del conductor + depreciación
 -- Cl  = consumo_litros_km       — cuántos litros gasta el taxi por km
 -- Pc  = precio_combustible_bs   — precio actual del litro de combustible
--- FH  = factor_altitud          — penalización por la altitud de operación
+-- FH  = factor_altitud          — solo la fórmula v4 (apps previas); el taxímetro v5 no lo usa
 -- FR  = factor_superficie       — tierra/barro (2.5); el asfalto vale 1.0
 -- FE  = factor_empedrado        — empedrado o adoquín
 -- Ct  = costo_minuto_detencion  — cobro por tiempo en tráfico o espera
@@ -99,11 +111,16 @@ CREATE TABLE IF NOT EXISTS parametros_topograficos (
     costo_base_km           NUMERIC(5, 2) NOT NULL,
     consumo_litros_km       NUMERIC(5, 3) NOT NULL DEFAULT 0.100,
     precio_combustible_bs   NUMERIC(6, 2) NOT NULL DEFAULT 6.96,
-    factor_altitud          NUMERIC(4, 2) NOT NULL,
+    factor_altitud          NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     factor_superficie       NUMERIC(4, 2) NOT NULL,
     factor_empedrado        NUMERIC(4, 2) NOT NULL DEFAULT 1.50,
     costo_minuto_detencion  NUMERIC(5, 2) NOT NULL,
-    fecha_actualizacion     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    bajada_bandera_bs       NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    valor_salto_bs          NUMERIC(4, 2) NOT NULL DEFAULT 0.10,
+    modo_tarifa             CHAR(1)       NOT NULL DEFAULT 'S',
+    fecha_actualizacion     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT parametros_modo_tarifa_check CHECK (modo_tarifa IN ('S', 'D')),
+    CONSTRAINT parametros_salto_check CHECK (valor_salto_bs > 0 AND bajada_bandera_bs >= 0)
 );
 
 -- ── 5. VIAJES HISTORIAL ───────────────────────────────────────────────────────
@@ -122,7 +139,7 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     tarifa_cobrada               NUMERIC(8, 2) NOT NULL,
 
     tipo_superficie              VARCHAR(20)   NOT NULL DEFAULT 'asfalto',
-    factor_altitud_aplicado      NUMERIC(4, 2) NOT NULL DEFAULT 1.40,
+    factor_altitud_aplicado      NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     factor_superficie_aplicado   NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     factor_empedrado_aplicado    NUMERIC(4, 2) NOT NULL DEFAULT 1.00,
     costo_base_aplicado          NUMERIC(5, 2) NOT NULL DEFAULT 2.00,
@@ -148,7 +165,13 @@ CREATE TABLE IF NOT EXISTS viajes_historial (
     -- Opcional: lo que el chofer habría cobrado negociando de palabra (comparación con el sistema)
     tarifa_tradicional           NUMERIC(8, 2),
 
+    -- Taxímetro v5 aplicado; NULL = viaje cobrado con la fórmula v4
+    modo_tarifa_aplicado         CHAR(1),
+    bajada_bandera_aplicada      NUMERIC(5, 2),
+    valor_salto_aplicado         NUMERIC(4, 2),
+
     CONSTRAINT viajes_chofer_uuid_key UNIQUE (chofer_id, uuid),
+    CONSTRAINT viajes_modo_tarifa_check CHECK (modo_tarifa_aplicado IN ('S', 'D')),
     CONSTRAINT viajes_verificacion_check
         CHECK (verificacion IN ('ok', 'sin_ruta', 'diferencia', 'sin_verificar')),
     CONSTRAINT viajes_superficie_respaldo_check
@@ -191,13 +214,14 @@ ON CONFLICT (codigo) DO NOTHING;
 
 INSERT INTO parametros_topograficos (
     empresa_id, zona_ciudad, costo_base_km, consumo_litros_km, precio_combustible_bs,
-    factor_altitud, factor_superficie, factor_empedrado, costo_minuto_detencion
+    factor_altitud, factor_superficie, factor_empedrado, costo_minuto_detencion,
+    bajada_bandera_bs, valor_salto_bs
 )
-SELECT e.id, v.zona, v.cb, v.cl, v.pc, v.fh, v.fr, v.fe, v.ct
+SELECT e.id, v.zona, v.cb, v.cl, v.pc, v.fh, v.fr, v.fe, v.ct, v.b, v.s
 FROM (VALUES
-    ('pulpos',   'El Alto - Topografía Compleja', 2.00, 0.100, 6.96, 1.40, 2.50, 2.00, 0.50),
-    ('illimani', 'La Paz - Laderas',              2.50, 0.110, 6.96, 1.30, 2.00, 1.80, 0.60)
-) AS v(codigo, zona, cb, cl, pc, fh, fr, fe, ct)
+    ('pulpos',   'El Alto - Topografía Compleja', 2.00, 0.100, 6.96, 1.00, 2.50, 2.00, 0.50, 2.00, 0.50),
+    ('illimani', 'La Paz - Laderas',              2.50, 0.110, 6.96, 1.00, 2.00, 1.80, 0.60, 2.50, 0.50)
+) AS v(codigo, zona, cb, cl, pc, fh, fr, fe, ct, b, s)
 JOIN empresas e ON e.codigo = v.codigo
 ON CONFLICT (empresa_id) DO NOTHING;
 
@@ -229,6 +253,7 @@ INSERT INTO viajes_historial (
     tipo_superficie, factor_altitud_aplicado, factor_superficie_aplicado, factor_empedrado_aplicado,
     costo_base_aplicado, costo_minuto_aplicado,
     consumo_litros_aplicado, precio_combustible_aplicado,
+    modo_tarifa_aplicado, bajada_bandera_aplicada, valor_salto_aplicado,
     fecha_hora_viaje
 )
 SELECT
@@ -239,13 +264,16 @@ SELECT
     v.tie,
     v.emp,
     v.deten,
-    ROUND(((v.asf + v.tie * p.factor_superficie + v.emp * p.factor_empedrado)
-           * (p.costo_base_km + p.consumo_litros_km * p.precio_combustible_bs)
-           * p.factor_altitud + v.deten * p.costo_minuto_detencion)::numeric, 2),
+    -- Taxímetro sin ruta: en movimiento gana la distancia y detenido el tiempo
+    p.bajada_bandera_bs + p.valor_salto_bs * floor(
+        ((v.asf + v.tie * p.factor_superficie + v.emp * p.factor_empedrado)
+         * (p.costo_base_km + p.consumo_litros_km * p.precio_combustible_bs)
+         + v.deten * p.costo_minuto_detencion) / p.valor_salto_bs),
     CASE WHEN v.tie = 0 AND v.emp = 0 THEN 'asfalto' WHEN v.asf = 0 AND v.emp = 0 THEN 'tierra'
          WHEN v.asf = 0 AND v.tie = 0 THEN 'empedrado' ELSE 'mixto' END,
     p.factor_altitud, p.factor_superficie, p.factor_empedrado, p.costo_base_km, p.costo_minuto_detencion,
     p.consumo_litros_km, p.precio_combustible_bs,
+    p.modo_tarifa, p.bajada_bandera_bs, p.valor_salto_bs,
     NOW() - (random() * interval '7 days')
 FROM choferes c
 JOIN parametros_topograficos p ON p.empresa_id = c.empresa_id

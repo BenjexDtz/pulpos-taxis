@@ -1,0 +1,206 @@
+@startuml er01_base_datos
+!include estilo.iuml
+hide circle
+set separator none
+hide empty methods
+title Diagrama entidad-relación – Bases de datos (notación pata de gallo)
+
+package "Base principal (database/init.sql)" {
+
+  entity empresas {
+    * id : SERIAL <<PK>>
+    --
+    * codigo : VARCHAR(30) <<UNIQUE>>
+    * nombre : VARCHAR(120)
+    nit : VARCHAR(30)
+    telefono : VARCHAR(30)
+    email : VARCHAR(100)
+    direccion : VARCHAR(200)
+    * ciudad : VARCHAR(80)
+    * pais : VARCHAR(60)
+    * zona_horaria : VARCHAR(50)
+    * moneda_codigo : CHAR(3)
+    * moneda_simbolo : VARCHAR(5)
+    * centro_lat : NUMERIC(10,7)
+    * centro_lng : NUMERIC(10,7)
+    * radio_operacion_km : NUMERIC(6,1)
+    altitud_msnm : INTEGER
+    * color_primario : VARCHAR(7)
+    logo_url : VARCHAR(300)
+    * activo : BOOLEAN
+    fecha_registro : TIMESTAMP
+  }
+
+  entity parametros_topograficos {
+    * id : SERIAL <<PK>>
+    --
+    * empresa_id : INTEGER <<FK, UNIQUE>>
+    * zona_ciudad : VARCHAR(100)
+    * costo_base_km : NUMERIC(5,2) <<Cb>>
+    * consumo_litros_km : NUMERIC(5,3) <<Cl>>
+    * precio_combustible_bs : NUMERIC(6,2) <<Pc>>
+    * factor_altitud : NUMERIC(4,2) <<solo v4>>
+    * factor_superficie : NUMERIC(4,2) <<FR>>
+    * factor_empedrado : NUMERIC(4,2) <<FE>>
+    * costo_minuto_detencion : NUMERIC(5,2) <<Ct>>
+    * bajada_bandera_bs : NUMERIC(5,2) <<B>>
+    * valor_salto_bs : NUMERIC(4,2) <<S>>
+    * modo_tarifa : CHAR(1) <<S | D>>
+    fecha_actualizacion : TIMESTAMP
+  }
+
+  entity administradores {
+    * id : SERIAL <<PK>>
+    --
+    empresa_id : INTEGER <<FK>> (NULL = superadmin)
+    * nombre : VARCHAR(100)
+    * email : VARCHAR(100) <<UNIQUE>>
+    * password_hash : VARCHAR(255)
+    * rol : VARCHAR(30) <<superadmin | gerente | supervisor>>
+    activo : BOOLEAN
+    fecha_registro : TIMESTAMP
+    * mfa_activo : BOOLEAN
+    mfa_secreto : TEXT <<AES-256-GCM>>
+    mfa_ultimo_paso : BIGINT
+    mfa_activado_en : TIMESTAMP
+    * mfa_fallos : INTEGER
+    mfa_bloqueado_hasta : TIMESTAMP
+  }
+
+  entity mfa_codigos_respaldo {
+    * id : SERIAL <<PK>>
+    --
+    * administrador_id : INTEGER <<FK>>
+    * codigo_hash : CHAR(64) <<SHA-256>>
+    usado_en : TIMESTAMP
+  }
+
+  entity choferes {
+    * id : SERIAL <<PK>>
+    --
+    * empresa_id : INTEGER <<FK>>
+    * nombre_completo : VARCHAR(100)
+    * placa_vehiculo : VARCHAR(20)
+    password_hash : VARCHAR(255)
+    estado_activo : BOOLEAN
+    ultima_lat : NUMERIC(10,7)
+    ultima_lng : NUMERIC(10,7)
+    ultima_actualizacion : TIMESTAMP
+    fecha_registro : TIMESTAMP
+    ..
+    UNIQUE (empresa_id, placa_vehiculo)
+    UNIQUE (id, empresa_id)
+  }
+
+  entity viajes_historial {
+    * id_servidor : SERIAL <<PK>>
+    --
+    * empresa_id : INTEGER <<FK>>
+    * chofer_id : INTEGER <<FK (chofer_id, empresa_id)>>
+    uuid : UUID
+    * fecha_hora_viaje : TIMESTAMP
+    fecha_sincronizacion : TIMESTAMP
+    * distancia_km : NUMERIC(8,3)
+    * km_asfalto : NUMERIC(8,3)
+    * km_tierra : NUMERIC(8,3)
+    * km_empedrado : NUMERIC(8,3)
+    * tiempo_detencion_min : NUMERIC(8,2)
+    * tarifa_cobrada : NUMERIC(8,2)
+    * tipo_superficie : VARCHAR(20)
+    .. parámetros aplicados ..
+    * costo_base_aplicado : NUMERIC(5,2)
+    * consumo_litros_aplicado : NUMERIC(5,3)
+    * precio_combustible_aplicado : NUMERIC(6,2)
+    * factor_altitud_aplicado : NUMERIC(4,2)
+    * factor_superficie_aplicado : NUMERIC(4,2)
+    * factor_empedrado_aplicado : NUMERIC(4,2)
+    * costo_minuto_aplicado : NUMERIC(5,2)
+    modo_tarifa_aplicado : CHAR(1)
+    bajada_bandera_aplicada : NUMERIC(5,2)
+    valor_salto_aplicado : NUMERIC(4,2)
+    .. verificación ..
+    distancia_ruta_km : NUMERIC(8,3)
+    tarifa_calculada : NUMERIC(8,2)
+    * verificacion : VARCHAR(15)
+    verificacion_detalle : TEXT
+    vibracion_referencia : NUMERIC(5,2)
+    vibracion_irregular : NUMERIC(5,2)
+    superficie_respaldo : VARCHAR(12)
+    tarifa_tradicional : NUMERIC(8,2)
+    ..
+    UNIQUE (chofer_id, uuid)
+  }
+
+  entity viajes_puntos {
+    * viaje_id : INTEGER <<PK, FK>>
+    * orden : INTEGER <<PK>>
+    --
+    * lat : DOUBLE PRECISION
+    * lng : DOUBLE PRECISION
+    * segundos : INTEGER
+    * superficie : VARCHAR(10)
+    vibracion : REAL
+  }
+
+  entity auditoria_anclas {
+    * id : SERIAL <<PK>>
+    --
+    * evento_id : BIGINT <<UNIQUE>>
+    * hash : CHAR(64)
+    creado_en : TIMESTAMP
+  }
+
+  entity auditoria_pendiente {
+    * id : SERIAL <<PK>>
+    --
+    * evento : JSONB
+    * intentos : INTEGER
+    creado_en : TIMESTAMP
+  }
+}
+
+package "Base de auditoría (database/auditoria/esquema.sql)" {
+  entity eventos {
+    * id : BIGINT <<PK>>
+    --
+    * ocurrido_en : TIMESTAMPTZ
+    * registrado_en : TIMESTAMPTZ
+    empresa_id : INTEGER
+    * actor_tipo : VARCHAR(20)
+    actor_id : INTEGER
+    actor_rol : VARCHAR(30)
+    actor_nombre : VARCHAR(120)
+    * accion : VARCHAR(60)
+    entidad : VARCHAR(40)
+    entidad_id : VARCHAR(40)
+    * resultado : VARCHAR(12)
+    detalle : VARCHAR(300)
+    datos_antes : JSONB
+    datos_despues : JSONB
+    ip : VARCHAR(64)
+    user_agent : VARCHAR(300)
+    * hash_anterior : CHAR(64)
+    * hash : CHAR(64) <<UNIQUE, SHA-256>>
+  }
+}
+
+empresas ||--|| parametros_topograficos : tiene
+empresas |o--o{ administradores : administra
+administradores ||--o{ mfa_codigos_respaldo : posee
+empresas ||--o{ choferes : emplea
+empresas ||--o{ viajes_historial : registra
+choferes ||--o{ viajes_historial : realiza
+viajes_historial ||--o{ viajes_puntos : ruta
+eventos ||..o| auditoria_anclas : "copia del hash\n(sin FK: otra base)"
+
+note bottom of eventos
+  Sin claves foráneas hacia la base principal.
+  Triggers: eventos_encadenar (id y hash),
+  eventos_inmutables y eventos_sin_truncate.
+end note
+
+note right of viajes_historial
+  La FK compuesta (chofer_id, empresa_id) → choferes (id, empresa_id)
+  impide un viaje con un chofer de otra empresa.
+end note
+@enduml

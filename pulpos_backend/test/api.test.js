@@ -274,7 +274,7 @@ describe('Sincronización de viajes', () => {
         assert.equal(r.status, 201);
         assert.equal(r.json.verificacion, 'ok');
         assert.deepEqual(insert().params.slice(18, 20), [0.1, 0.38]);
-        assert.deepEqual(insert().params.slice(20), ['ok', null, null, null, null, null]);
+        assert.deepEqual(insert().params.slice(20), ['ok', null, null, null, null, null, null, null, null]);
         const pts = insertPuntos();
         assert.deepEqual(pts.params[0], 12);
         assert.deepEqual(pts.params.slice(1, 2), [[0, 1, 2]]);
@@ -414,7 +414,7 @@ describe('Parámetros y datos de la empresa', () => {
     const validos = {
         zona_ciudad: 'El Alto', costo_base_km: '2.00', consumo_litros_km: '0.100',
         precio_combustible_bs: '6.96', factor_altitud: '1.40', factor_superficie: '2.50', factor_empedrado: '1.80',
-        costo_minuto_detencion: '0.50',
+        costo_minuto_detencion: '0.50', bajada_bandera_bs: '2.00', valor_salto_bs: '0.50', modo_tarifa: 'S',
     };
 
     test('PUT /api/admin/parametros actualiza solo la empresa del token', async () => {
@@ -423,18 +423,24 @@ describe('Parámetros y datos de la empresa', () => {
         assert.equal(r.status, 200);
         const q = consultasDeDatos()[0];
         assert.match(q.sql, /WHERE empresa_id=\$1/);
-        assert.match(q.sql, /factor_empedrado=\$8/);
-        assert.deepEqual(q.params, [2, 'El Alto', 2, 0.1, 6.96, 1.4, 2.5, 1.8, 0.5]);
+        assert.match(q.sql, /factor_empedrado=\$7/);
+        assert.match(q.sql, /modo_tarifa=\$11/);
+        assert.doesNotMatch(q.sql, /factor_altitud/);
+        assert.deepEqual(q.params, [2, 'El Alto', 2, 0.1, 6.96, 2.5, 1.8, 0.5, 2, 0.5, 'S']);
     });
 
     for (const [caso, cambio] of [
         ['negativo', { costo_minuto_detencion: -5 }],
-        ['texto', { factor_altitud: 'abc' }],
+        ['texto', { factor_superficie: 'abc' }],
         ['vacío', { precio_combustible_bs: '' }],
         ['FE fuera de rango', { factor_empedrado: 0.5 }],
         ['FE ausente', { factor_empedrado: undefined }],
         ['desborda NUMERIC', { costo_base_km: 99999 }],
         ['zona vacía', { zona_ciudad: '   ' }],
+        ['modo desconocido', { modo_tarifa: 'X' }],
+        ['modo ausente', { modo_tarifa: undefined }],
+        ['salto cero', { valor_salto_bs: 0 }],
+        ['bajada negativa', { bajada_bandera_bs: -1 }],
     ]) {
         test(`parámetros: rechaza ${caso}`, async () => {
             const r = await pedir('PUT', '/api/admin/parametros', { token: TOKEN_ADMIN, body: { ...validos, ...cambio } });
@@ -725,7 +731,8 @@ describe('Auditoría', () => {
         responder = () => ({ rows: [{ id: 1, costo_base_km: '3.00', _antes: { id: 1, costo_base_km: '2.00' } }] });
         await pedir('PUT', '/api/admin/parametros', { token: TOKEN_ADMIN, body: {
             zona_ciudad: 'El Alto', costo_base_km: 3, consumo_litros_km: 0.1, precio_combustible_bs: 6.96,
-            factor_altitud: 1.4, factor_superficie: 2.5, factor_empedrado: 1.8, costo_minuto_detencion: 0.5 } });
+            factor_altitud: 1.4, factor_superficie: 2.5, factor_empedrado: 1.8, costo_minuto_detencion: 0.5,
+            bajada_bandera_bs: 2, valor_salto_bs: 0.5, modo_tarifa: 'S' } });
         const e = ultimo('parametros.actualizar');
         assert.equal(e.empresa_id, 2);
         assert.equal(e.actor_rol, 'gerente');
@@ -935,7 +942,8 @@ describe('Segundo factor (TOTP)', () => {
 describe('Asistente de IA', () => {
     const EMPRESA = { nombre: 'Radio Taxis Pulpos', ciudad: 'El Alto', zona_horaria: 'America/La_Paz' };
     const PARAMETROS = { costo_base_km: '2.00', consumo_litros_km: '0.100', precio_combustible_bs: '6.96',
-        factor_altitud: '1.40', factor_superficie: '2.00', factor_empedrado: '1.50', costo_minuto_detencion: '0.50' };
+        factor_altitud: '1.40', factor_superficie: '2.00', factor_empedrado: '1.50', costo_minuto_detencion: '0.50',
+        bajada_bandera_bs: '2.00', valor_salto_bs: '0.50', modo_tarifa: 'S' };
     const datosBase = (sql) => {
         if (sql.includes('FROM empresas WHERE id')) return { rows: [EMPRESA] };
         if (sql.includes('FROM parametros_topograficos')) return { rows: [PARAMETROS] };
@@ -1028,25 +1036,34 @@ describe('Asistente de IA', () => {
         assert.equal(consultasDeDatos().filter(c => !c.sql.includes('FROM empresas')).length, 0);
     });
 
-    test('calcular_tarifa usa la fórmula v4 con los parámetros de la empresa', async () => {
+    test('calcular_tarifa estima el taxímetro con los parámetros de la empresa', async () => {
         responder = datosBase;
+        // Bajada 2 + saltos de 0,50 sobre 5 × (2 + 0.1 × 6.96) × 2 + 0.5 × 10 = 31.96; sin factor de altitud
         const tierra = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"espera_min":10,"superficie":"tierra"}', contexto);
-        // 5 × (2 + 0.1 × 6.96) × 1.4 × 2 + 0.5 × 10
-        assert.equal(tierra.tarifa, 42.74);
-        assert.deepEqual([tierra.km_tierra, tierra.superficie, tierra.parametros.FR], [5, 'tierra', 2]);
+        assert.equal(tierra.tarifa, 33.5);
+        assert.equal(tierra.parametros.FH, undefined);
+        assert.deepEqual([tierra.km_tierra, tierra.superficie, tierra.parametros.FR, tierra.costo_tiempo], [5, 'tierra', 2, 5]);
+        assert.deepEqual([tierra.tarifa_km, tierra.tarifa_hora, tierra.velocidad_cruce_kmh], [2.7, 30, 11.1]);
         const asfalto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5}', contexto);
-        assert.deepEqual([asfalto.tarifa, asfalto.km_tierra, asfalto.superficie, asfalto.costo_espera], [18.87, 0, 'asfalto', 0]);
-        // (3 + 2 × 2) × (2 + 0.1 × 6.96) × 1.4 + 0.5 × 10
+        assert.deepEqual([asfalto.tarifa, asfalto.km_tierra, asfalto.superficie, asfalto.costo_tiempo], [15, 0, 'asfalto', 0]);
+        // 2 + ⌊((3 + 2 × 2) × 2.696 + 5) / 0.5⌋ × 0.5
         const mixto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"espera_min":10,"km_tierra":2}', contexto);
-        assert.deepEqual([mixto.tarifa, mixto.km_asfalto, mixto.superficie], [31.42, 3, 'mixto']);
+        assert.deepEqual([mixto.tarifa, mixto.km_asfalto, mixto.superficie], [25.5, 3, 'mixto']);
         for (const km of ['-1', '6', '"dos"'])
             assert.ok((await asistente.ejecutarHerramienta('calcular_tarifa', `{"distancia_km":5,"km_tierra":${km}}`, contexto)).error);
-        // (2 + 1 × 2 + 2 × 1.5) × (2 + 0.1 × 6.96) × 1.4
         const tres = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"km_tierra":1,"km_empedrado":2}', contexto);
-        assert.deepEqual([tres.tarifa, tres.km_asfalto, tres.superficie, tres.parametros.FE], [26.42, 2, 'mixto', 1.5]);
+        assert.deepEqual([tres.tarifa, tres.km_asfalto, tres.superficie, tres.parametros.FE], [20.5, 2, 'mixto', 1.5]);
         const empedrado = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"superficie":"empedrado"}', contexto);
         assert.deepEqual([empedrado.km_empedrado, empedrado.superficie], [5, 'empedrado']);
         assert.ok((await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"km_tierra":3,"km_empedrado":3}', contexto)).error);
+        assert.ok((await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"minutos_en_movimiento":-1}', contexto)).error);
+    });
+
+    test('calcular_tarifa en modo D cobra también el tiempo en movimiento', async () => {
+        responder = (sql) => sql.includes('FROM parametros_topograficos') ? { rows: [{ ...PARAMETROS, modo_tarifa: 'D' }] } : datosBase(sql);
+        const d = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"minutos_en_movimiento":10}', contexto);
+        // 2 + ⌊(13.48 + 5) / 0.5⌋ × 0.5
+        assert.deepEqual([d.tarifa, d.costo_tiempo, d.parametros.modo], [20, 5, 'D']);
     });
 
     test('ranking: criterio y límite solo de la lista permitida', async () => {

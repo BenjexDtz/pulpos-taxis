@@ -1,6 +1,9 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { tarifaV4, leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, MAX_PUNTOS } = require('../verificacion');
+const {
+    tarifaV4, tarifasEnteras, velocidadCruceKmh, crearTaximetro, taximetro, tarifaEstimada,
+    leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, MAX_PUNTOS,
+} = require('../verificacion');
 const { distanciaKm } = require('../validacion');
 
 // Recta hacia el este desde El Alto: n tramos de 50 m, los últimos `enTierra` marcados como tierra
@@ -159,5 +162,105 @@ describe('verificarViaje', () => {
         const v = verificarViaje({ cuerpo: viajeElAlto(5, 0), km: km(5, 0), ruta: null });
         assert.deepEqual([v.estado, v.distancia_ruta_km], ['diferencia', null]);
         assert.match(v.detalle, /formato inválido/);
+    });
+});
+
+describe('Taxímetro v5 (modo S, Directiva 2014/32/UE)', () => {
+    // Ejemplo de referencia: B 5,00; 3,00/km; 30,00/h; saltos de 0,50; la tierra con F = 1,25
+    const t = { modo: 'S', bajada: 500, salto: 50, porKm: { asfalto: 300000, tierra: 375000, empedrado: 300000 }, porHora: 3000000 };
+    const recorrer = (tarifa, superficie) => {
+        const m = crearTaximetro(tarifa);
+        for (let i = 0; i < 10; i++) m.tramo(200000, 24, 'asfalto');  // 2 km a 30 km/h
+        for (let i = 0; i < 10; i++) m.tramo(100000, 24, superficie); // 1 km a 15 km/h
+        m.tramo(0, 180, 'asfalto');                                    // 3 min detenido
+        return m.importe();
+    };
+
+    test('ejemplo de referencia: 16,00 con tierra y 15,50 todo en asfalto', () => {
+        assert.deepEqual(recorrer(t, 'tierra'), { centavos: 1600, segundosPorTiempo: 180 });
+        assert.equal(recorrer(t, 'asfalto').centavos, 1550);
+    });
+
+    test('la velocidad de cruce baja con F > 1', () => {
+        assert.equal(velocidadCruceKmh(t), 10);
+        assert.equal(velocidadCruceKmh(t, 'tierra'), 8);
+    });
+
+    test('modo S: sobre la velocidad de cruce solo cuenta la distancia; debajo, solo el tiempo', () => {
+        const rapido = crearTaximetro(t);
+        rapido.tramo(1000000, 180, 'asfalto'); // 1 km en 3 min = 20 km/h
+        assert.deepEqual(rapido.importe(), { centavos: 800, segundosPorTiempo: 0 });
+        const lento = crearTaximetro(t);
+        lento.tramo(100000, 360, 'asfalto');   // 100 m en 6 min = 1 km/h
+        assert.deepEqual(lento.importe(), { centavos: 800, segundosPorTiempo: 360 });
+    });
+
+    test('modo D suma ambos componentes', () => {
+        const m = crearTaximetro({ ...t, modo: 'D' });
+        m.tramo(1000000, 180, 'asfalto');
+        assert.equal(m.importe().centavos, 500 + 300 + 150);
+    });
+
+    test('detenido, la superficie no cambia el importe', () => {
+        for (const s of ['asfalto', 'tierra', 'empedrado']) {
+            const m = crearTaximetro(t);
+            m.tramo(0, 600, s);
+            assert.equal(m.importe().centavos, 1000);
+        }
+    });
+
+    test('dos horas de tramos de 1 s no pierden precisión', () => {
+        const m = crearTaximetro(t);
+        for (let i = 0; i < 7200; i++) m.tramo(10000, 1, 'asfalto'); // 72 km a 36 km/h
+        assert.equal(m.importe().centavos, 500 + 72 * 300);
+    });
+
+    // Mismo caso en test/taximetro_test.dart: la app y el servidor deben dar el mismo importe
+    const rutaCompartida = () => {
+        const p = Array.from({ length: 21 }, (_, i) => [-16.5, -68.19 + i * 0.0005, i * 6, i > 15 ? 1 : 0]);
+        return leerRuta([...p, [...p[20].slice(0, 2), 240, 1]]);
+    };
+    const pulpos = { Cb: 2, Cl: 0.1, Pc: 6.96, FR: 2.5, FE: 2, Ct: 0.5, B: 2, S: 0.5 };
+
+    test('caso compartido con la app', () => {
+        assert.deepEqual(taximetro(rutaCompartida(), tarifasEnteras({ ...pulpos, modo: 'S' })), { centavos: 650, segundosPorTiempo: 120 });
+        assert.equal(taximetro(rutaCompartida(), tarifasEnteras({ ...pulpos, modo: 'D' })).centavos, 750);
+    });
+
+    test('la altitud no es un factor del taxímetro', () => {
+        assert.deepEqual(tarifasEnteras({ ...pulpos, FH: 1.4, modo: 'S' }), tarifasEnteras({ ...pulpos, modo: 'S' }));
+        assert.equal(tarifasEnteras({ ...pulpos, modo: 'S' }).porKm.asfalto, 269600);
+    });
+
+    test('tarifaEstimada: distancia en movimiento y tiempo detenido', () => {
+        const tp = tarifasEnteras({ ...pulpos, modo: 'S' });
+        // 2 + ⌊(5 × 2.696 + 10 × 0.5) / 0.5⌋ × 0.5
+        assert.equal(tarifaEstimada({ km_asfalto: 5, minutos_detenido: 10, minutos_en_movimiento: 20 }, tp).centavos, 2000);
+        assert.equal(tarifaEstimada({ km_asfalto: 5, minutos_detenido: 10, minutos_en_movimiento: 20 }, { ...tp, modo: 'D' }).centavos, 3000);
+    });
+
+    const viajeV5 = (extra = {}) => {
+        const r = resumenRuta(rutaCompartida());
+        return {
+            distancia_km: r.km, km_asfalto: r.km_asfalto, km_tierra: r.km_tierra, tiempo_detencion_min: 2,
+            costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
+            factor_superficie_aplicado: 2.5, factor_empedrado_aplicado: 2, costo_minuto_aplicado: 0.5,
+            modo_tarifa_aplicado: 'S', bajada_bandera_aplicada: 2, valor_salto_aplicado: 0.5, tarifa_cobrada: 6.5, ...extra,
+        };
+    };
+    const kmV5 = () => { const r = resumenRuta(rutaCompartida()); return { km_asfalto: r.km_asfalto, km_tierra: r.km_tierra, km_empedrado: 0 }; };
+
+    test('verificarViaje recalcula un viaje v5 con su ruta', () => {
+        const v = verificarViaje({ cuerpo: viajeV5(), km: kmV5(), ruta: rutaCompartida() });
+        assert.deepEqual([v.estado, v.tarifa_calculada], ['ok', 6.5]);
+        const caro = verificarViaje({ cuerpo: viajeV5({ tarifa_cobrada: 9 }), km: kmV5(), ruta: rutaCompartida() });
+        assert.equal(caro.estado, 'diferencia');
+        assert.match(caro.detalle, /\(9\.00\) no coincide con la fórmula \(6\.50\)/);
+    });
+
+    test('viaje v5 sin ruta queda sin_ruta; con modo o salto inválidos, sin verificar', () => {
+        assert.deepEqual(Object.values(verificarViaje({ cuerpo: viajeV5(), km: kmV5() })).slice(0, 3), ['sin_ruta', null, null]);
+        for (const extra of [{ modo_tarifa_aplicado: 'X' }, { valor_salto_aplicado: 0 }, { bajada_bandera_aplicada: undefined }])
+            assert.equal(verificarViaje({ cuerpo: viajeV5(extra), km: kmV5(), ruta: rutaCompartida() }).estado, 'sin_verificar');
     });
 });

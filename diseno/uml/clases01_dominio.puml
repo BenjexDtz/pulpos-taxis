@@ -1,0 +1,146 @@
+@startuml clases01_dominio
+!include estilo.iuml
+title Diagrama de clases – Modelo del dominio (servidor y base de datos)
+
+enum Rol {
+  superadmin
+  gerente
+  supervisor
+}
+
+enum ModoTarifa {
+  S
+  D
+}
+
+enum Superficie {
+  asfalto
+  tierra
+  empedrado
+}
+
+enum EstadoVerificacion {
+  ok
+  sin_ruta
+  diferencia
+  sin_verificar
+}
+
+class Empresa {
+  - id : int
+  - codigo : String
+  - nombre : String
+  - ciudad : String
+  - zonaHoraria : String
+  - monedaSimbolo : String
+  - centroLat : decimal
+  - centroLng : decimal
+  - radioOperacionKm : decimal
+  - altitudMsnm : int
+  - colorPrimario : String
+  - activo : boolean
+}
+
+class Administrador {
+  - id : int
+  - nombre : String
+  - email : String
+  - passwordHash : String
+  - rol : Rol
+  - activo : boolean
+  - mfaActivo : boolean
+  - mfaSecreto : String <<cifrado>>
+  - mfaUltimoPaso : long
+  - mfaBloqueadoHasta : Timestamp
+}
+
+class CodigoRespaldo {
+  - codigoHash : String <<SHA-256>>
+  - usadoEn : Timestamp
+}
+
+class Chofer {
+  - id : int
+  - nombreCompleto : String
+  - placaVehiculo : String
+  - passwordHash : String
+  - estadoActivo : boolean
+  - ultimaLat : decimal
+  - ultimaLng : decimal
+  - ultimaActualizacion : Timestamp
+}
+
+class ParametrosTarifa {
+  - costoBaseKm : decimal <<Cb>>
+  - consumoLitrosKm : decimal <<Cl>>
+  - precioCombustible : decimal <<Pc>>
+  - factorSuperficie : decimal <<FR>>
+  - factorEmpedrado : decimal <<FE>>
+  - costoMinutoDetencion : decimal <<Ct>>
+  - bajadaBandera : decimal <<B>>
+  - valorSalto : decimal <<S>>
+  - modoTarifa : ModoTarifa
+}
+
+class Viaje {
+  - idServidor : int
+  - uuid : UUID
+  - fechaHoraViaje : Timestamp
+  - distanciaKm : decimal
+  - kmAsfalto : decimal
+  - kmTierra : decimal
+  - kmEmpedrado : decimal
+  - tiempoDetencionMin : decimal
+  - tarifaCobrada : decimal
+  - tipoSuperficie : String
+  - parametrosAplicados
+  - distanciaRutaKm : decimal
+  - tarifaCalculada : decimal
+  - verificacion : EstadoVerificacion
+  - superficieRespaldo : String
+  - tarifaTradicional : decimal
+}
+
+class PuntoRuta {
+  - orden : int
+  - lat : double
+  - lng : double
+  - segundos : int
+  - superficie : Superficie
+  - vibracion : real
+}
+
+class EventoAuditoria <<base de auditoría>> {
+  - id : long
+  - ocurridoEn : Timestamp
+  - actorTipo : String
+  - actorId : int
+  - accion : String
+  - entidad : String
+  - resultado : String
+  - datosAntes : JSON
+  - datosDespues : JSON
+  - hashAnterior : String
+  - hash : String <<SHA-256>>
+}
+
+class AnclaAuditoria {
+  - eventoId : long
+  - hash : String
+}
+
+Empresa "1" -- "1" ParametrosTarifa : tiene >
+Empresa "0..1" -- "0..*" Administrador : administra <
+Empresa "1" -- "0..*" Chofer : emplea >
+Empresa "1" -- "0..*" Viaje : registra >
+Chofer "1" -- "0..*" Viaje : realiza >
+Viaje "1" *-- "0..*" PuntoRuta : ruta >
+Administrador "1" *-- "0..*" CodigoRespaldo
+EventoAuditoria "1" -- "0..1" AnclaAuditoria : copia del hash <
+EventoAuditoria "0..1" -- "1" EventoAuditoria : encadena con el anterior >
+
+Administrador ..> Rol
+ParametrosTarifa ..> ModoTarifa
+PuntoRuta ..> Superficie
+Viaje ..> EstadoVerificacion
+@enduml

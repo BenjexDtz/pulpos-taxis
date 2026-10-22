@@ -6,6 +6,18 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'config.dart';
 
+enum FallaGPS {
+  apagado('Activa la ubicación (GPS) del teléfono para iniciar el viaje.'),
+  sinPermiso('El taxímetro necesita permiso de ubicación para medir el viaje.'),
+  bloqueado('El permiso de ubicación está bloqueado. Actívalo en los ajustes de la app.'),
+  aproximada('Activa "Ubicación precisa" en los permisos de la app: con la aproximada no se mide la distancia.'),
+  sinSenal('Sin señal GPS. Sal al aire libre o acércate a una ventana e intenta de nuevo.');
+
+  const FallaGPS(this.mensaje);
+  final String mensaje;
+  bool get abreAjustesApp => this == bloqueado || this == aproximada;
+}
+
 class MotorGPS {
   // ─── Configuración ────────────────────────────────────────────────────────
   // Cada cuántas posiciones GPS enviar al servidor (10 = cada ~10 segundos)
@@ -13,20 +25,35 @@ class MotorGPS {
   static int _contadorPosiciones = 0;
 
   // ─── Permisos y posición inicial ──────────────────────────────────────────
-  static Future<Position?> obtenerUbicacionActual() async {
-    bool servicioHabilitado = await Geolocator.isLocationServiceEnabled();
-    if (!servicioHabilitado) return null;
+  // Devuelve la posición o el motivo por el que no se pudo obtener, para mostrárselo al chofer
+  static Future<(Position?, FallaGPS?)> obtenerUbicacionActual() async {
+    if (!await Geolocator.isLocationServiceEnabled()) return (null, FallaGPS.apagado);
 
     LocationPermission permiso = await Geolocator.checkPermission();
     if (permiso == LocationPermission.denied) {
       permiso = await Geolocator.requestPermission();
-      if (permiso == LocationPermission.denied) return null;
+      if (permiso == LocationPermission.denied) return (null, FallaGPS.sinPermiso);
     }
-    if (permiso == LocationPermission.deniedForever) return null;
+    if (permiso == LocationPermission.deniedForever) return (null, FallaGPS.bloqueado);
+    // Con ubicación aproximada ninguna lectura baja de 20 m y el taxímetro no sumaría distancia
+    if (await Geolocator.getLocationAccuracy() == LocationAccuracyStatus.reduced) {
+      return (null, FallaGPS.aproximada);
+    }
 
-    return await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-    );
+    try {
+      return (
+        await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 20),
+          ),
+        ),
+        null,
+      );
+    } on TimeoutException {
+      final ultima = await Geolocator.getLastKnownPosition();
+      return ultima == null ? (null, FallaGPS.sinSenal) : (ultima, null);
+    }
   }
 
   // ─── Stream GPS con envío de posición al servidor ─────────────────────────
@@ -92,8 +119,8 @@ class MotorGPS {
   // ─── Envío manual (al finalizar el viaje) ─────────────────────────────────
   /// Llama esto cuando el conductor termina el viaje para asegurarte
   /// de que la última posición quede registrada en el servidor.
-  static Future<void> enviarUltimaPosicion(Position posicion) async {
-    await _enviarPosicionAlServidor(posicion.latitude, posicion.longitude);
+  static Future<void> enviarUltimaPosicion(double lat, double lng) async {
+    await _enviarPosicionAlServidor(lat, lng);
   }
 
   // ─── Reset del contador (al iniciar nuevo viaje) ──────────────────────────

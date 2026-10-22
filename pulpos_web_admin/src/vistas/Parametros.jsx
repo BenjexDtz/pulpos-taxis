@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { Calculator, Fuel, MapPin, RefreshCw, Save, Settings } from 'lucide-react';
+import { Calculator, Fuel, Gauge, MapPin, RefreshCw, Save, Settings } from 'lucide-react';
 import Mensaje from '../componentes/Mensaje.jsx';
 import Tarjeta from '../componentes/ui/Tarjeta.jsx';
 import { ayuda, botonPrimario, campo, etiqueta } from '../componentes/ui/estilos.js';
@@ -23,18 +23,27 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
     } finally { setGuardandoParams(false); }
   };
 
-  // T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td, con un viaje de 5 km y 10 min de espera
+  const valor = (clave, porDefecto = 0) => parseFloat(formParams?.[clave] || porDefecto);
+  // Sin factor de altitud: queda dentro de los costos medidos en la ciudad
+  const tarifaKm = () => valor('costo_base_km') + valor('consumo_litros_km') * valor('precio_combustible_bs');
+  const tarifaHora = () => valor('costo_minuto_detencion') * 60;
+  const modoD = formParams?.modo_tarifa === 'D';
+  // Directiva 2014/32/UE, Anexo IX: velocidad de cruce = tarifa por tiempo / tarifa por distancia
+  const velocidadCruce = (F = 1) => {
+    const v = tarifaHora() / (tarifaKm() * F);
+    return Number.isFinite(v) ? formatoNumero(v, 1) : '—';
+  };
+
+  // Taxímetro sin ruta (como tarifaEstimada del servidor): 5 km sobre la velocidad de cruce y 10 min
+  // detenido; en modo D también se cobran los 15 min en movimiento. B + saltos completos de S.
   const previewTarifa = (kmTierra, kmEmpedrado = 0) => {
     if (!formParams) return '0.00';
-    const Cb = parseFloat(formParams.costo_base_km || 0);
-    const Cl = parseFloat(formParams.consumo_litros_km || 0);
-    const Pc = parseFloat(formParams.precio_combustible_bs || 0);
-    const FH = parseFloat(formParams.factor_altitud || 0);
-    const FR = parseFloat(formParams.factor_superficie || 1);
-    const FE = parseFloat(formParams.factor_empedrado || 1);
-    const Ct = parseFloat(formParams.costo_minuto_detencion || 0);
-    const kmPonderados = 5 - kmTierra - kmEmpedrado + kmTierra * FR + kmEmpedrado * FE;
-    return (kmPonderados * (Cb + Cl * Pc) * FH + 10 * Ct).toFixed(2);
+    const kmPonderados = 5 - kmTierra - kmEmpedrado + kmTierra * valor('factor_superficie', 1) + kmEmpedrado * valor('factor_empedrado', 1);
+    const minutos = 10 + (modoD ? 15 : 0);
+    const S = valor('valor_salto_bs');
+    const exacto = kmPonderados * tarifaKm() + minutos * valor('costo_minuto_detencion');
+    const saltos = S > 0 ? Math.floor(exacto / S + 1e-9) : 0;
+    return (valor('bajada_bandera_bs') + saltos * S).toFixed(2);
   };
 
   const previewCostoCombustibleKm = () => {
@@ -85,22 +94,43 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
           </div>
         </Tarjeta>
 
-        <Tarjeta icono={Settings} titulo="Factores topográficos y económicos">
+        <Tarjeta icono={Settings} titulo="Costo por km, superficie y tiempo">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             {campoParam('costo_base_km', { etiqueta: `Cb · costo base por km (${m})`, ayuda: 'Ganancia del conductor + depreciación.', step: '0.01', min: 0.5, max: 10 })}
-            {campoParam('factor_altitud', {
-              etiqueta: 'FH · factor de altitud',
-              ayuda: `Penalización por la altitud${empresa?.altitud_msnm ? ` (${empresa.altitud_msnm.toLocaleString('es-BO')} msnm)` : ''}.`,
-              step: '0.01', min: 1, max: 3,
-            })}
             {campoParam('factor_superficie', { etiqueta: 'FR · factor tierra / barro', ayuda: 'Multiplicador para calles de tierra.', step: '0.1', min: 1, max: 5 })}
             {campoParam('factor_empedrado', { etiqueta: 'FE · factor empedrado / adoquín', ayuda: 'Multiplicador para calles empedradas.', step: '0.1', min: 1, max: 5 })}
-            {campoParam('costo_minuto_detencion', { etiqueta: `Ct · costo por minuto de espera (${m})`, ayuda: 'Cobro por espera o tráfico.', step: '0.01', min: 0.1, max: 5 })}
+            {campoParam('costo_minuto_detencion', { etiqueta: `Ct · costo por minuto (${m})`, ayuda: 'Cobro por espera o tráfico lento; × 60 es la tarifa por hora.', step: '0.01', min: 0.1, max: 5 })}
           </div>
           <div className="mt-5 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-white/[0.03]">
             <span className="text-theme-sm text-gray-500 dark:text-gray-400">Cb + Cl × Pc · costo variable total</span>
             <span className="font-semibold text-gray-800 dark:text-white/90">{m} {previewCostoVariableKm()}/km</span>
           </div>
+        </Tarjeta>
+
+        <Tarjeta icono={Gauge} titulo="Taxímetro" subtitulo="Modo de cálculo de la Directiva 2014/32/UE (Anexo IX, taxímetros)">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {campoParam('bajada_bandera_bs', { etiqueta: `B · bajada de bandera (${m})`, ayuda: 'Importe con el que empieza todo viaje.', step: '0.10', min: 0, max: 50 })}
+            {campoParam('valor_salto_bs', { etiqueta: `S · valor del salto (${m})`, ayuda: 'El importe avanza de S en S; conviene la moneda más chica de uso común.', step: '0.10', min: 0.01, max: 5 })}
+            <div className="sm:col-span-2">
+              <label htmlFor="param-modo_tarifa" className={etiqueta}>Modo de cálculo</label>
+              <select id="param-modo_tarifa" className={campo} value={formParams.modo_tarifa ?? 'S'}
+                onChange={e => setFormParams({ ...formParams, modo_tarifa: e.target.value })}>
+                <option value="S">S · en cada tramo, el tiempo o la distancia (lo que sea mayor)</option>
+                <option value="D">D · el tiempo y la distancia a la vez</option>
+              </select>
+              <p className={ayuda}>El modo S es el habitual: detenido o muy lento cobra el tiempo; en marcha, la distancia.</p>
+            </div>
+          </div>
+          <dl className="mt-5 grid grid-cols-1 gap-3 rounded-lg bg-gray-50 px-4 py-3 text-theme-sm sm:grid-cols-2 dark:bg-white/[0.03]">
+            <div className="flex justify-between gap-3"><dt className="text-gray-500 dark:text-gray-400">Tkm · por km en asfalto</dt><dd className="font-semibold text-gray-800 dark:text-white/90">{m} {formatoNumero(tarifaKm(), 3)}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-gray-500 dark:text-gray-400">Th · por hora</dt><dd className="font-semibold text-gray-800 dark:text-white/90">{m} {formatoNumero(tarifaHora(), 2)}</dd></div>
+            <div className="flex justify-between gap-3 sm:col-span-2">
+              <dt className="text-gray-500 dark:text-gray-400">Velocidad de cruce Th / (Tkm × F)</dt>
+              <dd className="text-right font-semibold text-gray-800 dark:text-white/90">
+                asfalto {velocidadCruce()} · tierra {velocidadCruce(valor('factor_superficie', 1))} · empedrado {velocidadCruce(valor('factor_empedrado', 1))} km/h
+              </dd>
+            </div>
+          </dl>
         </Tarjeta>
 
         <div className="flex justify-end">
@@ -114,17 +144,19 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
       <div className="space-y-6 xl:sticky xl:top-28 xl:self-start">
         <Tarjeta icono={Calculator} titulo="Fórmula tarifaria">
           <p className="rounded-lg bg-brand-50 px-4 py-3 text-center font-mono text-theme-sm font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-            T = (Da + Dt × FR + De × FE) × (Cb + Cl × Pc) × FH + Ct × Td
+            T = B + S × ⌊ Σ {modoD ? '(d × F × Tkm + t × Th)' : 'max(d × F × Tkm, t × Th)'} / S ⌋
           </p>
           <dl className="mt-4 space-y-1.5 text-theme-xs text-gray-500 dark:text-gray-400">
-            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Da</dt> <dd className="inline">km recorridos en asfalto</dd></div>
-            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Dt</dt> <dd className="inline">km recorridos en tierra</dd></div>
-            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">De</dt> <dd className="inline">km recorridos en empedrado; el chofer marca cada tramo en la app</dd></div>
-            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Td</dt> <dd className="inline">minutos detenido o en tráfico</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Σ</dt> <dd className="inline">sobre cada tramo GPS del viaje</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">d, t</dt> <dd className="inline">km y horas del tramo</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">F</dt> <dd className="inline">1 en asfalto, FR en tierra, FE en empedrado; el chofer marca cada tramo en la app</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Tkm</dt> <dd className="inline">Cb + Cl × Pc</dd></div>
+            <div><dt className="inline font-medium text-gray-700 dark:text-gray-300">Th</dt> <dd className="inline">60 × Ct</dd></div>
           </dl>
         </Tarjeta>
 
-        <Tarjeta icono={Calculator} titulo="Vista previa" subtitulo="Viaje de 5 km con 10 min de espera">
+        <Tarjeta icono={Calculator} titulo="Vista previa"
+          subtitulo={`Viaje de 5 km${modoD ? ' en 15 min' : ''} con 10 min detenido; en marcha, sobre la velocidad de cruce`}>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>

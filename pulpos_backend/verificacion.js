@@ -13,6 +13,67 @@ const redondear = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 const tarifaV4 = ({ km_asfalto, km_tierra, km_empedrado = 0, Cb, Cl, Pc, FH, FR, FE = 1, Ct, Td }) =>
     (km_asfalto + km_tierra * FR + km_empedrado * FE) * (Cb + Cl * Pc) * FH + Ct * Td;
 
+// ─── Taxímetro v5: modo S de la Directiva 2014/32/UE (Anexo IX, MI-007) con superficie por tramos ───
+// Mismo algoritmo que taximetro.dart. Por tramo de la ruta (d km, t s, superficie F del punto final):
+//   modo S: max(d × F × Tkm, t × Th)    modo D: d × F × Tkm + t × Th
+// con Tkm = Cb + Cl × Pc y Th = 60 × Ct. Importe = B + S × saltos completos. La altitud no es un
+// factor aparte: queda dentro de los costos medidos en la ciudad (FH solo lo usan los viajes v4).
+// Enteros exactos: tarifas en milicentavos, distancia en mm y tiempo en s; 1 mc = 9e6 unidades
+// (mm × mc/km × 9 = s × mc/h × 2500), así ambos componentes se comparan sin redondeos.
+const U_POR_CENTAVO = 9_000_000_000n;
+
+const tarifasEnteras = ({ Cb, Cl, Pc, FR, FE, Ct, B, S, modo }) => {
+    const km = Cb + Cl * Pc;
+    return {
+        modo, bajada: Math.round(B * 100), salto: Math.round(S * 100),
+        porKm: { asfalto: Math.round(km * 1e5), tierra: Math.round(km * FR * 1e5), empedrado: Math.round(km * FE * 1e5) },
+        porHora: Math.round(Ct * 6e6),
+    };
+};
+
+// Directiva 2014/32/UE, Anexo IX: velocidad de cruce = tarifa por tiempo / tarifa por distancia
+const velocidadCruceKmh = (t, superficie = 'asfalto') => t.porHora / t.porKm[superficie];
+
+const crearTaximetro = (t) => {
+    const saltoU = BigInt(t.salto) * U_POR_CENTAVO;
+    let acumulado = 0n, saltos = 0, segundosPorTiempo = 0;
+    return {
+        tramo(mm, segundos, superficie) {
+            const porDistancia = BigInt(mm) * BigInt(t.porKm[superficie]) * 9n;
+            const porTiempo = BigInt(segundos) * BigInt(t.porHora) * 2500n;
+            if (porTiempo >= porDistancia) segundosPorTiempo += segundos;
+            acumulado += t.modo === 'D' ? porDistancia + porTiempo : (porDistancia > porTiempo ? porDistancia : porTiempo);
+            const n = acumulado / saltoU;
+            saltos += Number(n);
+            acumulado -= n * saltoU;
+        },
+        importe: () => ({ centavos: t.bajada + saltos * t.salto, segundosPorTiempo }),
+    };
+};
+
+const coordenada = (x) => Math.round(x * 1e6) / 1e6;
+
+const taximetro = (puntos, t) => {
+    const m = crearTaximetro(t);
+    for (let i = 1; i < puntos.length; i++) {
+        const a = puntos[i - 1], b = puntos[i];
+        const mm = Math.round(distanciaKm(coordenada(a.lat), coordenada(a.lng), coordenada(b.lat), coordenada(b.lng)) * 1e6);
+        m.tramo(mm, b.segundos - a.segundos, b.superficie);
+    }
+    return m.importe();
+};
+
+// Sin ruta (asistente, vista previa): supone que en movimiento se supera la velocidad de cruce,
+// así que en modo S el tiempo solo se cobra detenido; en modo D también el de movimiento.
+const tarifaEstimada = ({ km_asfalto = 0, km_tierra = 0, km_empedrado = 0, minutos_detenido = 0, minutos_en_movimiento = 0 }, t) => {
+    const m = crearTaximetro({ ...t, modo: 'D' });
+    const km = { asfalto: km_asfalto, tierra: km_tierra, empedrado: km_empedrado };
+    for (const s of SUPERFICIES) m.tramo(Math.round(km[s] * 1e6), 0, s);
+    const minutos = minutos_detenido + (t.modo === 'D' ? minutos_en_movimiento : 0);
+    m.tramo(0, Math.round(minutos * 60), 'asfalto');
+    return m.importe();
+};
+
 // La app envía [[lat, lng, segundos desde el inicio, superficie, vibración?]] con superficie
 // 0 = asfalto, 1 = tierra, 2 = empedrado y la vibración en m/s² (RMS) solo si la midió
 const leerRuta = (ruta) => {
@@ -69,14 +130,28 @@ const evaluarSuperficie = (puntos, referenciaApp) => {
 // La app mide con otro radio terrestre y descarta lecturas imprecisas: se tolera 1 % o 20 m
 const kmCoinciden = (a, b) => Math.abs(a - b) <= Math.max(0.02, 0.01 * Math.max(a, b));
 
+const MODOS_TARIFA = ['S', 'D'];
+// Apps anteriores a la v5 no envían el modo: su tarifa es la fórmula v4
+const esTaximetro = (b) => b.modo_tarifa_aplicado !== undefined;
+
 const aplicadosDe = (b, km) => {
     const v = {
         Cb: b.costo_base_aplicado, Cl: b.consumo_litros_aplicado, Pc: b.precio_combustible_aplicado,
-        FH: b.factor_altitud_aplicado, Ct: b.costo_minuto_aplicado, Td: b.tiempo_detencion_min,
+        Ct: b.costo_minuto_aplicado,
         FR: km.km_tierra > 0 ? b.factor_superficie_aplicado : (b.factor_superficie_aplicado ?? 1),
         FE: km.km_empedrado > 0 ? b.factor_empedrado_aplicado : (b.factor_empedrado_aplicado ?? 1),
+        ...(esTaximetro(b)
+            ? { B: b.bajada_bandera_aplicada, S: b.valor_salto_aplicado }
+            : { Td: b.tiempo_detencion_min, FH: b.factor_altitud_aplicado }),
     };
-    return Object.values(v).every(x => typeof x === 'number' && Number.isFinite(x)) ? v : null;
+    if (!Object.values(v).every(x => typeof x === 'number' && Number.isFinite(x))) return null;
+    if (!esTaximetro(b)) return v;
+    return MODOS_TARIFA.includes(b.modo_tarifa_aplicado) && v.S > 0 && v.B >= 0 ? { ...v, modo: b.modo_tarifa_aplicado } : null;
+};
+
+const tarifaCalculada = (cuerpo, km, ruta, aplicados) => {
+    if (!esTaximetro(cuerpo)) return redondear(tarifaV4({ ...km, ...aplicados }));
+    return ruta ? taximetro(ruta, tarifasEnteras(aplicados)).centavos / 100 : null;
 };
 
 // ruta: undefined si la app no la envió, null si llegó con formato inválido
@@ -85,8 +160,8 @@ const verificarViaje = ({ cuerpo, km, ruta }) => {
     const aplicados = aplicadosDe(cuerpo, km);
     let tarifa_calculada = null;
     if (aplicados && typeof cuerpo.tarifa_cobrada === 'number') {
-        tarifa_calculada = redondear(tarifaV4({ ...km, ...aplicados }));
-        if (Math.abs(tarifa_calculada - cuerpo.tarifa_cobrada) > TOLERANCIA_TARIFA)
+        tarifa_calculada = tarifaCalculada(cuerpo, km, ruta, aplicados);
+        if (tarifa_calculada !== null && Math.abs(tarifa_calculada - cuerpo.tarifa_cobrada) > TOLERANCIA_TARIFA)
             problemas.push(`la tarifa cobrada (${cuerpo.tarifa_cobrada.toFixed(2)}) no coincide con la fórmula (${tarifa_calculada.toFixed(2)})`);
     }
 
@@ -105,10 +180,15 @@ const verificarViaje = ({ cuerpo, km, ruta }) => {
                 problemas.push(`la ruta tiene ${r[`km_${s}`].toFixed(3)} km en ${s} y el viaje declara ${km[`km_${s}`].toFixed(3)} km`);
     }
 
+    // Un viaje v5 sin ruta no se puede recalcular: el taxímetro depende de cada tramo
     const estado = problemas.length ? 'diferencia'
+        : ruta === undefined && aplicados && esTaximetro(cuerpo) ? 'sin_ruta'
         : tarifa_calculada === null ? 'sin_verificar'
         : ruta === undefined ? 'sin_ruta' : 'ok';
     return { estado, detalle: problemas.join('; ') || null, tarifa_calculada, distancia_ruta_km, ...superficie };
 };
 
-module.exports = { tarifaV4, leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, MAX_PUNTOS, MIN_LECTURAS };
+module.exports = {
+    tarifaV4, tarifasEnteras, velocidadCruceKmh, crearTaximetro, taximetro, tarifaEstimada, MODOS_TARIFA,
+    leerRuta, resumenRuta, evaluarSuperficie, verificarViaje, MAX_PUNTOS, MIN_LECTURAS,
+};

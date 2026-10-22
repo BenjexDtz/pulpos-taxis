@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -50,7 +50,10 @@ class BaseDatosLocal {
         km_empedrado REAL,
         factor_empedrado REAL,
         vibracion_referencia REAL,
-        tarifa_tradicional REAL
+        tarifa_tradicional REAL,
+        bajada_bandera REAL,
+        valor_salto REAL,
+        modo_tarifa TEXT
       )
     ''');
     await _crearTablaPuntos(db);
@@ -117,9 +120,32 @@ class BaseDatosLocal {
     if (oldVersion < 9) {
       await db.execute('ALTER TABLE viajes ADD COLUMN tarifa_tradicional REAL');
     }
+    // Viajes previos quedan en NULL: el servidor los verifica con la fórmula v4
+    if (oldVersion < 10) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN bajada_bandera REAL');
+      await db.execute('ALTER TABLE viajes ADD COLUMN valor_salto REAL');
+      await db.execute('ALTER TABLE viajes ADD COLUMN modo_tarifa TEXT');
+    }
   }
 
-  // Viaje y ruta en una sola transacción: o se guardan los dos o ninguno
+  // Cada punto se guarda al llegar: si la app se cierra, el viaje en curso se recupera
+  Future<void> insertarPunto(String uuidViaje, int orden, PuntoRuta punto) async {
+    final db = await instancia.database;
+    await db.insert(
+      'puntos_viaje',
+      punto.paraSqlite(uuidViaje, orden),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<bool> existeViaje(String uuid) async {
+    final db = await instancia.database;
+    final filas = await db.query('viajes', columns: ['id'], where: 'uuid = ?', whereArgs: [uuid]);
+    return filas.isNotEmpty;
+  }
+
+  // Viaje y ruta en una sola transacción: o se guardan los dos o ninguno.
+  // Los puntos ya guardados durante el viaje se reemplazan por los mismos
   Future<int> insertarViaje(
     Map<String, dynamic> viaje, {
     List<PuntoRuta> ruta = const [],
@@ -130,7 +156,8 @@ class BaseDatosLocal {
       final id = await txn.insert('viajes', {...viaje, 'uuid': uuid});
       final lote = txn.batch();
       for (var i = 0; i < ruta.length; i++) {
-        lote.insert('puntos_viaje', ruta[i].paraSqlite(uuid, i));
+        lote.insert('puntos_viaje', ruta[i].paraSqlite(uuid, i),
+            conflictAlgorithm: ConflictAlgorithm.replace);
       }
       await lote.commit(noResult: true);
       return id;

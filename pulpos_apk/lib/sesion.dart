@@ -5,23 +5,27 @@ class EmpresaActual {
   final String codigo;
   final String nombre;
   final String monedaSimbolo;
+  final String? colorPrimario;
 
   const EmpresaActual({
     required this.codigo,
     required this.nombre,
     required this.monedaSimbolo,
+    this.colorPrimario,
   });
 
   factory EmpresaActual.fromJson(Map<String, dynamic> json) => EmpresaActual(
     codigo: json['codigo'].toString(),
     nombre: (json['nombre'] ?? '').toString(),
     monedaSimbolo: (json['moneda_simbolo'] ?? 'Bs').toString(),
+    colorPrimario: json['color_primario']?.toString(),
   );
 
   Map<String, dynamic> toJson() => {
     'codigo': codigo,
     'nombre': nombre,
     'moneda_simbolo': monedaSimbolo,
+    'color_primario': colorPrimario,
   };
 }
 

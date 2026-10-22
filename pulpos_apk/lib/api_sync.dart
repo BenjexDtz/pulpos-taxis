@@ -89,6 +89,9 @@ Map<String, dynamic> viajeParaServidor(
     'costo_minuto_aplicado': viaje['costo_minuto_detencion'],
     'consumo_litros_aplicado': viaje['consumo_litros_km'],
     'precio_combustible_aplicado': viaje['precio_combustible_bs'],
+    'modo_tarifa_aplicado': viaje['modo_tarifa'],
+    'bajada_bandera_aplicada': viaje['bajada_bandera'],
+    'valor_salto_aplicado': viaje['valor_salto'],
   };
   body.removeWhere((_, valor) => valor == null);
   if (ruta.isNotEmpty) body['ruta'] = ruta.map((p) => p.paraServidor()).toList();

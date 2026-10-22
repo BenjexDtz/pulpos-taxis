@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'sesion.dart';
+import 'tema.dart';
 import 'main.dart'; // Para poder saltar a tu taxímetro
 import 'config.dart';
 
@@ -59,12 +60,14 @@ class _PantallaLoginState extends State<PantallaLogin> {
         final int choferId = data['chofer']['id'];
         final String nombreChofer = data['chofer']['nombre_completo'];
 
+        final empresa = EmpresaActual.fromJson(data['empresa']);
         await Sesion.guardar(
           token: token,
           choferId: choferId,
           nombre: nombreChofer,
-          empresa: EmpresaActual.fromJson(data['empresa']),
+          empresa: empresa,
         );
+        colorMarca.value = colorDesdeHex(empresa.colorPrimario) ?? Paleta.marcaPorDefecto;
 
         // 3. ¡Abrimos la puerta! Saltamos al taxímetro y destruimos la pantalla de login atrás
         if (mounted) {
@@ -79,7 +82,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
         _mostrarError(errorData['error'] ?? 'Error de autenticación');
       }
     } catch (e) {
-      _mostrarError('Error de red. ¿Estás en el mismo WiFi que el servidor?');
+      _mostrarError('Sin conexión con la central. Revisa tu internet e inténtalo de nuevo.');
     } finally {
       setState(() {
         _isLoading = false;
@@ -90,147 +93,89 @@ class _PantallaLoginState extends State<PantallaLogin> {
   void _mostrarError(String mensaje) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje), backgroundColor: Colors.red[800]),
+        SnackBar(content: Text(mensaje), backgroundColor: Paleta.error600),
       );
     }
+  }
+
+  Widget _campo(String etiqueta, TextEditingController controlador, IconData icono,
+      {String? pista, bool oculto = false, bool sinCorrector = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(etiqueta, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: context.texto)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controlador,
+          obscureText: oculto,
+          autocorrect: !sinCorrector,
+          decoration: InputDecoration(hintText: pista, prefixIcon: Icon(icono, size: 20)),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Estilo oscuro profesional
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(30.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Logo o Título de la Central
-                const Icon(
-                  Icons.local_taxi,
-                  size: 80,
-                  color: Colors.blueAccent,
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'RADIO TAXIS',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 2,
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(child: MarcaEmpresa(tamano: 56)),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Portal de conductores',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600, color: context.texto),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Portal de Conductores',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey[400]),
-                ),
-                const SizedBox(height: 50),
-
-                TextField(
-                  controller: _empresaController,
-                  autocorrect: false,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Código de empresa (Ej. pulpos)',
-                    labelStyle: TextStyle(color: Colors.grey[400]),
-                    prefixIcon: const Icon(
-                      Icons.business,
-                      color: Colors.blueAccent,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey[800]!),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.blueAccent),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[900],
+                  const SizedBox(height: 6),
+                  Text(
+                    'Ingresa con el código de tu empresa y la placa de tu unidad',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: context.textoSuave),
                   ),
-                ),
-                const SizedBox(height: 20),
-
-                // Campo: Placa del Vehículo
-                TextField(
-                  controller: _placaController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Placa del Vehículo (Ej. 1234-ABC)',
-                    labelStyle: TextStyle(color: Colors.grey[400]),
-                    prefixIcon: const Icon(
-                      Icons.directions_car,
-                      color: Colors.blueAccent,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey[800]!),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.blueAccent),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[900],
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Campo: Contraseña
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true, // Oculta los caracteres
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Contraseña de Acceso',
-                    labelStyle: TextStyle(color: Colors.grey[400]),
-                    prefixIcon: const Icon(
-                      Icons.lock,
-                      color: Colors.blueAccent,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey[800]!),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.blueAccent),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[900],
-                  ),
-                ),
-                const SizedBox(height: 40),
-
-                // Botón de Iniciar Sesión
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _iniciarSesion,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text(
-                          'INICIAR SESIÓN',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                            letterSpacing: 1,
-                          ),
+                  const SizedBox(height: 28),
+                  Tarjeta(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _campo('Código de empresa', _empresaController, Icons.business_outlined,
+                            pista: 'Ej. pulpos', sinCorrector: true),
+                        const SizedBox(height: 16),
+                        _campo('Placa del vehículo', _placaController, Icons.directions_car_outlined,
+                            pista: 'Ej. 1234-ABC', sinCorrector: true),
+                        const SizedBox(height: 16),
+                        _campo('Contraseña', _passwordController, Icons.lock_outline, oculto: true),
+                        const SizedBox(height: 24),
+                        FilledButton(
+                          onPressed: _isLoading ? null : _iniciarSesion,
+                          style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                )
+                              : const Text('Iniciar sesión'),
                         ),
-                ),
-              ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    '¿Olvidaste tu contraseña? Pídela a la central.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13, color: context.textoSuave),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -1,0 +1,10 @@
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam backgroundColor white
+skinparam roundCorner 4
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true

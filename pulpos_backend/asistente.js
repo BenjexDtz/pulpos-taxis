@@ -1,6 +1,6 @@
 const pool = require('./db');
 const { validarRangoDias, numeroEnRango, tipoSegunKm } = require('./validacion');
-const { tarifaV4 } = require('./verificacion');
+const { tarifasEnteras, tarifaEstimada, velocidadCruceKmh } = require('./verificacion');
 
 const DIAS_POR_DEFECTO = 30;
 const DIAS_MAXIMOS = 366;
@@ -85,10 +85,11 @@ const HERRAMIENTAS = [
     herramienta('estado_flota',
         'Choferes registrados, habilitados y con GPS en vivo (posición de los últimos 5 minutos).'),
     herramienta('calcular_tarifa',
-        'Calcula la tarifa de un viaje con los parámetros vigentes de la empresa y su desglose.',
+        'Estima la tarifa del taxímetro (bajada de bandera + distancia o tiempo, en saltos) con los parámetros vigentes de la empresa y su desglose.',
         {
             distancia_km: { type: 'number', description: 'Distancia en km (0.1 a 500).' },
-            espera_min: { type: 'number', description: 'Minutos detenido (0 a 600, por defecto 0).' },
+            espera_min: { type: 'number', description: 'Minutos detenido o en tráfico lento (0 a 600, por defecto 0).' },
+            minutos_en_movimiento: { type: 'number', description: 'Solo cuenta si la empresa usa el modo D (tiempo y distancia a la vez): minutos en movimiento (0 a 600).' },
             superficie: { type: 'string', enum: ['asfalto', 'tierra', 'empedrado'], description: 'Si todo el viaje es de un tipo. Por defecto, asfalto.' },
             km_tierra: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en tierra.' },
             km_empedrado: { type: 'number', description: 'Para un viaje mixto: cuántos de los km fueron en empedrado. El resto de km_tierra y km_empedrado es asfalto.' },
@@ -189,21 +190,32 @@ const EJECUTORES = {
             mixto ? numeroEnRango(args[`km_${s}`] ?? 0, 0, D) : args.superficie === s ? D : 0);
         if (Dt === null || De === null || Dt + De > D + 1e-9)
             return { error: 'km_tierra y km_empedrado deben ser positivos y no sumar más que distancia_km.' };
+        const movimiento = numeroEnRango(args.minutos_en_movimiento ?? 0, 0, 600);
+        if (movimiento === null) return { error: 'minutos_en_movimiento debe estar entre 0 y 600.' };
         const r = await pool.query(`SELECT * FROM parametros_topograficos WHERE empresa_id = $1`, [empresaId]);
         if (!r.rows.length) return { error: 'La empresa no tiene parámetros tarifarios.' };
         const p = r.rows[0];
-        const [Cb, Cl, Pc, FH, Ct] = [p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
-            p.factor_altitud, p.costo_minuto_detencion].map(parseFloat);
-        const [FR, FE] = [p.factor_superficie, p.factor_empedrado].map(parseFloat);
+        const [Cb, Cl, Pc, Ct, FR, FE, B, S] = [p.costo_base_km, p.consumo_litros_km, p.precio_combustible_bs,
+            p.costo_minuto_detencion, p.factor_superficie, p.factor_empedrado,
+            p.bajada_bandera_bs, p.valor_salto_bs].map(parseFloat);
+        const modo = p.modo_tarifa;
+        const t = tarifasEnteras({ Cb, Cl, Pc, FR, FE, Ct, B, S, modo });
         const Da = Math.max(0, D - Dt - De);
         const superficie = tipoSegunKm({ km_asfalto: Da, km_tierra: Dt, km_empedrado: De });
-        const espera = Ct * Td;
-        const recorrido = tarifaV4({ km_asfalto: Da, km_tierra: Dt, km_empedrado: De, Cb, Cl, Pc, FH, FR, FE, Ct, Td }) - espera;
+        const km = { km_asfalto: Da, km_tierra: Dt, km_empedrado: De };
+        const total = tarifaEstimada({ ...km, minutos_detenido: Td, minutos_en_movimiento: movimiento }, t).centavos / 100;
+        const minutosCobrados = Td + (modo === 'D' ? movimiento : 0);
         const r2 = (x) => Math.round(x * 100) / 100;
         return {
             distancia_km: D, km_asfalto: r2(Da), km_tierra: r2(Dt), km_empedrado: r2(De), espera_min: Td, superficie,
-            parametros: { Cb, Cl, Pc, FH, FR, FE, Ct },
-            costo_recorrido: r2(recorrido), costo_espera: r2(espera), tarifa: r2(recorrido + espera),
+            parametros: { Cb, Cl, Pc, FR, FE, Ct, bajada: B, salto: S, modo },
+            tarifa_km: r2(Cb + Cl * Pc), tarifa_hora: r2(Ct * 60),
+            velocidad_cruce_kmh: Math.round(velocidadCruceKmh(t) * 10) / 10,
+            bajada: B,
+            costo_recorrido: r2((Da + Dt * FR + De * FE) * (Cb + Cl * Pc)),
+            costo_tiempo: r2(Ct * minutosCobrados),
+            tarifa: total,
+            supuesto: 'En movimiento se va más rápido que la velocidad de cruce; el total se redondea hacia abajo al salto.',
         };
     },
 
