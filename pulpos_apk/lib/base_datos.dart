@@ -24,7 +24,7 @@ class BaseDatosLocal {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _crearDB,
       onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
@@ -53,7 +53,8 @@ class BaseDatosLocal {
         tarifa_tradicional REAL,
         bajada_bandera REAL,
         valor_salto REAL,
-        modo_tarifa TEXT
+        modo_tarifa TEXT,
+        demostracion INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await _crearTablaPuntos(db);
@@ -125,6 +126,9 @@ class BaseDatosLocal {
       await db.execute('ALTER TABLE viajes ADD COLUMN bajada_bandera REAL');
       await db.execute('ALTER TABLE viajes ADD COLUMN valor_salto REAL');
       await db.execute('ALTER TABLE viajes ADD COLUMN modo_tarifa TEXT');
+    }
+    if (oldVersion < 11) {
+      await db.execute('ALTER TABLE viajes ADD COLUMN demostracion INTEGER NOT NULL DEFAULT 0');
     }
   }
 

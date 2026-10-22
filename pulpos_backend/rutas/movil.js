@@ -46,8 +46,8 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 fecha_hora_viaje, uuid,
                 distancia_ruta_km, tarifa_calculada, verificacion, verificacion_detalle,
                 vibracion_referencia, vibracion_irregular, superficie_respaldo, tarifa_tradicional,
-                modo_tarifa_aplicado, bajada_bandera_aplicada, valor_salto_aplicado
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+                modo_tarifa_aplicado, bajada_bandera_aplicada, valor_salto_aplicado, demostracion
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
              ON CONFLICT (chofer_id, uuid) DO NOTHING
              RETURNING *`,
             [
@@ -70,6 +70,7 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
                 MODOS_TARIFA.includes(b.modo_tarifa_aplicado) ? b.modo_tarifa_aplicado : null,
                 numeroEnRango(b.bajada_bandera_aplicada, 0, 50),
                 numeroEnRango(b.valor_salto_aplicado, 0.01, 5),
+                b.demostracion === true,
             ]
         );
         const nuevo = r.rows[0];
@@ -95,6 +96,7 @@ router.post('/api/viajes/sincronizar', verificarToken, soloChofer, async (req, r
     await auditar(req, {
         accion: 'viaje.sincronizar', entidad: 'viajes_historial', entidad_id: viaje.id_servidor, datos_despues: viaje,
         detalle: [
+            viaje.demostracion && 'Viaje de demostración (ruta simulada)',
             v.estado === 'diferencia' && `Verificación: ${v.detalle}`,
             v.superficie_respaldo === 'dudosa' &&
                 `Superficie dudosa: lo marcado como tierra/empedrado vibró ${v.vibracion_irregular} m/s² frente a ${v.vibracion_referencia} del asfalto`,

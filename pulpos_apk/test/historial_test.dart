@@ -43,6 +43,16 @@ void main() {
       expect(totalDelDia(viajes, hoy), closeTo(3.0, 1e-9));
     });
 
+    test('los viajes de demostración no son ganancias ni cuentan como viajes', () {
+      final viajes = [
+        viaje(DateTime(2026, 10, 7, 9), 4.0),
+        {...viaje(DateTime(2026, 10, 7, 10), 20.0), 'demostracion': 1},
+        {...viaje(DateTime(2026, 10, 7, 11), 1.5), 'demostracion': 0},
+      ];
+      expect(totalDelDia(viajes, hoy), closeTo(5.5, 1e-9));
+      expect(viajesDelDia(viajes, hoy).length, 2);
+    });
+
     test('tarifa guardada como entero en SQLite', () {
       final viajes = [
         {'fecha_hora': '2026-10-07T10:00:00.000', 'tarifa_total': 7},

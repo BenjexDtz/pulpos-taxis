@@ -265,6 +265,26 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.match(rows[0].verificacion_detalle, /Cb 4 \(vigente 3\.00\)/);
     });
 
+    test('viaje de demostración: se ve en el panel pero no cuenta en estadísticas, CSV ni asistente', async () => {
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const dia = '2026-10-12';
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token, body: {
+            distancia_km: 1, km_asfalto: 1, tiempo_detencion_min: 0, tarifa_cobrada: 5,
+            fecha_hora_viaje: `${dia}T09:00:00`, demostracion: true,
+        } });
+        assert.equal(r.status, 201);
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const lista = (await pedir('GET', `/api/admin/viajes?desde=${dia}&hasta=${dia}`, { token: pulpos })).json;
+        assert.deepEqual(lista.map(v => [v.id, v.demostracion]), [[r.json.id_servidor, true]]);
+
+        const e = (await pedir('GET', `/api/admin/estadisticas?desde=${dia}&hasta=${dia}`, { token: pulpos })).json;
+        assert.equal(e.resumen.viajes, 0);
+        assert.equal(e.por_dia.reduce((s, d) => s + d.viajes, 0), 0);
+        assert.equal((await pedir('GET', `/api/admin/viajes/exportar?desde=${dia}&hasta=${dia}`, { token: pulpos })).status, 404);
+        const { rows } = await pool.query(`SELECT count(*)::int AS n FROM viajes_historial WHERE demostracion`);
+        assert.equal(rows[0].n, 1);
+    });
+
     test('superadmin da de alta una empresa con su gerente, que empieza vacía', async () => {
         const sa = await loginAdmin('superadmin@plataforma.bo');
         const r = await pedir('POST', '/api/plataforma/empresas', { token: sa, body: {
@@ -335,7 +355,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
                     sum(distancia_km)::float AS km, count(*) FILTER (WHERE tipo_superficie = 'mixto')::int AS mixtos,
                     sum((km_asfalto > 0)::int + (km_tierra > 0)::int + (km_empedrado > 0)::int)::int AS tramos
              FROM viajes_historial v JOIN empresas em ON em.id = v.empresa_id
-             WHERE em.codigo = 'pulpos' AND fecha_hora_viaje >= CURRENT_DATE - 29 AND fecha_hora_viaje < CURRENT_DATE + 1`)).rows[0];
+             WHERE em.codigo = 'pulpos' AND NOT v.demostracion AND fecha_hora_viaje >= CURRENT_DATE - 29 AND fecha_hora_viaje < CURRENT_DATE + 1`)).rows[0];
         assert.ok(real.n >= 5);
         assert.equal(e.resumen.viajes, real.n);
         assert.equal(Number(e.resumen.recaudado), real.total);
@@ -366,7 +386,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const resumen = await ejecutar('resumen_periodo');
         const real = (await pool.query(
             `SELECT count(*)::int AS n, round(sum(tarifa_cobrada)::numeric, 2)::float AS total
-             FROM viajes_historial WHERE empresa_id = $1 AND fecha_hora_viaje >= $2::date AND fecha_hora_viaje < $3::date + 1`,
+             FROM viajes_historial WHERE empresa_id = $1 AND NOT demostracion AND fecha_hora_viaje >= $2::date AND fecha_hora_viaje < $3::date + 1`,
             [id, resumen.desde, resumen.hasta])).rows[0];
         assert.ok(real.n >= 5);
         assert.deepEqual([resumen.viajes, resumen.recaudado], [real.n, real.total]);

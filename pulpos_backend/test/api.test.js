@@ -274,7 +274,7 @@ describe('Sincronización de viajes', () => {
         assert.equal(r.status, 201);
         assert.equal(r.json.verificacion, 'ok');
         assert.deepEqual(insert().params.slice(18, 20), [0.1, 0.38]);
-        assert.deepEqual(insert().params.slice(20), ['ok', null, null, null, null, null, null, null, null]);
+        assert.deepEqual(insert().params.slice(20), ['ok', null, null, null, null, null, null, null, null, false]);
         const pts = insertPuntos();
         assert.deepEqual(pts.params[0], 12);
         assert.deepEqual(pts.params.slice(1, 2), [[0, 1, 2]]);
@@ -370,6 +370,20 @@ describe('Sincronización de viajes', () => {
         assert.equal(r.status, 201);
         assert.equal(r.json.verificacion, 'diferencia');
         assert.match(insert().params[21], /está en el futuro/);
+    });
+
+    test('modo demostración: solo un true explícito marca el viaje, que se verifica y audita igual', async () => {
+        for (const [enviado, guardado] of [[true, true], ['true', false], [1, false], [undefined, false]]) {
+            responder = (sql) => sql.includes('INSERT INTO viajes_historial') ? { rows: [{ id_servidor: 19, demostracion: guardado }] } : { rows: [] };
+            consultas = [];
+            eventos = [];
+            const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...conParametros, ruta, demostracion: enviado } });
+            assert.equal(r.status, 201);
+            assert.equal(r.json.verificacion, 'ok');
+            assert.equal(insert().params[29], guardado, String(enviado));
+            const detalle = eventos.find(e => e.accion === 'viaje.sincronizar').detalle ?? '';
+            assert.equal(/demostración/.test(detalle), guardado);
+        }
     });
 
     test('ruta dañada: el viaje se guarda sin puntos y queda como diferencia', async () => {

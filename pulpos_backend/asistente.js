@@ -54,7 +54,8 @@ const rango = ({ desde, hasta }, hoy) => {
     return { desde: d, hasta: h };
 };
 
-const EN_RANGO = 'v.empresa_id = $1 AND v.fecha_hora_viaje >= $2::date AND v.fecha_hora_viaje < $3::date + 1';
+// Los viajes del modo demostración no cuentan en ninguna respuesta
+const EN_RANGO = 'v.empresa_id = $1 AND NOT v.demostracion AND v.fecha_hora_viaje >= $2::date AND v.fecha_hora_viaje < $3::date + 1';
 
 const fechas = {
     desde: { type: 'string', description: 'Fecha inicial YYYY-MM-DD (incluida). Por defecto, 30 días antes de "hasta".' },
@@ -142,7 +143,7 @@ const EJECUTORES = {
             `SELECT c.nombre_completo AS nombre, c.placa_vehiculo AS placa, c.estado_activo AS habilitado,
                     to_char(c.ultima_actualizacion, 'YYYY-MM-DD HH24:MI') AS ultima_posicion_gps,
                     (SELECT to_char(max(u.fecha_hora_viaje), 'YYYY-MM-DD HH24:MI') FROM viajes_historial u
-                      WHERE u.chofer_id = c.id AND u.empresa_id = c.empresa_id) AS ultimo_viaje,
+                      WHERE u.chofer_id = c.id AND u.empresa_id = c.empresa_id AND NOT u.demostracion) AS ultimo_viaje,
                     count(v.id_servidor)::int AS viajes_periodo,
                     coalesce(round(sum(v.tarifa_cobrada), 2), 0)::float AS recaudado_periodo,
                     coalesce(round(sum(v.distancia_km), 1), 0)::float AS km_periodo
@@ -160,7 +161,7 @@ const EJECUTORES = {
             `SELECT c.nombre_completo AS nombre, c.placa_vehiculo AS placa,
                     max(v.fecha_hora_viaje)::date::text AS ultimo_viaje
              FROM choferes c
-             LEFT JOIN viajes_historial v ON v.chofer_id = c.id AND v.empresa_id = c.empresa_id
+             LEFT JOIN viajes_historial v ON v.chofer_id = c.id AND v.empresa_id = c.empresa_id AND NOT v.demostracion
              WHERE c.empresa_id = $1 AND c.estado_activo
              GROUP BY c.id
              HAVING max(v.fecha_hora_viaje) IS NULL OR max(v.fecha_hora_viaje) < $2::date

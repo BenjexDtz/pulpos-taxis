@@ -115,6 +115,7 @@ class Viaje {
   - vibracionIrregular : decimal
   - superficieRespaldo : String
   - tarifaTradicional : decimal
+  - demostracion : boolean
 }
 
 class PuntoRuta {

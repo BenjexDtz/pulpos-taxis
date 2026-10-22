@@ -68,7 +68,7 @@ export default function Informes({
   const viajesFiltrados = viajes.filter(v =>
     (v.chofer?.toLowerCase().includes(texto) || v.placa_vehiculo?.toLowerCase().includes(texto)) &&
     (!soloDiferencias || v.verificacion === 'diferencia'));
-  const conDiferencia = viajes.filter(v => v.verificacion === 'diferencia').length;
+  const conDiferencia = viajes.filter(v => !v.demostracion && v.verificacion === 'diferencia').length;
   const r = estadisticas?.resumen;
   const a = estadisticas?.anterior;
 
@@ -185,6 +185,11 @@ export default function Informes({
                     <Insignia color={v.tipo_superficie === 'asfalto' ? 'neutro' : 'aviso'}>
                       {v.tipo_superficie === 'mixto' ? 'Mixto' : SUPERFICIES[v.tipo_superficie]?.nombre ?? 'Asfalto'}
                     </Insignia>
+                    {v.demostracion && (
+                      <span title="Viaje del modo demostración: no cuenta en las cifras ni en el CSV">
+                        <Insignia color="marca" className="ml-1">Demo</Insignia>
+                      </span>
+                    )}
                   </td>
                   <td className={`${td} font-semibold text-gray-800 dark:text-white/90`}>{formatoMoneda(v.tarifa_total, m)}</td>
                   <td className={td}>
