@@ -3,7 +3,7 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
-## [Sin publicar]
+## [1.4.0] - 2026-10-22
 
 ### Añadido
 - **Parámetros verificables**: cada cambio de tarifa queda en un historial (`parametros_historial`, lo guarda un trigger). Al recibir un viaje, el servidor comprueba que se cobró con alguna tarifa que la empresa tuvo; si no (por ejemplo, una app modificada que sube el factor de la tierra), el viaje queda como diferencia con el detalle de qué parámetro no coincide y cuál es el vigente. Antes solo se comprobaba que el importe fuera coherente con los parámetros que enviaba la propia app.
@@ -98,6 +98,7 @@ Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro off
 ### Migraciones
 Para una base existente, aplicar en orden `database/migraciones/001` a `004`.
 
+[1.4.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.0.0...v1.1.0
