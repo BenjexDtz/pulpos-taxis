@@ -3,7 +3,7 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
-## [Sin publicar]
+## [1.5.0] - 2026-10-22
 
 ### Añadido
 - **Modo demostración en la app**: reproduce un recorrido simulado por El Alto (avenida, semáforo, calle de tierra, empedrado y vuelta al asfalto) cinco veces más rápido, sin GPS, para mostrar el sistema en un aula. El chofer marca la superficie de cada tramo y la vibración simulada le sugiere el cambio; el taxímetro y la verificación son los mismos de un viaje real. El viaje se sincroniza marcado como demostración: el panel lo muestra con la insignia "Demo", su ruta y su verificación, pero no cuenta en las cifras, informes, CSV, asistente ni en el total del historial de la app.
@@ -111,6 +111,7 @@ Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro off
 ### Migraciones
 Para una base existente, aplicar en orden `database/migraciones/001` a `004`.
 
+[1.5.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.1.0...v1.2.0
