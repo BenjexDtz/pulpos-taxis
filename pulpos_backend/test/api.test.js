@@ -314,6 +314,64 @@ describe('Sincronización de viajes', () => {
         assert.match(eventos.find(e => e.accion === 'viaje.sincronizar').detalle, /no coincide con la fórmula/);
     });
 
+    const VERSION = {
+        costo_base_km: '2.00', consumo_litros_km: '0.100', precio_combustible_bs: '6.96', costo_minuto_detencion: '0.50',
+        factor_superficie: '2.50', factor_empedrado: '2.00', factor_altitud: '1.40',
+        bajada_bandera_bs: '2.00', valor_salto_bs: '0.50', modo_tarifa: 'S',
+    };
+    const conHistorial = (versiones) => (sql) => {
+        if (sql.includes('FROM parametros_historial')) return { rows: versiones };
+        return sql.includes('INSERT INTO viajes_historial') ? { rows: [{ id_servidor: 18 }] } : { rows: [] };
+    };
+
+    test('parámetros de una tarifa que la empresa tuvo (vigente o anterior): el viaje queda ok', async () => {
+        for (const versiones of [[VERSION], [{ ...VERSION, factor_superficie: '3.00' }, VERSION]]) {
+            responder = conHistorial(versiones);
+            const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...conParametros, ruta } });
+            assert.equal(r.json.verificacion, 'ok');
+        }
+        const filtro = consultas.find(c => c.sql.includes('FROM parametros_historial'));
+        assert.deepEqual(filtro.params, [2]);
+    });
+
+    test('parámetros que la empresa nunca tuvo: se guarda igual, como diferencia y auditado', async () => {
+        responder = conHistorial([VERSION]);
+        // Una app modificada cobra la tierra con FR 5 y su tarifa cuadra con ese FR
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER,
+            body: { ...conParametros, factor_superficie_aplicado: 5, ruta } });
+        assert.equal(r.status, 201);
+        assert.equal(r.json.verificacion, 'diferencia');
+        assert.match(insert().params[21], /ninguna tarifa de la empresa: FR 5 \(vigente 2\.50\)/);
+        assert.match(eventos.find(e => e.accion === 'viaje.sincronizar').detalle, /FR 5/);
+    });
+
+    test('taxímetro v5: compara bajada, salto y modo pero no el factor de altitud', async () => {
+        const v5 = { ...conParametros, factor_altitud_aplicado: 1, modo_tarifa_aplicado: 'S', bajada_bandera_aplicada: 2, valor_salto_aplicado: 0.5 };
+        responder = conHistorial([VERSION]);
+        await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: v5 });
+        assert.doesNotMatch(insert().params[21] ?? '', /parámetros/);
+        consultas = [];
+        await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...v5, modo_tarifa_aplicado: 'D' } });
+        assert.match(insert().params[21], /modo D \(vigente S\)/);
+    });
+
+    test('tarifa, detención o fecha inválidas → 400 sin insertar', async () => {
+        for (const malo of [{ tarifa_cobrada: -1 }, { tarifa_cobrada: 'x' }, { tarifa_cobrada: undefined },
+            { tiempo_detencion_min: -2 }, { tiempo_detencion_min: 5000 },
+            { fecha_hora_viaje: 'ayer' }, { fecha_hora_viaje: 20261007 }, { fecha_hora_viaje: undefined }])
+            assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...viaje, ...malo } })).status, 400, JSON.stringify(malo));
+        assert.equal(insert(), undefined);
+    });
+
+    test('fecha en el futuro (reloj del teléfono adelantado): se guarda como diferencia', async () => {
+        responder = conHistorial([]);
+        const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER,
+            body: { ...viaje, fecha_hora_viaje: '2099-01-01T10:00:00' } });
+        assert.equal(r.status, 201);
+        assert.equal(r.json.verificacion, 'diferencia');
+        assert.match(insert().params[21], /está en el futuro/);
+    });
+
     test('ruta dañada: el viaje se guarda sin puntos y queda como diferencia', async () => {
         responder = (sql) => sql.includes('INSERT INTO viajes_historial') ? { rows: [{ id_servidor: 14 }] } : { rows: [] };
         const r = await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { ...conParametros, ruta: [[1, 2]] } });

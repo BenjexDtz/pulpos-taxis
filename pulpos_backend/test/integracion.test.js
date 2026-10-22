@@ -154,9 +154,9 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const ruta = Array.from({ length: 41 }, (_, i) =>
             [-16.5, -68.19 + i * paso, i * 5, i > 30 ? 1 : 0, ...(i === 0 ? [] : [i > 30 ? 1.5 : 0.5])]);
         const body = {
-            distancia_km: 2, km_asfalto: 1.5, km_tierra: 0.5, tiempo_detencion_min: 0, tarifa_cobrada: 10.38,
+            distancia_km: 2, km_asfalto: 1.5, km_tierra: 0.5, tiempo_detencion_min: 0, tarifa_cobrada: 7.41,
             costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
-            factor_altitud_aplicado: 1.4, factor_superficie_aplicado: 2.5, costo_minuto_aplicado: 0.5,
+            factor_altitud_aplicado: 1, factor_superficie_aplicado: 2.5, costo_minuto_aplicado: 0.5,
             fecha_hora_viaje: '2026-10-09T10:00:00', uuid: '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d', ruta,
         };
         const r = await pedir('POST', '/api/viajes/sincronizar', { token, body });
@@ -166,7 +166,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const pulpos = await loginAdmin('admin@pulpos.bo');
         const detalle = (await pedir('GET', `/api/admin/viajes/${r.json.id_servidor}/ruta`, { token: pulpos })).json;
         assert.equal(detalle.puntos.length, 41);
-        assert.deepEqual([detalle.viaje.verificacion, detalle.viaje.distancia_ruta_km, detalle.viaje.tarifa_calculada], ['ok', '2.000', '10.38']);
+        assert.deepEqual([detalle.viaje.verificacion, detalle.viaje.distancia_ruta_km, detalle.viaje.tarifa_calculada], ['ok', '2.000', '7.41']);
         assert.equal(detalle.puntos.filter(p => p.superficie === 'tierra').length, 10);
         assert.deepEqual([detalle.puntos[0].vibracion, detalle.puntos[40].vibracion], [null, 1.5]);
         assert.deepEqual([detalle.viaje.superficie_respaldo, detalle.viaje.vibracion_referencia, detalle.viaje.vibracion_irregular],
@@ -235,6 +235,34 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const cfg = (await pedir('GET', '/api/config', { token: illimani })).json;
         assert.equal(cfg.empresa.codigo, 'illimani');
         assert.equal(cfg.parametros.costo_base_km, '2.50');
+    });
+
+    test('cada cambio de tarifa queda en el historial y un viaje cobrado con otra tarifa queda como diferencia', async () => {
+        const versiones = async (codigo) => (await pool.query(
+            `SELECT h.costo_base_km FROM parametros_historial h JOIN empresas e ON e.id = h.empresa_id
+             WHERE e.codigo = $1 ORDER BY h.id`, [codigo])).rows.map(r => r.costo_base_km);
+        assert.deepEqual(await versiones('pulpos'), ['2.00', '3.00']);
+        assert.deepEqual(await versiones('illimani'), ['2.50']);
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        // Guardar sin cambiar la tarifa no crea otra versión
+        await pedir('PUT', '/api/admin/parametros', { token: pulpos, body: {
+            zona_ciudad: 'El Alto (centro)', costo_base_km: 3, consumo_litros_km: 0.1, precio_combustible_bs: 6.96,
+            factor_altitud: 1.4, factor_superficie: 2.5, factor_empedrado: 2, costo_minuto_detencion: 0.5,
+            bajada_bandera_bs: 3, valor_salto_bs: 0.2, modo_tarifa: 'D',
+        } });
+        assert.equal((await versiones('pulpos')).length, 2);
+
+        const { token } = await loginChofer('pulpos', '1234-KKK');
+        // Un viaje hecho sin red con la tarifa anterior sigue siendo válido
+        const anterior = { distancia_km: 1, km_asfalto: 1, tiempo_detencion_min: 0, tarifa_cobrada: 2.7,
+            costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
+            factor_altitud_aplicado: 1, factor_superficie_aplicado: 2.5, factor_empedrado_aplicado: 2, costo_minuto_aplicado: 0.5,
+            fecha_hora_viaje: '2026-10-10T08:00:00' };
+        assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body: anterior })).json.verificacion, 'sin_ruta');
+        const ajeno = await pedir('POST', '/api/viajes/sincronizar', { token, body: { ...anterior, costo_base_aplicado: 4, tarifa_cobrada: 4.7 } });
+        assert.equal(ajeno.json.verificacion, 'diferencia');
+        const { rows } = await pool.query('SELECT verificacion_detalle FROM viajes_historial WHERE id_servidor = $1', [ajeno.json.id_servidor]);
+        assert.match(rows[0].verificacion_detalle, /Cb 4 \(vigente 3\.00\)/);
     });
 
     test('superadmin da de alta una empresa con su gerente, que empieza vacía', async () => {
