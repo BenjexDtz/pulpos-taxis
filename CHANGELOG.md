@@ -3,7 +3,7 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
-## [Sin publicar]
+## [1.3.0] - 2026-10-22
 
 ### Cambiado
 - **Taxímetro v5 (modo S de la Directiva 2014/32/UE, Anexo IX)** en lugar de la fórmula v4. En cada tramo GPS se cobra el tiempo (`t × Th`, con `Th = 60 × Ct`) o la distancia (`d × F × Tkm`, con `Tkm = Cb + Cl × Pc` y `F` = 1, FR o FE según la superficie), lo que sea mayor; el modo D cobra ambos. El importe empieza en la bajada de bandera y avanza en saltos completos. Bajo la velocidad de cruce `Th / (Tkm × F)` gana el tiempo, así la espera ya no depende de un detector de detención aparte y el tiempo en marcha no se cobra dos veces.
@@ -86,5 +86,7 @@ Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro off
 ### Migraciones
 Para una base existente, aplicar en orden `database/migraciones/001` a `004`.
 
+[1.3.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/BenjexDtz/pulpos-taxis/releases/tag/v1.0.0

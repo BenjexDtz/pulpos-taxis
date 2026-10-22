@@ -36,7 +36,7 @@ npm run lint
 # App Flutter
 cd pulpos_apk && flutter pub get
 flutter test                                              # todos
-flutter test test/detector_detencion_test.dart            # un archivo
+flutter test test/taximetro_test.dart                     # un archivo
 flutter test --plain-name "en movimiento constante"       # un test por nombre
 flutter analyze
 
