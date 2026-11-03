@@ -1,0 +1,84 @@
+@startuml paq01_paquetes
+!include estilo.iuml
+title Diagrama de paquetes – Estructura de los módulos
+skinparam packageStyle folder
+
+package pulpos_apk {
+  package lib {
+    package "Presentación" as apk_ui <<main.dart, pantalla_login.dart, pantalla_historial.dart, tema.dart>> {
+    }
+    package "Dominio" as apk_dom <<taximetro.dart, calculadora.dart, rugosidad.dart, demostracion.dart>> {
+    }
+    package "Servicios" as apk_srv <<motor_gps.dart, sincronizador.dart, api_sync.dart, sesion.dart, config.dart>> {
+    }
+    package "Persistencia" as apk_per <<base_datos.dart, viaje_en_curso.dart>> {
+    }
+  }
+  package test as apk_test {
+  }
+}
+
+package pulpos_backend {
+  package "app.js / index.js" as be_app {
+  }
+  package rutas {
+  }
+  package middlewares {
+  }
+  package "módulos" as be_mod <<verificacion.js, validacion.js, auditoria.js, mfa.js, asistente.js, utilidades.js, db.js>> {
+  }
+  package test as be_test {
+  }
+}
+
+package pulpos_web_admin {
+  package src {
+    package "App.jsx / main.jsx" as web_app {
+    }
+    package vistas {
+    }
+    package componentes {
+      package layout {
+      }
+      package tablero {
+      }
+      package ui {
+      }
+    }
+    package contexto {
+    }
+  }
+}
+
+package database {
+  package "init.sql" as db_init {
+  }
+  package migraciones {
+  }
+  package auditoria {
+  }
+}
+
+apk_ui ..> apk_dom
+apk_ui ..> apk_srv
+apk_ui ..> apk_per
+apk_srv ..> apk_per
+apk_srv ..> apk_dom
+apk_test ..> apk_dom
+
+be_app ..> rutas
+be_app ..> middlewares
+rutas ..> middlewares
+rutas ..> be_mod
+be_test ..> be_app
+
+web_app ..> vistas
+web_app ..> componentes
+web_app ..> contexto
+vistas ..> componentes
+
+apk_srv ..> rutas : HTTP
+web_app ..> rutas : HTTP
+be_mod ..> db_init : SQL
+be_mod ..> auditoria : SQL
+@enduml

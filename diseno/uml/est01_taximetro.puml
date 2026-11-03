@@ -1,0 +1,24 @@
+@startuml est01_taximetro
+!include estilo.iuml
+title Diagrama de estados – Taxímetro
+hide empty description
+
+state LIBRE
+state OCUPADO
+OCUPADO : punto GPS aceptado / registrar(punto):
+OCUPADO : sumar el tramo y los saltos
+OCUPADO : marcar superficie / cambia el factor
+OCUPADO : de los tramos siguientes
+state A_PAGAR
+state VIAJE_INTERRUMPIDO
+VIAJE_INTERRUMPIDO : el viaje en curso y sus puntos
+VIAJE_INTERRUMPIDO : quedan guardados en el teléfono
+
+[*] --> LIBRE
+LIBRE --> OCUPADO : iniciar viaje / ocupar(inicio):\nbajada de bandera
+OCUPADO --> A_PAGAR : cobrar / cobrar(segundosFinal, superficie):\ncerrar el último tramo, congelar el importe\ny guardar el viaje
+A_PAGAR --> LIBRE : diálogo de la tarifa de palabra cerrado /\nliberar()
+OCUPADO --> VIAJE_INTERRUMPIDO : la app se cierra
+VIAJE_INTERRUMPIDO --> OCUPADO : CONTINUAR /\nTaximetro.desdeRuta(ruta)
+VIAJE_INTERRUMPIDO --> A_PAGAR : COBRAR ASÍ /\ncobrar en el último punto
+@enduml

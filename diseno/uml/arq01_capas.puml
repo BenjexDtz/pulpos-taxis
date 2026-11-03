@@ -1,0 +1,31 @@
+@startuml arq01_capas
+!include estilo.iuml
+title Arquitectura en capas
+
+package "Capa de presentación" as PRES {
+  rectangle "App móvil (Flutter)\nPantallaPrueba, PantallaLogin,\nPantallaHistorial" as P1
+  rectangle "Panel web (React)\nCentral, Informes, Flota, Parámetros,\nEmpresa, Auditoría, Seguridad, Plataforma" as P2
+}
+
+package "Capa de lógica" as LOG {
+  rectangle "Lógica en el teléfono\nTaximetro, RecorridoPorSuperficie,\nSugerenciaSuperficie, Sincronizador" as L1
+  rectangle "API REST (Express)\nrutas, middlewares (JWT, MFA, roles),\nverificación, validación, auditoría,\nasistente de IA" as L2
+}
+
+package "Capa de datos" as DAT {
+  database "SQLite\n(viajes y puntos pendientes)" as D1
+  database "Base principal\n(PostgreSQL)" as D2
+  database "Base de auditoría\n(PostgreSQL)" as D3
+}
+
+P1 --> L1
+P1 ..> L2 : HTTPS / JSON
+P2 --> L2 : HTTPS / JSON
+L1 --> D1
+L1 ..> L2 : sincronización
+L2 --> D2
+L2 --> D3
+
+PRES -[hidden]down- LOG
+LOG -[hidden]down- DAT
+@enduml

@@ -1,0 +1,38 @@
+@startuml comp01_componentes
+!include estilo.iuml
+title Diagrama de componentes – Sistema de tarificación
+
+package "Teléfono Android" {
+  component "App móvil\n(Flutter)" as APP
+  database "SQLite local" as SQLITE
+  component "GPS y acelerómetro" as SENSORES
+}
+
+package "Navegador" {
+  component "Panel web\n(React)" as PANEL
+}
+
+package "Servidor" {
+  interface "API móvil" as IMOVIL
+  interface "API del panel" as IPANEL
+  component "API REST\n(Node.js / Express)" as API
+  database "Base principal\n(PostgreSQL)" as BD
+  database "Base de auditoría\n(PostgreSQL)" as AUD
+}
+
+cloud "Servicio LLM\n(API compatible con OpenAI:\nGroq u Ollama)" as LLM
+cloud "OpenStreetMap\n(teselas del mapa)" as OSM
+cloud "unpkg\n(Leaflet)" as UNPKG
+
+IMOVIL -- API
+IPANEL -- API
+APP --> SENSORES : posiciones y vibración
+APP --> SQLITE : viajes y puntos pendientes
+APP ..> IMOVIL : HTTPS + JWT chofer\n/api/login, /api/config,\n/api/posicion, /api/viajes/sincronizar
+PANEL ..> IPANEL : HTTPS + JWT admin (MFA)\n/api/admin/*, /api/plataforma/*
+API --> BD : SQL (pg)
+API --> AUD : INSERT/SELECT\n(auditor_app)
+API ..> LLM : /chat/completions\n(herramientas fijas)
+PANEL ..> OSM : teselas
+PANEL ..> UNPKG : biblioteca de mapas
+@enduml

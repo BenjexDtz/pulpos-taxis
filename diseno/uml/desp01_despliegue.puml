@@ -1,0 +1,45 @@
+@startuml desp01_despliegue
+!include estilo.iuml
+title Diagrama de despliegue
+
+node "Teléfono Android" as TEL {
+  artifact "PulposTaxis.apk\n(Flutter)" as APK
+  database "SQLite" as SQLITE
+}
+
+node "PC del administrador" as PCADM {
+  node "Navegador web" as NAV
+}
+
+cloud "ngrok\n(túnel HTTPS)" as NGROK
+
+node "Servidor (Docker Compose)" as SRV {
+  node "web_admin\n<<contenedor>>\nnginx" as WEB {
+    artifact "panel React\n(build de Vite)"
+  }
+  node "backend\n<<contenedor>>\nNode.js 22" as BE {
+    artifact "API Express"
+  }
+  node "db\n<<contenedor>>\nPostgreSQL 16" as DB {
+    database "pulpos_db"
+  }
+  node "auditoria\n<<contenedor>>\nPostgreSQL 16" as AUD {
+    database "pulpos_auditoria"
+  }
+  node "ngrok\n<<agente>>" as AGENTE
+}
+
+cloud "Servicio LLM (Groq)" as LLM
+cloud "OpenStreetMap / unpkg" as OSM
+
+APK -- SQLITE
+APK --> NGROK : HTTPS
+NGROK --> AGENTE
+AGENTE --> BE : HTTP :3000
+NAV --> WEB : HTTP :8080
+NAV --> BE : HTTP :3000 (API)
+NAV --> OSM : HTTPS
+BE --> DB : TCP :5432
+BE --> AUD : TCP :5432 (red interna)
+BE --> LLM : HTTPS
+@enduml

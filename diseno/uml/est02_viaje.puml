@@ -1,0 +1,44 @@
+@startuml est02_viaje
+!include estilo.iuml
+title Diagrama de estados – Viaje
+hide empty description
+
+state "Teléfono (SQLite)" as TELEFONO {
+  state EN_CURSO
+  EN_CURSO : ViajeEnCurso + puntos_viaje
+  state PENDIENTE
+  PENDIENTE : estado_sincronizacion = 0
+  PENDIENTE : registrar tarifa de palabra / tarifa_tradicional
+  PENDIENTE : sin conexión, 400, 401 o 403 / reintentar más tarde
+  state SINCRONIZADO
+  SINCRONIZADO : estado_sincronizacion = 1
+  SINCRONIZADO : ruta borrada del teléfono
+
+  [*] --> EN_CURSO : iniciar viaje
+  EN_CURSO --> PENDIENTE : cobrar / guardar en viajes
+  PENDIENTE --> SINCRONIZADO : 201 creado o 200 duplicado
+  SINCRONIZADO --> [*]
+}
+
+state "Servidor (verificación)" as SERVIDOR {
+  state verificar <<choice>>
+  state OK
+  OK : ruta y tarifa cuadran
+  state DIFERENCIA
+  DIFERENCIA : tarifa, km, parámetros o fecha
+  DIFERENCIA : no cuadran (no se rechaza)
+  state SIN_RUTA
+  SIN_RUTA : llegó sin ruta
+  state SIN_VERIFICAR
+  SIN_VERIFICAR : faltan parámetros
+  SIN_VERIFICAR : para recalcular
+
+  [*] --> verificar
+  verificar --> OK
+  verificar --> DIFERENCIA
+  verificar --> SIN_RUTA
+  verificar --> SIN_VERIFICAR
+}
+
+PENDIENTE --> SERVIDOR : POST /api/viajes/sincronizar
+@enduml

@@ -1,0 +1,33 @@
+@startuml act01_proceso_actual
+!include estilo.iuml
+title Diagrama de actividades – Cobro del viaje sin el sistema
+
+|Pasajero|
+start
+:Llamar a la central\npidiendo un taxi;
+|Central|
+:Recibir la llamada;
+:Asignar una unidad por radio;
+|Chofer|
+:Recibir la asignación por radio;
+:Recoger al pasajero;
+:Realizar el viaje;
+:Estimar el precio "a ojo"\no proponerlo de palabra;
+|Pasajero|
+if (¿El pasajero acepta el precio?) then (sí)
+else (no)
+  repeat
+    |Chofer|
+    :Regatear el precio con el pasajero;
+    |Pasajero|
+  repeat while (¿Acuerdan un precio?) is (no) not (sí)
+endif
+:Pagar en efectivo;
+|Chofer|
+:Recibir el pago;
+note right
+  No queda ningún registro
+  del viaje ni del monto cobrado
+end note
+stop
+@enduml
