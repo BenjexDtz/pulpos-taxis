@@ -215,7 +215,7 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 {['#', 'Fecha', ...(plataforma ? ['Empresa'] : []), 'Actor', 'Acción', 'Objeto', 'Resultado', 'IP'].map(h =>
-                  <th key={h} className={`${th} ${h === 'IP' ? 'hidden xl:table-cell' : ''}`}>{h}</th>)}
+                  <th key={h} className={`${th} ${h === 'IP' || h === 'Objeto' ? 'hidden xl:table-cell' : ''}`}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -239,7 +239,7 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
                       <p className="text-gray-800 dark:text-white/90">{ACCIONES[ev.accion] ?? ev.accion}</p>
                       {ev.detalle && <p className="truncate text-theme-xs sm:max-w-xs">{ev.detalle}</p>}
                     </td>
-                    <td data-titulo="Objeto" className={`${td} text-theme-xs`}>{ev.entidad ? `${ev.entidad}${ev.entidad_id ? ` #${ev.entidad_id}` : ''}` : '—'}</td>
+                    <td data-titulo="Objeto" className={`${td} hidden text-theme-xs xl:table-cell`}>{ev.entidad ? `${ev.entidad}${ev.entidad_id ? ` #${ev.entidad_id}` : ''}` : '—'}</td>
                     <td data-titulo="Resultado" className={td}><Insignia color={COLOR_RESULTADO[ev.resultado] ?? 'neutro'}>{RESULTADOS[ev.resultado] ?? ev.resultado}</Insignia></td>
                     <td data-titulo="IP" className={`${td} hidden font-mono text-theme-xs xl:table-cell`}>{ev.ip ?? '—'}</td>
                   </tr>
@@ -264,7 +264,7 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
                               <Json titulo="Después" datos={ev.datos_despues} />
                             </div>
                           )}
-                        <p className="break-all font-mono text-theme-xs text-gray-500 dark:text-gray-400">IP: {ev.ip ?? '—'} · SHA-256: {ev.hash}</p>
+                        <p className="break-all font-mono text-theme-xs text-gray-500 dark:text-gray-400">{ev.entidad && `Objeto: ${ev.entidad}${ev.entidad_id ? ` #${ev.entidad_id}` : ''} · `}IP: {ev.ip ?? '—'} · SHA-256: {ev.hash}</p>
                       </td>
                     </tr>
                   )}

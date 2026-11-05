@@ -162,6 +162,7 @@
     grid-column: 2;
     justify-self: start;
     min-width: 0;
+    max-width: 100%;
   }
   .tabla-apilada td[data-titulo]::before {
     content: attr(data-titulo);
