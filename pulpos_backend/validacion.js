@@ -32,6 +32,43 @@ const textoOpcional = (crudo, max) => {
     return { valor: crudo.trim() || null };
 };
 
+// Mismas reglas que src/validaciones.js del panel y lib/validaciones.dart de la app
+const limpiarEspacios = (s) => s.trim().replace(/\s+/g, ' ');
+
+const normalizarPlaca = (s) => s.toUpperCase().replace(/[\s-]/g, '');
+
+const errorNombrePersona = (crudo) => {
+    if (typeof crudo !== 'string') return '⚠️ El nombre es obligatorio.';
+    const s = limpiarEspacios(crudo);
+    if (s.length < 3 || s.length > 100) return '⚠️ El nombre debe tener entre 3 y 100 caracteres.';
+    if (!/^\p{L}[\p{L} .'’-]*$/u.test(s)) return '⚠️ El nombre solo admite letras, sin números ni símbolos.';
+    return null;
+};
+
+const errorPlaca = (crudo) => typeof crudo === 'string' && /^\d{4}[A-Z]{3}$/.test(normalizarPlaca(crudo))
+    ? null : '⚠️ La placa debe tener 4 números y 3 letras, por ejemplo 2456ZBK.';
+
+// bcrypt solo usa los primeros 72 bytes, y la app quita los espacios de los extremos al iniciar sesión
+const errorPassword = (crudo, min) => {
+    if (typeof crudo !== 'string' || crudo.length < min) return `⚠️ La contraseña debe tener al menos ${min} caracteres.`;
+    if (Buffer.byteLength(crudo) > 72) return '⚠️ La contraseña no puede pasar de 72 caracteres.';
+    if (/\s/.test(crudo)) return '⚠️ La contraseña no puede tener espacios.';
+    return null;
+};
+
+const REGLAS_TEXTO = {
+    lugar: /^\p{L}[\p{L} .'’-]*$/u,
+    nombreComercial: /^(?=.*\p{L})[\p{L}\d .,'’&()-]+$/u,
+    nit: /^\d{5,20}$/,
+    telefono: /^\+?\d[\d -]{5,18}\d$/,
+    simboloMoneda: /^[^\d\s]{1,5}$/,
+};
+
+const errorZonaTarifa = (s) => {
+    if (!s || s.length > 100) return '⚠️ La zona es obligatoria (máx. 100 caracteres).';
+    return REGLAS_TEXTO.nombreComercial.test(s) ? null : '⚠️ La zona solo admite letras, números y . , - ( ).';
+};
+
 const zonaHorariaValida = (zona) => {
     try { new Intl.DateTimeFormat('es', { timeZone: zona }); return true; } catch { return false; }
 };
@@ -70,25 +107,32 @@ const validarEmpresa = (b) => {
         return true;
     };
     if (!texto('nombre', 2, 120)) return { error: '⚠️ El nombre es obligatorio (2 a 120 caracteres).' };
+    if (!REGLAS_TEXTO.nombreComercial.test(v.nombre))
+        return { error: '⚠️ El nombre comercial solo admite letras, números y . , & - ( ).' };
     if (!texto('ciudad', 2, 80)) return { error: '⚠️ La ciudad es obligatoria.' };
+    if (!REGLAS_TEXTO.lugar.test(v.ciudad)) return { error: '⚠️ La ciudad solo admite letras.' };
     for (const [campo, max] of [['nit', 30], ['telefono', 30], ['direccion', 200]]) {
         const t = textoOpcional(b[campo], max);
         if (t.error) return { error: `⚠️ ${campo} no es válido (máx. ${max} caracteres).` };
         v[campo] = t.valor;
     }
+    if (v.nit && !REGLAS_TEXTO.nit.test(v.nit)) return { error: '⚠️ El NIT solo admite números (5 a 20 dígitos).' };
+    if (v.telefono && !REGLAS_TEXTO.telefono.test(v.telefono))
+        return { error: '⚠️ El teléfono solo admite números, espacios, guiones y un + inicial (7 a 20 caracteres).' };
     const email = textoOpcional(b.email, 100);
     if (email.error || (email.valor && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.valor)))
         return { error: '⚠️ El email de la empresa no es válido.' };
     v.email = email.valor;
 
     v.pais = typeof b.pais === 'string' && b.pais.trim() ? b.pais.trim().slice(0, 60) : 'Bolivia';
+    if (!REGLAS_TEXTO.lugar.test(v.pais)) return { error: '⚠️ El país solo admite letras.' };
     v.zona_horaria = typeof b.zona_horaria === 'string' && b.zona_horaria.trim() ? b.zona_horaria.trim() : 'America/La_Paz';
     if (!zonaHorariaValida(v.zona_horaria)) return { error: '⚠️ Zona horaria no válida (ej. America/La_Paz).' };
 
     v.moneda_codigo = typeof b.moneda_codigo === 'string' && b.moneda_codigo.trim() ? b.moneda_codigo.trim().toUpperCase() : 'BOB';
     if (!/^[A-Z]{3}$/.test(v.moneda_codigo)) return { error: '⚠️ Código de moneda de 3 letras (ej. BOB).' };
     v.moneda_simbolo = typeof b.moneda_simbolo === 'string' && b.moneda_simbolo.trim() ? b.moneda_simbolo.trim() : 'Bs';
-    if (v.moneda_simbolo.length > 5) return { error: '⚠️ Símbolo de moneda de hasta 5 caracteres.' };
+    if (!REGLAS_TEXTO.simboloMoneda.test(v.moneda_simbolo)) return { error: '⚠️ Símbolo de moneda de hasta 5 caracteres, sin números ni espacios.' };
 
     v.centro_lat = numeroEnRango(b.centro_lat, -90, 90);
     v.centro_lng = numeroEnRango(b.centro_lng, -180, 180);
@@ -167,6 +211,7 @@ const conCostos = (p) => {
 };
 
 module.exports = {
+    limpiarEspacios, normalizarPlaca, errorNombrePersona, errorPlaca, errorPassword, errorZonaTarifa,
     validarRangoDias, filtroFechas, numeroEnRango, validarEmpresa, distanciaKm, kmPorSuperficie, tipoSegunKm, conCostos,
     SUPERFICIES,
     RANGOS_PARAMETROS, PARAMETROS_INICIALES, CAMPOS_EMPRESA,

@@ -7,6 +7,7 @@ import Mensaje from '../componentes/Mensaje.jsx';
 import Tarjeta from '../componentes/ui/Tarjeta.jsx';
 import Insignia from '../componentes/ui/Insignia.jsx';
 import { botonPrimario, botonSecundario, campoEnLinea, filaTabla, td, th } from '../componentes/ui/estilos.js';
+import { cambiosEntre } from '../utilidades.js';
 
 const ACCIONES = {
   'sesion.login_admin': 'Inicio de sesión (panel)',
@@ -22,6 +23,7 @@ const ACCIONES = {
   'acceso.denegado': 'Acceso denegado',
   'acceso.token_invalido': 'Token inválido',
   'chofer.crear': 'Alta de chofer',
+  'chofer.editar': 'Edición de chofer',
   'chofer.estado': 'Estado de chofer',
   'chofer.password': 'Cambio de contraseña',
   'parametros.actualizar': 'Parámetros tarifarios',
@@ -53,6 +55,44 @@ function Json({ titulo, datos }) {
       <pre className="custom-scrollbar max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white p-3 text-theme-xs text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
         {datos ? JSON.stringify(datos, null, 2) : '—'}
       </pre>
+    </div>
+  );
+}
+
+const CAMPOS = {
+  nombre_completo: 'Nombre', placa_vehiculo: 'Placa', estado_activo: 'Activo', activo: 'Activa', nombre: 'Nombre',
+  nit: 'NIT', telefono: 'Teléfono', email: 'Email', direccion: 'Dirección', ciudad: 'Ciudad', pais: 'País',
+  zona_horaria: 'Zona horaria', moneda_codigo: 'Código de moneda', moneda_simbolo: 'Símbolo de moneda',
+  centro_lat: 'Latitud del centro', centro_lng: 'Longitud del centro', radio_operacion_km: 'Radio de operación (km)',
+  altitud_msnm: 'Altitud (msnm)', color_primario: 'Color de marca', logo_url: 'Logo',
+  zona_ciudad: 'Zona', costo_base_km: 'Costo base (Cb)', consumo_litros_km: 'Consumo (Cl)', precio_combustible_bs: 'Combustible (Pc)',
+  factor_superficie: 'Factor tierra (FR)', factor_empedrado: 'Factor empedrado (FE)', costo_minuto_detencion: 'Costo por minuto (Ct)',
+  bajada_bandera_bs: 'Bajada de bandera (B)', valor_salto_bs: 'Salto (S)', modo_tarifa: 'Modo de tarifa', fecha_actualizacion: 'Fecha de actualización',
+};
+
+const mostrarValor = (v) => {
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'boolean') return v ? 'Sí' : 'No';
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+};
+
+function Cambios({ antes, despues }) {
+  const cambios = cambiosEntre(antes, despues);
+  if (!cambios.length) return <p className="text-theme-sm text-gray-500 dark:text-gray-400">Sin diferencias entre el estado anterior y el nuevo.</p>;
+  return (
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 border-b border-gray-200 px-3 py-2 text-theme-xs font-medium text-gray-500 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)] dark:border-gray-800 dark:text-gray-400">
+        <span className="hidden sm:block">Campo</span><span>Cómo era</span><span>Cómo quedó</span>
+      </div>
+      <dl>
+        {cambios.map(({ campo, antes: a, despues: d }) => (
+          <div key={campo} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 border-b border-gray-100 px-3 py-2 text-theme-sm last:border-b-0 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)] dark:border-gray-800">
+            <dt className="col-span-2 text-theme-xs font-medium text-gray-600 sm:col-span-1 sm:text-theme-sm dark:text-gray-300">{CAMPOS[campo] ?? campo.replaceAll('_', ' ')}</dt>
+            <dd className="break-words text-error-600 line-through decoration-error-300 dark:text-error-400">{mostrarValor(a)}</dd>
+            <dd className="break-words font-medium text-success-700 dark:text-success-500">{mostrarValor(d)}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -171,11 +211,11 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
         {error && <div className="px-5 pt-4 sm:px-6"><Mensaje texto={error} /></div>}
 
         <div className="custom-scrollbar overflow-x-auto">
-          <table className="w-full">
+          <table className="tabla-apilada w-full">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 {['#', 'Fecha', ...(plataforma ? ['Empresa'] : []), 'Actor', 'Acción', 'Objeto', 'Resultado', 'IP'].map(h =>
-                  <th key={h} className={th}>{h}</th>)}
+                  <th key={h} className={`${th} ${h === 'IP' ? 'hidden xl:table-cell' : ''}`}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -186,31 +226,45 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
                 <Fragment key={ev.id}>
                   <tr onClick={() => setAbierto(abierto === ev.id ? null : ev.id)} aria-expanded={abierto === ev.id}
                     className={`${filaTabla} cursor-pointer transition hover:bg-gray-50 dark:hover:bg-white/[0.02]`}>
-                    <td className={`${td} text-theme-xs`}>{ev.id}</td>
-                    <td className={`${td} whitespace-nowrap text-theme-xs`}>
+                    <td data-titulo="#" className={`${td} text-theme-xs`}>{ev.id}</td>
+                    <td data-titulo="Fecha" className={`${td} whitespace-nowrap text-theme-xs`}>
                       {new Date(ev.ocurrido_en).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </td>
-                    {plataforma && <td className={td}>{nombreEmpresa(ev.empresa_id)}</td>}
-                    <td className={td}>
+                    {plataforma && <td data-titulo="Empresa" className={td}>{nombreEmpresa(ev.empresa_id)}</td>}
+                    <td data-titulo="Actor" className={td}>
                       <p className="font-medium text-gray-800 dark:text-white/90">{ev.actor_nombre ?? '—'}</p>
                       <p className="text-theme-xs">{ACTOR[ev.actor_tipo] ?? ev.actor_tipo}{ev.actor_rol && ev.actor_tipo !== 'superadmin' ? ` · ${ev.actor_rol}` : ''}</p>
                     </td>
-                    <td className={td}>
+                    <td data-titulo="Acción" className={td}>
                       <p className="text-gray-800 dark:text-white/90">{ACCIONES[ev.accion] ?? ev.accion}</p>
-                      {ev.detalle && <p className="max-w-xs truncate text-theme-xs">{ev.detalle}</p>}
+                      {ev.detalle && <p className="truncate text-theme-xs sm:max-w-xs">{ev.detalle}</p>}
                     </td>
-                    <td className={`${td} text-theme-xs`}>{ev.entidad ? `${ev.entidad}${ev.entidad_id ? ` #${ev.entidad_id}` : ''}` : '—'}</td>
-                    <td className={td}><Insignia color={COLOR_RESULTADO[ev.resultado] ?? 'neutro'}>{RESULTADOS[ev.resultado] ?? ev.resultado}</Insignia></td>
-                    <td className={`${td} font-mono text-theme-xs`}>{ev.ip ?? '—'}</td>
+                    <td data-titulo="Objeto" className={`${td} text-theme-xs`}>{ev.entidad ? `${ev.entidad}${ev.entidad_id ? ` #${ev.entidad_id}` : ''}` : '—'}</td>
+                    <td data-titulo="Resultado" className={td}><Insignia color={COLOR_RESULTADO[ev.resultado] ?? 'neutro'}>{RESULTADOS[ev.resultado] ?? ev.resultado}</Insignia></td>
+                    <td data-titulo="IP" className={`${td} hidden font-mono text-theme-xs xl:table-cell`}>{ev.ip ?? '—'}</td>
                   </tr>
                   {abierto === ev.id && (
                     <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-white/[0.02]">
-                      <td colSpan={8} className="space-y-3 px-6 py-4">
-                        <div className="flex flex-col gap-4 lg:flex-row">
-                          <Json titulo="Antes" datos={ev.datos_antes} />
-                          <Json titulo="Después" datos={ev.datos_despues} />
-                        </div>
-                        <p className="break-all font-mono text-theme-xs text-gray-500 dark:text-gray-400">SHA-256: {ev.hash}</p>
+                      <td colSpan={8} className="space-y-3 px-4 py-4 sm:px-6">
+                        {ev.detalle && <p className="break-words text-theme-sm text-gray-700 dark:text-gray-300">{ev.detalle}</p>}
+                        {ev.datos_antes && ev.datos_despues && <Cambios antes={ev.datos_antes} despues={ev.datos_despues} />}
+                        {ev.datos_antes && ev.datos_despues
+                          ? (
+                            <details>
+                              <summary className="cursor-pointer text-theme-xs font-medium text-gray-500 dark:text-gray-400">Ver el registro completo</summary>
+                              <div className="mt-2 flex flex-col gap-4 lg:flex-row">
+                                <Json titulo="Antes" datos={ev.datos_antes} />
+                                <Json titulo="Después" datos={ev.datos_despues} />
+                              </div>
+                            </details>
+                          )
+                          : (ev.datos_antes || ev.datos_despues) && (
+                            <div className="flex flex-col gap-4 lg:flex-row">
+                              <Json titulo="Antes" datos={ev.datos_antes} />
+                              <Json titulo="Después" datos={ev.datos_despues} />
+                            </div>
+                          )}
+                        <p className="break-all font-mono text-theme-xs text-gray-500 dark:text-gray-400">IP: {ev.ip ?? '—'} · SHA-256: {ev.hash}</p>
                       </td>
                     </tr>
                   )}
@@ -220,7 +274,7 @@ export default function Auditoria({ urlServidor, headers, manejarErrorApi, plata
           </table>
         </div>
 
-        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-theme-sm text-gray-500 sm:px-6 dark:border-gray-800 dark:text-gray-400">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-5 py-3 text-theme-sm text-gray-500 sm:px-6 dark:border-gray-800 dark:text-gray-400">
           <span>Página {consulta.pagina}{cargando ? ' · cargando...' : ''}</span>
           <div className="flex gap-2">
             <button disabled={consulta.pagina === 1 || cargando} onClick={() => irPagina(consulta.pagina - 1)} className={`${botonSecundario} px-3 py-2`}>

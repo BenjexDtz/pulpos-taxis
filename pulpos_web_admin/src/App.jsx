@@ -166,7 +166,7 @@ export default function App() {
             <Route path="/parametros" element={
               <Parametros {...api} setParams={setParams} formParams={formParams} setFormParams={setFormParams} empresa={empresa} />
             } />
-            <Route path="/empresa" element={<Empresa {...api} empresa={empresa} setEmpresa={setEmpresa} />} />
+            <Route path="/empresa" element={<Empresa empresa={empresa} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </>
         )}

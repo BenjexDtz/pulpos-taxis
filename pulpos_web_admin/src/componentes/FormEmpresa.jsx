@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { RefreshCw, Save, Building2, MapPin, Coins, UserCog } from 'lucide-react';
 import Mensaje from './Mensaje.jsx';
+import Entrada from './ui/Entrada.jsx';
 import { ayuda as estiloAyuda, botonPrimario, botonSecundario, campo, etiqueta } from './ui/estilos.js';
+import { errorLugar, errorNit, errorNombreComercial, errorNombrePersona, errorPassword, errorSimboloMoneda, errorTelefono, incompleto } from '../validaciones.js';
 
 const VACIA = {
   codigo: '', nombre: '', nit: '', telefono: '', email: '', direccion: '',
@@ -69,10 +71,10 @@ export default function FormEmpresa({ inicial, crear = false, onGuardar, onCance
           </Campo>
         )}
         <Campo label="Nombre comercial" ancho={crear ? '' : 'sm:col-span-2'}>
-          <input required minLength={2} maxLength={120} className={estiloInput} value={f.nombre} onChange={cambiar('nombre')} />
+          <Entrada required minLength={2} maxLength={120} error={errorNombreComercial(f.nombre)} value={f.nombre} onChange={cambiar('nombre')} />
         </Campo>
-        <Campo label="NIT"><input maxLength={30} className={estiloInput} value={f.nit} onChange={cambiar('nit')} /></Campo>
-        <Campo label="Teléfono"><input maxLength={30} className={estiloInput} value={f.telefono} onChange={cambiar('telefono')} /></Campo>
+        <Campo label="NIT"><Entrada inputMode="numeric" maxLength={20} error={errorNit(f.nit)} esperar={incompleto.nit(f.nit)} value={f.nit} onChange={cambiar('nit')} /></Campo>
+        <Campo label="Teléfono"><Entrada type="tel" maxLength={20} error={errorTelefono(f.telefono)} esperar={incompleto.telefono(f.telefono)} value={f.telefono} onChange={cambiar('telefono')} /></Campo>
         <Campo label="Email"><input type="email" maxLength={100} className={estiloInput} value={f.email} onChange={cambiar('email')} /></Campo>
         <Campo label="Dirección"><input maxLength={200} className={estiloInput} value={f.direccion} onChange={cambiar('direccion')} /></Campo>
         <Campo label="Logo (URL https)">
@@ -87,8 +89,8 @@ export default function FormEmpresa({ inicial, crear = false, onGuardar, onCance
       </Seccion>
 
       <Seccion icon={MapPin} titulo="Zona de operación">
-        <Campo label="Ciudad"><input required maxLength={80} className={estiloInput} value={f.ciudad} onChange={cambiar('ciudad')} /></Campo>
-        <Campo label="País"><input maxLength={60} className={estiloInput} value={f.pais} onChange={cambiar('pais')} /></Campo>
+        <Campo label="Ciudad"><Entrada required minLength={2} maxLength={80} error={errorLugar(f.ciudad, 'La ciudad')} value={f.ciudad} onChange={cambiar('ciudad')} /></Campo>
+        <Campo label="País"><Entrada maxLength={60} error={errorLugar(f.pais, 'El país')} value={f.pais} onChange={cambiar('pais')} /></Campo>
         <Campo label="Latitud del centro" ayuda="Ej. -16.5000000">
           <input required type="number" step="0.0000001" min="-90" max="90" className={estiloInput} value={f.centro_lat} onChange={cambiar('centro_lat')} />
         </Campo>
@@ -112,16 +114,16 @@ export default function FormEmpresa({ inicial, crear = false, onGuardar, onCance
           <input required pattern="[A-Za-z]{3}" maxLength={3} className={`${estiloInput} uppercase`} value={f.moneda_codigo} onChange={cambiar('moneda_codigo')} />
         </Campo>
         <Campo label="Símbolo" ayuda="Bs, S/, $...">
-          <input required maxLength={5} className={estiloInput} value={f.moneda_simbolo} onChange={cambiar('moneda_simbolo')} />
+          <Entrada required maxLength={5} error={errorSimboloMoneda(f.moneda_simbolo)} value={f.moneda_simbolo} onChange={cambiar('moneda_simbolo')} />
         </Campo>
       </Seccion>
 
       {crear && (
         <Seccion icon={UserCog} titulo="Gerente inicial">
-          <Campo label="Nombre"><input required className={estiloInput} value={f.gerente.nombre} onChange={cambiarGerente('nombre')} /></Campo>
-          <Campo label="Email (usuario del panel)"><input required type="email" className={estiloInput} value={f.gerente.email} onChange={cambiarGerente('email')} /></Campo>
-          <Campo label="Contraseña" ayuda="Mínimo 8 caracteres.">
-            <input required type="password" minLength={8} className={estiloInput} value={f.gerente.password} onChange={cambiarGerente('password')} />
+          <Campo label="Nombre"><Entrada required minLength={3} maxLength={100} error={errorNombrePersona(f.gerente.nombre)} value={f.gerente.nombre} onChange={cambiarGerente('nombre')} /></Campo>
+          <Campo label="Email (usuario del panel)"><input required type="email" maxLength={100} className={estiloInput} value={f.gerente.email} onChange={cambiarGerente('email')} /></Campo>
+          <Campo label="Contraseña" ayuda="Mínimo 8 caracteres, sin espacios.">
+            <Entrada required type="password" minLength={8} error={errorPassword(f.gerente.password)} value={f.gerente.password} onChange={cambiarGerente('password')} />
           </Campo>
         </Seccion>
       )}

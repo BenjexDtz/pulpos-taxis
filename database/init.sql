@@ -288,8 +288,8 @@ ON CONFLICT (email) DO NOTHING;
 INSERT INTO choferes (empresa_id, nombre_completo, placa_vehiculo, password_hash, estado_activo)
 SELECT e.id, v.nombre, v.placa, '$2b$10$aJCtorlTfrhbfijHttiQ2O83wcfgf8iTdQKpz1x.ap4wRnox8DB82', TRUE
 FROM (VALUES
-    ('pulpos',   'Boris Benjamín Barboza', '1234-KKK'),
-    ('illimani', 'Carla Mamani Quispe',    '5678-ILL')
+    ('pulpos',   'Boris Benjamín Barboza', '1234KKK'),
+    ('illimani', 'Carla Mamani Quispe',    '5678ILL')
 ) AS v(codigo, nombre, placa)
 JOIN empresas e ON e.codigo = v.codigo
 ON CONFLICT (empresa_id, placa_vehiculo) DO NOTHING;
@@ -331,7 +331,7 @@ CROSS JOIN (VALUES
     (0.000, 4.200, 0.000, 15.00),
     (2.400, 1.400, 1.200,  6.00)
 ) AS v(asf, tie, emp, deten)
-WHERE c.placa_vehiculo IN ('1234-KKK', '5678-ILL')
+WHERE c.placa_vehiculo IN ('1234KKK', '5678ILL')
   AND NOT EXISTS (SELECT 1 FROM viajes_historial vh WHERE vh.chofer_id = c.id);
 
 -- ═══════════════════════════════════════════════════════════════════════════════

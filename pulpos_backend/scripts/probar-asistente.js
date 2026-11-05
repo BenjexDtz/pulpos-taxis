@@ -8,7 +8,7 @@ const PREGUNTAS = [
     '¿Cuántos viajes hubo en los últimos 30 días y cuánto se recaudó?',
     '¿Qué chofer recaudó más este mes?',
     '¿Cuántos choferes tenemos habilitados y cuántos tienen GPS en vivo?',
-    '¿Cómo le va al chofer de placa 1234-KKK esta semana?',
+    '¿Cómo le va al chofer de placa 1234KKK esta semana?',
     '¿Quiénes no trabajan hace 7 días?',
     '¿Cuánto cuesta un viaje de 5 km por tierra con 3 minutos de espera?',
     'Compara lo recaudado esta semana con la semana pasada.',

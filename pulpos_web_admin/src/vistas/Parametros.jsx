@@ -3,6 +3,8 @@ import axios from 'axios';
 import { Calculator, Fuel, Gauge, MapPin, RefreshCw, Save, Settings } from 'lucide-react';
 import Mensaje from '../componentes/Mensaje.jsx';
 import Tarjeta from '../componentes/ui/Tarjeta.jsx';
+import Entrada from '../componentes/ui/Entrada.jsx';
+import { errorZonaTarifa } from '../validaciones.js';
 import { ayuda, botonPrimario, campo, etiqueta } from '../componentes/ui/estilos.js';
 import { formatoMoneda, formatoNumero } from '../utilidades.js';
 
@@ -73,13 +75,13 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
   if (!formParams) return <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Cargando parámetros...</p>;
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <form onSubmit={guardarParametros} className="space-y-6 xl:col-span-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <form onSubmit={guardarParametros} className="space-y-6 lg:col-span-2">
         <Mensaje tipo={mensajeParams.tipo} texto={mensajeParams.texto} />
 
         <Tarjeta icono={MapPin} titulo="Zona" subtitulo="Los conductores descargan estos valores al abrir la app.">
           <label htmlFor="param-zona" className={etiqueta}>Zona / descripción</label>
-          <input id="param-zona" type="text" required maxLength={100} className={campo}
+          <Entrada id="param-zona" type="text" required maxLength={100} error={errorZonaTarifa(formParams.zona_ciudad)}
             value={formParams.zona_ciudad} onChange={e => setFormParams({ ...formParams, zona_ciudad: e.target.value })} />
         </Tarjeta>
 

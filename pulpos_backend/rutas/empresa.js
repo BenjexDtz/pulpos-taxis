@@ -1,8 +1,8 @@
 const express = require('express');
 const pool = require('../db');
 const { verificarToken, soloAdmin, deEmpresa } = require('../middlewares/autenticacion');
-const { auditar, separar, actualizarEmpresa } = require('../utilidades');
-const { numeroEnRango, validarEmpresa, conCostos, RANGOS_PARAMETROS } = require('../validacion');
+const { auditar, separar } = require('../utilidades');
+const { numeroEnRango, conCostos, errorZonaTarifa, RANGOS_PARAMETROS } = require('../validacion');
 const { MODOS_TARIFA } = require('../verificacion');
 
 const router = express.Router();
@@ -31,8 +31,8 @@ router.get('/api/config', verificarToken, deEmpresa, async (req, res) => {
 
 router.put('/api/admin/parametros', verificarToken, soloAdmin, async (req, res) => {
     const zona_ciudad = typeof req.body.zona_ciudad === 'string' ? req.body.zona_ciudad.trim() : '';
-    if (!zona_ciudad || zona_ciudad.length > 100)
-        return res.status(400).json({ error: '⚠️ La zona es obligatoria (máx. 100 caracteres).' });
+    const errorZona = errorZonaTarifa(zona_ciudad);
+    if (errorZona) return res.status(400).json({ error: errorZona });
 
     const valores = {};
     for (const [campo, [min, max]] of Object.entries(RANGOS_PARAMETROS)) {
@@ -60,14 +60,6 @@ router.put('/api/admin/parametros', verificarToken, soloAdmin, async (req, res) 
         mensaje: '✅ Parámetros actualizados. Los conductores los recibirán al iniciar la app.',
         parametros: conCostos(despues),
     });
-});
-
-router.put('/api/admin/empresa', verificarToken, soloAdmin, async (req, res) => {
-    const { error, valores } = validarEmpresa(req.body);
-    if (error) return res.status(400).json({ error });
-    const { antes, despues, auditado } = separar((await actualizarEmpresa(req.empresa.id, valores)).rows[0]);
-    await auditar(req, { accion: 'empresa.actualizar', entidad: 'empresas', entidad_id: req.empresa.id, datos_antes: antes, datos_despues: auditado });
-    res.json({ mensaje: '✅ Datos de la empresa actualizados.', empresa: despues });
 });
 
 module.exports = router;

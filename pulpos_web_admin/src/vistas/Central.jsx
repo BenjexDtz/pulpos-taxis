@@ -102,12 +102,12 @@ export default function Central({ choferes, empresa, cargarChoferes, urlServidor
 
       <Mensaje texto={error} />
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className={`${tarjeta} isolate h-[420px] overflow-hidden xl:h-[600px]`}>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_380px] 3xl:grid-cols-[minmax(0,1fr)_460px]">
+        <div className={`${tarjeta} isolate h-[320px] overflow-hidden bajo:h-[260px] sm:h-[420px] lg:h-[520px] xl:h-[600px] 3xl:h-[720px] 4xl:h-[960px]`}>
           <MapaFlota choferes={choferes} viajes={reales} empresa={empresa} />
         </div>
 
-        <section className={`${tarjeta} flex flex-col overflow-hidden xl:h-[600px]`} aria-labelledby="titulo-bitacora">
+        <section className={`${tarjeta} flex flex-col overflow-hidden lg:h-[520px] xl:h-[600px] 3xl:h-[720px] 4xl:h-[960px]`} aria-labelledby="titulo-bitacora">
           <header className="flex items-baseline justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
             <h2 id="titulo-bitacora" className="text-sm font-semibold tracking-wide text-gray-800 uppercase dark:text-white/90">Bitácora de hoy</h2>
             <span className="font-mono text-theme-xs text-gray-500 dark:text-gray-400">
@@ -119,7 +119,7 @@ export default function Central({ choferes, empresa, cargarChoferes, urlServidor
               Todavía no llegó ningún viaje. Aparecen aquí apenas la app de cada chofer los sincroniza.
             </p>
           ) : (
-            <ul className="custom-scrollbar max-h-[480px] flex-1 divide-y divide-gray-100 overflow-y-auto xl:max-h-none dark:divide-gray-800">
+            <ul className="custom-scrollbar max-h-[480px] flex-1 divide-y divide-gray-100 overflow-y-auto lg:max-h-none dark:divide-gray-800">
               {viajes.map(v => <Entrada key={v.id} viaje={v} moneda={m} onAbrir={setRutaAbierta} />)}
             </ul>
           )}

@@ -66,7 +66,7 @@ export default function Informes({
 
   const texto = filtroChofer.toLowerCase();
   const viajesFiltrados = viajes.filter(v =>
-    (v.chofer?.toLowerCase().includes(texto) || v.placa_vehiculo?.toLowerCase().includes(texto)) &&
+    (v.chofer?.toLowerCase().includes(texto) || v.placa_vehiculo?.toLowerCase().includes(texto.replace('-', ''))) &&
     (!soloDiferencias || v.verificacion === 'diferencia'));
   const conDiferencia = viajes.filter(v => !v.demostracion && v.verificacion === 'diferencia').length;
   const r = estadisticas?.resumen;
@@ -90,10 +90,10 @@ export default function Informes({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <input type="date" aria-label="Desde" value={fechaDesde} max={fechaHasta} onChange={e => setFechaDesde(e.target.value)} className={campoEnLinea} />
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <input type="date" aria-label="Desde" value={fechaDesde} max={fechaHasta} onChange={e => setFechaDesde(e.target.value)} className={`${campoEnLinea} min-w-0 flex-1 sm:flex-none`} />
           <span className="text-gray-400">→</span>
-          <input type="date" aria-label="Hasta" value={fechaHasta} min={fechaDesde} onChange={e => setFechaHasta(e.target.value)} className={campoEnLinea} />
+          <input type="date" aria-label="Hasta" value={fechaHasta} min={fechaDesde} onChange={e => setFechaHasta(e.target.value)} className={`${campoEnLinea} min-w-0 flex-1 sm:flex-none`} />
         </div>
       </div>
 
@@ -138,10 +138,10 @@ export default function Informes({
       <Tarjeta icono={Clock} titulo="Historial de viajes" subtitulo={`${viajesFiltrados.length} de ${viajes.length} viajes del período`} cuerpo=""
         acciones={
           <>
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input type="search" placeholder="Conductor o placa..." aria-label="Buscar conductor o placa"
-                value={filtroChofer} onChange={e => setFiltroChofer(e.target.value)} className={`${campo} w-56 pl-9`} />
+                value={filtroChofer} onChange={e => setFiltroChofer(e.target.value)} className={`${campo} pl-9 sm:w-56`} />
             </div>
             <label className="flex items-center gap-2 text-theme-sm text-gray-600 dark:text-gray-400">
               <input type="checkbox" checked={soloDiferencias} onChange={e => setSoloDiferencias(e.target.checked)}
@@ -156,7 +156,7 @@ export default function Informes({
         }>
         {(errorDashboard || errorCsv) && <div className="px-5 pt-4 sm:px-6"><Mensaje texto={errorDashboard || errorCsv} /></div>}
         <div className="custom-scrollbar max-h-[480px] overflow-auto">
-          <table className="w-full">
+          <table className="tabla-apilada w-full">
             <thead className="sticky top-0 bg-white dark:bg-gray-900">
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 {['Conductor / unidad', 'Distancia', 'Espera', 'Superficie', 'Tarifa', 'Verificación', 'Fecha'].map(h => <th key={h} className={th}>{h}</th>)}
@@ -168,11 +168,11 @@ export default function Informes({
               )}
               {viajesFiltrados.map(v => (
                 <tr key={v.id} className={filaTabla}>
-                  <td className={td}>
+                  <td data-titulo="Conductor" className={td}>
                     <p className="font-medium text-gray-800 dark:text-white/90">{v.chofer}</p>
                     <p className="text-theme-xs text-gray-500 dark:text-gray-400">{v.placa_vehiculo}</p>
                   </td>
-                  <td className={td}>
+                  <td data-titulo="Distancia" className={td}>
                     {formatoNumero(v.distancia_km, 2)} km
                     {v.tipo_superficie === 'mixto' && (
                       <p className="text-theme-xs text-gray-500 dark:text-gray-400">
@@ -180,8 +180,8 @@ export default function Informes({
                       </p>
                     )}
                   </td>
-                  <td className={td}>{Math.floor(v.tiempo_detencion_min)} min</td>
-                  <td className={td}>
+                  <td data-titulo="Espera" className={td}>{Math.floor(v.tiempo_detencion_min)} min</td>
+                  <td data-titulo="Superficie" className={td}>
                     <Insignia color={v.tipo_superficie === 'asfalto' ? 'neutro' : 'aviso'}>
                       {v.tipo_superficie === 'mixto' ? 'Mixto' : SUPERFICIES[v.tipo_superficie]?.nombre ?? 'Asfalto'}
                     </Insignia>
@@ -191,8 +191,8 @@ export default function Informes({
                       </span>
                     )}
                   </td>
-                  <td className={`${td} font-semibold text-gray-800 dark:text-white/90`}>{formatoMoneda(v.tarifa_total, m)}</td>
-                  <td className={td}>
+                  <td data-titulo="Tarifa" className={`${td} font-semibold text-gray-800 dark:text-white/90`}>{formatoMoneda(v.tarifa_total, m)}</td>
+                  <td data-titulo="Verificación" className={td}>
                     <div className="flex items-center gap-2">
                       <span title={v.verificacion_detalle || VERIFICACION[v.verificacion]?.ayuda}>
                         <Insignia color={VERIFICACION[v.verificacion]?.color}>{VERIFICACION[v.verificacion]?.texto ?? 'Sin verificar'}</Insignia>
@@ -208,7 +208,7 @@ export default function Informes({
                       </button>
                     </div>
                   </td>
-                  <td className={td}>{new Date(v.fecha_hora).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td data-titulo="Fecha" className={td}>{new Date(v.fecha_hora).toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                 </tr>
               ))}
             </tbody>

@@ -5,6 +5,7 @@ import 'sesion.dart';
 import 'tema.dart';
 import 'main.dart'; // Para poder saltar a tu taxímetro
 import 'config.dart';
+import 'validaciones.dart';
 
 class PantallaLogin extends StatefulWidget {
   const PantallaLogin({super.key});
@@ -37,6 +38,11 @@ class _PantallaLoginState extends State<PantallaLogin> {
       _mostrarError('Por favor, llena todos los campos.');
       return;
     }
+    final errorFormato = errorCodigoEmpresa(_empresaController.text) ?? errorPlaca(_placaController.text);
+    if (errorFormato != null) {
+      _mostrarError(errorFormato);
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -48,7 +54,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'empresa': _empresaController.text.trim().toLowerCase(),
-          'placa_vehiculo': _placaController.text.trim(),
+          'placa_vehiculo': normalizarPlaca(_placaController.text),
           'password': _passwordController.text.trim(),
         }),
       );
@@ -150,7 +156,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
                             pista: 'Ej. pulpos', sinCorrector: true),
                         const SizedBox(height: 16),
                         _campo('Placa del vehículo', _placaController, Icons.directions_car_outlined,
-                            pista: 'Ej. 1234-ABC', sinCorrector: true),
+                            pista: 'Ej. 2456ZBK', sinCorrector: true),
                         const SizedBox(height: 16),
                         _campo('Contraseña', _passwordController, Icons.lock_outline, oculto: true),
                         const SizedBox(height: 24),

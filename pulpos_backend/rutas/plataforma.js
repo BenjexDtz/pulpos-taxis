@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const { verificarToken, soloSuperadmin } = require('../middlewares/autenticacion');
 const { enTransaccion, auditar, separar, actualizarEmpresa } = require('../utilidades');
-const { validarEmpresa, CAMPOS_EMPRESA, PARAMETROS_INICIALES } = require('../validacion');
+const { limpiarEspacios, errorNombrePersona, errorPassword, validarEmpresa, CAMPOS_EMPRESA, PARAMETROS_INICIALES } = require('../validacion');
 
 const router = express.Router();
 
@@ -65,10 +65,10 @@ router.post('/api/plataforma/empresas', verificarToken, soloSuperadmin, async (r
     const g = req.body.gerente ?? {};
     if ([g.nombre, g.email, g.password].some(x => typeof x !== 'string' || !x.trim()))
         return res.status(400).json({ error: '⚠️ Faltan los datos del gerente (nombre, email y contraseña).' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email.trim()))
+    if (g.email.trim().length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email.trim()))
         return res.status(400).json({ error: '⚠️ El email del gerente no es válido.' });
-    if (g.password.length < 8)
-        return res.status(400).json({ error: '⚠️ La contraseña del gerente debe tener al menos 8 caracteres.' });
+    const errorGerente = errorNombrePersona(g.nombre) ?? errorPassword(g.password, 8);
+    if (errorGerente) return res.status(400).json({ error: errorGerente });
 
     try {
         const empresa = await enTransaccion(async (c) => {
@@ -92,7 +92,7 @@ router.post('/api/plataforma/empresas', verificarToken, soloSuperadmin, async (r
             await c.query(
                 `INSERT INTO administradores (empresa_id, nombre, email, password_hash, rol)
                  VALUES ($1,$2,$3,$4,'gerente')`,
-                [e.id, g.nombre.trim(), g.email.trim().toLowerCase(), await bcrypt.hash(g.password, 10)]
+                [e.id, limpiarEspacios(g.nombre), g.email.trim().toLowerCase(), await bcrypt.hash(g.password, 10)]
             );
             return e;
         });

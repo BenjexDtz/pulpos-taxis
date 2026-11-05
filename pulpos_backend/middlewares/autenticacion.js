@@ -50,7 +50,7 @@ const soloChofer = async (req, res, next) => {
     if (u?.tipo !== 'chofer' || !u.empresa_id)
         return denegar(req, res, 403, '🚫 Solo para conductores.');
     const r = await pool.query(
-        `SELECT c.estado_activo, e.activo AS empresa_activa,
+        `SELECT c.estado_activo, c.placa_vehiculo, e.activo AS empresa_activa,
                 e.centro_lat, e.centro_lng, e.radio_operacion_km
          FROM choferes c JOIN empresas e ON e.id = c.empresa_id
          WHERE c.id = $1 AND c.empresa_id = $2`,
@@ -59,6 +59,8 @@ const soloChofer = async (req, res, next) => {
     const fila = r.rows[0];
     if (!fila || !fila.estado_activo || !fila.empresa_activa)
         return denegar(req, res, 403, '🚫 Cuenta desactivada. Contacta a la central.');
+    // El token dura 30 días: la bitácora debe mostrar la placa vigente aunque se haya corregido
+    req.usuario.placa = fila.placa_vehiculo;
     req.empresa = {
         id: u.empresa_id,
         centro_lat: Number(fila.centro_lat),

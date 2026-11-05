@@ -42,6 +42,11 @@ export const desgloseKm = (v) => Object.keys(SUPERFICIES)
   .map(s => `${formatoNumero(v[`km_${s}`], 2)} ${SUPERFICIES[s].nombre.toLowerCase()}`)
   .join(' · ');
 
+// Solo los campos que cambiaron entre el estado anterior y el nuevo de un evento de auditoría
+export const cambiosEntre = (antes, despues) => [...new Set([...Object.keys(antes ?? {}), ...Object.keys(despues ?? {})])]
+  .filter(campo => JSON.stringify(antes?.[campo]) !== JSON.stringify(despues?.[campo]))
+  .map(campo => ({ campo, antes: antes?.[campo], despues: despues?.[campo] }));
+
 export const minutosDesde = (fecha) => fecha ? Math.floor((new Date() - new Date(fecha)) / 60000) : null;
 
 export const haceTiempo = (minutos) => {

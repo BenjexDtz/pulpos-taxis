@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router';
 import { ChevronDown, LogOut, Moon, Radio, ShieldCheck, Sun } from 'lucide-react';
 import { useTema } from '../../contexto/contextos.js';
+import { contenedor } from '../ui/estilos.js';
 
 const ROLES = { superadmin: 'Superadministrador', gerente: 'Gerente', supervisor: 'Supervisor' };
 
@@ -20,7 +21,7 @@ function Marca({ empresa, esSuperadmin }) {
         )}
       <span className="min-w-0 leading-tight">
         <span className="block truncate font-semibold text-gray-900 dark:text-white">{nombre}</span>
-        <span className="block text-[11px] tracking-[0.18em] text-gray-500 uppercase dark:text-gray-400">Central de radio taxis</span>
+        <span className="hidden truncate text-[11px] tracking-[0.18em] text-gray-500 uppercase xs:block dark:text-gray-400">Central de radio taxis</span>
       </span>
     </Link>
   );
@@ -113,11 +114,11 @@ export default function Cabecera({ empresa, esSuperadmin, secciones, sesion, onS
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-t-4 border-b border-t-brand-500 border-b-gray-200 bg-white dark:border-b-white/10 dark:bg-gray-900">
-      <div className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between gap-4 px-4 md:px-6">
+    <header className="sticky top-0 z-40 bajo:static border-t-4 border-b border-t-brand-500 border-b-gray-200 bg-white dark:border-b-white/10 dark:bg-gray-900">
+      <div className={`${contenedor} flex h-16 items-center justify-between gap-2 px-4 xs:gap-4 md:px-6`}>
         <Marca empresa={empresa} esSuperadmin={esSuperadmin} />
         <Pestanas secciones={secciones} className="hidden h-16 flex-1 items-center justify-center xl:flex [&>a]:h-16" />
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1 xs:gap-3">
           <span className="hidden items-center gap-2 text-xs text-gray-500 md:flex dark:text-gray-400" role="status">
             <span className={`h-2 w-2 rounded-full ${conexion ? 'bg-success-500' : 'bg-error-500'}`} />
             {conexion ? 'En línea' : 'Sin conexión'}
