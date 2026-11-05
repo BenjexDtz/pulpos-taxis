@@ -3,6 +3,29 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [1.6.0] - 2026-11-05
+
+### Añadido
+- **Validación de los campos** en el servidor, el panel y la app: nombres de persona, ciudad y país solo con letras; NIT solo con números; teléfono con números, espacios, guiones y `+`; contraseñas sin espacios y de hasta 72 bytes. El panel avisa bajo el campo mientras se escribe y no deja enviar el formulario.
+- **Editar choferes**: `PUT /api/admin/choferes/:id` corrige nombre y placa desde Flota. Los viajes se conservan y queda auditado (`chofer.editar`) con el estado anterior y el nuevo.
+- **La bitácora muestra cada cambio** por campo: cómo era y cómo quedó, con el registro completo a un clic.
+- **Más tamaños de pantalla**: celular pequeño, celular en horizontal, tablet vertical y horizontal, laptop, escritorio, Full HD y 2K/4K. Hasta 1024 px las tablas se ven como fichas. En la app, el taxímetro no se estira en tablets.
+
+### Cambiado
+- **Placa boliviana**: 4 números y 3 letras, guardada junta y en mayúsculas (`2456ZBK`). Se puede escribir con guion y el inicio de sesión lo acepta. Una placa antigua con otro formato sigue funcionando en el servidor y Flota la marca "Placa por corregir"; la app 1.6.0 pide corregirla para entrar.
+- **Los datos de la empresa solo los edita la plataforma**: se quita `PUT /api/admin/empresa` y la vista de la empresa queda de solo lectura. La tarifa sigue en manos de cada empresa.
+
+### Corregido
+- La bitácora de un chofer muestra su placa vigente aunque el token se haya emitido con otra.
+- Los modales eran transparentes en modo oscuro, y los filtros de Informes y la paginación de Auditoría desbordaban en celulares pequeños.
+- El asistente encuentra una placa aunque se le pregunte con guion, y también la búsqueda de Informes.
+
+### Seguridad
+- Dependencias del backend actualizadas (body-parser, iconv-lite, ip-address, qs): `npm audit` ya no reporta vulnerabilidades altas.
+
+### Migraciones
+- `014_placas_sin_guion.sql`: junta las placas existentes y las pasa a mayúsculas. No cambia el esquema.
+
 ## [1.5.0] - 2026-10-22
 
 ### Añadido
@@ -111,6 +134,7 @@ Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro off
 ### Migraciones
 Para una base existente, aplicar en orden `database/migraciones/001` a `004`.
 
+[1.6.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.2.0...v1.3.0
