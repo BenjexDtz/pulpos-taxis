@@ -1,15 +1,18 @@
 // Clases de TailAdmin reutilizadas por todo el panel.
 
+// Ancho del contenido: a partir de Full HD aprovecha más pantalla en lugar de dejar márgenes vacíos.
+export const contenedor = 'mx-auto max-w-screen-2xl 3xl:max-w-[112rem] 4xl:max-w-[150rem]';
+
 export const tarjeta = 'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
 
 export const etiqueta = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400';
 
 export const ayuda = 'mt-1.5 text-theme-xs text-gray-500 dark:text-gray-400';
 
-export const campo = 'h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800';
+export const campo = 'h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-base text-gray-800 shadow-theme-xs placeholder:text-gray-400 sm:text-sm focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800';
 
 // Para filtros en una fila: mismo aspecto sin ocupar todo el ancho.
-export const campoEnLinea = campo.replace('w-full ', 'w-auto ');
+export const campoEnLinea = campo.replace('w-full ', 'w-full sm:w-auto ');
 
 const boton = 'inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -19,7 +22,7 @@ export const botonSecundario = `${boton} border border-gray-300 bg-white px-4 py
 
 export const botonPeligro = `${boton} bg-error-500 px-4 py-2.5 text-white shadow-theme-xs hover:bg-error-600`;
 
-export const botonIcono = 'inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white';
+export const botonIcono = 'inline-flex h-9 w-9 pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white';
 
 export const th = 'px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400';
 

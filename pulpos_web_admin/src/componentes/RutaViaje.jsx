@@ -92,7 +92,7 @@ export default function RutaViaje({ id, urlServidor, headers, manejarErrorApi, m
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="titulo-ruta"
       className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-[2px]" onClick={onCerrar}>
-      <div className={`${tarjeta} max-h-[92vh] w-full max-w-3xl overflow-y-auto bg-white p-6 shadow-theme-xl dark:bg-gray-900`} onClick={e => e.stopPropagation()}>
+      <div className={`${tarjeta} max-h-[92vh] w-full max-w-3xl overflow-y-auto bg-white p-6 shadow-theme-xl dark:!bg-gray-900`} onClick={e => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h3 id="titulo-ruta" className="text-lg font-semibold text-gray-800 dark:text-white/90">Ruta del viaje #{id}</h3>

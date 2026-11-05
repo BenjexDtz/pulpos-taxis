@@ -42,7 +42,7 @@ flutter analyze
 
 # Migrar una BD sin empresas (v3) a multiempresa
 psql -1 -U <usuario> -d <base> -f database/migraciones/001_multiempresa.sql
-# (luego 002 a 013 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación, 007 el empedrado, 008 la rugosidad, 009 la tarifa sin taxímetro, 010 el taxímetro modo S, 011 el historial de parámetros, 012 los DEFAULT de la tarifa, 013 los viajes de demostración)
+# (luego 002 a 014 en orden; 004 añade viajes_historial.uuid, 005 los km por superficie, 006 rutas y verificación, 007 el empedrado, 008 la rugosidad, 009 la tarifa sin taxímetro, 010 el taxímetro modo S, 011 el historial de parámetros, 012 los DEFAULT de la tarifa, 013 los viajes de demostración, 014 las placas sin guion)
 ```
 
 Versiones: SemVer única para todo el sistema. Al publicar, subir `version` en `pulpos_backend/package.json`, `pulpos_web_admin/package.json` (`npm version X.Y.Z --no-git-tag-version`) y `pulpos_apk/pubspec.yaml` (el `+N` sube en cada APK), anotar en `CHANGELOG.md` y crear la etiqueta anotada `vX.Y.Z`.
@@ -73,6 +73,7 @@ Para validar cambios en SQL sin tocar la BD: ejecutarlo dentro de `BEGIN` + `CRE
 - JWT con `tipo: 'admin' | 'chofer'` y `empresa_id`. Middlewares tras `verificarToken`: `soloAdmin` (`/api/admin/*`), `soloSuperadmin` (`/api/plataforma/*`), `soloChofer` (`/api/posicion`, `/api/viajes/sincronizar`), `deEmpresa` (`/api/config`, admin o chofer). Todos consultan la BD en cada petición: desactivar un usuario o su empresa corta el acceso al instante.
 - En rutas de chofer, `chofer_id` y `empresa_id` salen del token.
 - No existe registro público de choferes.
+- Los datos de la empresa solo los edita la plataforma (`PUT /api/plataforma/empresas/:id`); en el panel de la empresa `/empresa` es de solo lectura. La tarifa (`/parametros`) sí la edita cada empresa.
 - **MFA (TOTP) obligatorio en el panel** (`mfa.js`, implementación propia con `node:crypto`; `qrcode` solo dibuja el QR). `/api/admin/login` no da sesión: devuelve `{mfa: 'configurar'|'verificar', token_mfa}` (JWT `tipo: 'mfa'`, 5 min) que solo aceptan `/api/admin/mfa/{configurar,activar,verificar}` vía `tokenMfa(etapa)`. El secreto va cifrado (AES-256-GCM, clave `MFA_CLAVE` o derivada de `JWT_SECRET`); códigos de respaldo en `mfa_codigos_respaldo` como SHA-256; `mfa_ultimo_paso` impide reutilizar un código; 5 fallos → `mfa_bloqueado_hasta`. `soloAdmin`/`soloSuperadmin` exigen `mfa_activo`: restablecerlo corta las sesiones. Los choferes no tienen MFA.
 - `trust proxy` = `TRUST_PROXY` o `'loopback'` (el backend se expone vía **ngrok** en la misma máquina). CORS limitado a `CORS_ORIGINS`.
 - Manejador de errores global al final de `app.js` que responde JSON genérico; no devolver stack traces.
@@ -114,9 +115,15 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 
 **Migraciones SQLite**: subir `version` en `_iniciarDB` y añadir columnas con `ALTER TABLE` en `_actualizarDB`. Nunca `DROP` (se pierden viajes no sincronizados).
 
+### Validación de campos
+Las reglas están en `validacion.js` (el servidor decide), `src/validaciones.js` del panel y `lib/validaciones.dart` de la app: mantenerlas iguales. Nombres de persona, ciudad y país solo con letras; NIT solo números; teléfono con números, espacios, guiones y `+`; contraseñas sin espacios y de hasta 72 bytes (bcrypt). La placa son 4 números y 3 letras y se guarda junta en mayúsculas (`normalizarPlaca`): se puede escribir `2456-zbk`, se guarda `2456ZBK`. El login solo normaliza, no exige el formato, y la BD no tiene CHECK: una placa antigua con otro formato sigue funcionando hasta corregirla (Flota la marca "Placa por corregir").
+
+`PUT /api/admin/choferes/:id` corrige nombre y placa y audita `chofer.editar` con antes y después; los viajes siguen al `chofer_id`, así que muestran la placa corregida. `soloChofer` toma la placa vigente de la BD para la bitácora porque la del token puede estar vieja.
+
 ### Panel web
 - Rutas con react-router (`/` la central: visor del día, mapa y bitácora; `/informes`, `/flota`, `/parametros`, `/empresa`, `/auditoria`, `/seguridad`; superadmin `/plataforma`). Cada vista se carga con `lazy` (Recharts solo baja con los informes). En Docker, `nginx.conf` redirige toda ruta a `index.html` y envía la CSP (el Dockerfile pone `VITE_API_URL` en `connect-src`): un recurso externo nuevo debe añadirse ahí.
 - `App.jsx` carga viajes, choferes y `/api/config` y los pasa a las vistas por props; cada vista guarda su propio estado de formularios y mensajes. Las vistas reciben `urlServidor`, `headers()` y `manejarErrorApi`. Informes pide además `/api/admin/estadisticas` (rutas/estadisticas.js) para sus gráficos.
+- Tamaños: además de los de Tailwind hay `xs` (360), `3xl` (1920), `4xl` (2560) y la variante `bajo` (celular en horizontal) en `index.css`; `contenedor` de `estilos.js` da el ancho del contenido. Una tabla nueva lleva `tabla-apilada` y `data-titulo` en cada `td`: bajo 1024 px se ve como fichas. Un campo con reglas usa `ui/Entrada.jsx` (`error` bloquea el envío con `setCustomValidity` y avisa bajo el campo).
 - Estilos: clases de TailAdmin centralizadas en `componentes/ui/estilos.js` (`tarjeta`, `campo`, `botonPrimario`…) y componentes `Tarjeta`, `Insignia`, `Mensaje`. El color de marca es la variable CSS `--marca` (App la fija con `empresas.color_primario`; la escala `brand-*` se deriva con `color-mix` en `index.css`). Modo claro/oscuro con la clase `dark` en `<html>` (`ProveedorTema`, se recuerda en `localStorage.tema`).
 - Los hooks de contexto están en `contexto/contextos.js` y los proveedores en archivos aparte (regla `react-refresh/only-export-components`).
 - Token en `localStorage` (`admin_token`); el rol se lee del payload (`leerToken`). Superadmin ve `Plataforma` y `Auditoria` (todas las empresas, verificación); los demás, las vistas de su empresa y su bitácora. 401/403 → cierra sesión.
@@ -127,6 +134,6 @@ Los rangos válidos de cada parámetro están en `RANGOS_PARAMETROS` (backend) y
 ## Gotchas
 
 - La URL del backend en la app vive solo en `lib/config.dart` (`urlServidor`) y se sobrescribe con `--dart-define=API_URL=...`. Android 9+ bloquea `http://` sin cifrar: usar https (ngrok).
-- Credenciales de demo (semillas de `init.sql`): superadmin `superadmin@plataforma.bo`, gerentes `admin@pulpos.bo` y `admin@illimani.bo` (todos `password`; el primer ingreso pide escanear el QR del segundo factor); choferes `pulpos`/`1234-KKK` e `illimani`/`5678-ILL` (contraseña `123`, menor que el mínimo de 4 que exige la API para choferes nuevos).
+- Credenciales de demo (semillas de `init.sql`): superadmin `superadmin@plataforma.bo`, gerentes `admin@pulpos.bo` y `admin@illimani.bo` (todos `password`; el primer ingreso pide escanear el QR del segundo factor); choferes `pulpos`/`1234KKK` e `illimani`/`5678ILL` (contraseña `123`, menor que el mínimo de 4 que exige la API para choferes nuevos).
 - `ADMIN_USER` / `ADMIN_PASSWORD` del `.env` no los usa el backend.
 - Express 5: hay un middleware que fuerza `req.body ??= {}`; las rutas async propagan errores solas al manejador global.

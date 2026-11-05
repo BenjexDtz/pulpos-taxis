@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const { verificarToken, soloAdmin } = require('../middlewares/autenticacion');
 const { auditar, separar } = require('../utilidades');
+const { limpiarEspacios, normalizarPlaca, errorNombrePersona, errorPlaca, errorPassword } = require('../validacion');
 
 const router = express.Router();
 
@@ -18,18 +19,14 @@ router.get('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) =>
 
 router.post('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) => {
     const { nombre_completo, placa_vehiculo, password } = req.body;
-    if ([nombre_completo, placa_vehiculo, password].some(x => typeof x !== 'string' || !x.trim()))
-        return res.status(400).json({ error: '⚠️ Faltan datos.' });
-    if (nombre_completo.trim().length > 100 || placa_vehiculo.trim().length > 20)
-        return res.status(400).json({ error: '⚠️ Nombre (máx. 100) o placa (máx. 20) demasiado largos.' });
-    if (password.length < 4)
-        return res.status(400).json({ error: '⚠️ La contraseña debe tener al menos 4 caracteres.' });
+    const error = errorNombrePersona(nombre_completo) ?? errorPlaca(placa_vehiculo) ?? errorPassword(password, 4);
+    if (error) return res.status(400).json({ error });
     try {
         const hash = await bcrypt.hash(password, 10);
         const r = await pool.query(
             `INSERT INTO choferes (empresa_id, nombre_completo, placa_vehiculo, password_hash)
              VALUES ($1,$2,$3,$4) RETURNING id, nombre_completo, placa_vehiculo, estado_activo`,
-            [req.empresa.id, nombre_completo.trim(), placa_vehiculo.trim().toUpperCase(), hash]
+            [req.empresa.id, limpiarEspacios(nombre_completo), normalizarPlaca(placa_vehiculo), hash]
         );
         const chofer = r.rows[0];
         await auditar(req, { accion: 'chofer.crear', entidad: 'choferes', entidad_id: chofer?.id, datos_despues: chofer });
@@ -40,10 +37,40 @@ router.post('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) =
     }
 });
 
+router.put('/api/admin/choferes/:id', verificarToken, soloAdmin, async (req, res) => {
+    if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'No encontrado.' });
+    const { nombre_completo, placa_vehiculo } = req.body;
+    const error = errorNombrePersona(nombre_completo) ?? errorPlaca(placa_vehiculo);
+    if (error) return res.status(400).json({ error });
+    try {
+        const r = await pool.query(
+            `WITH antes AS (SELECT id, nombre_completo, placa_vehiculo FROM choferes WHERE id=$3 AND empresa_id=$4 FOR UPDATE)
+             UPDATE choferes c SET nombre_completo=$1, placa_vehiculo=$2 FROM antes WHERE c.id = antes.id
+             RETURNING c.id, c.nombre_completo, c.placa_vehiculo, c.estado_activo, to_jsonb(antes) AS _antes,
+                       jsonb_build_object('id', c.id, 'nombre_completo', c.nombre_completo, 'placa_vehiculo', c.placa_vehiculo) AS _despues`,
+            [limpiarEspacios(nombre_completo), normalizarPlaca(placa_vehiculo), req.params.id, req.empresa.id]
+        );
+        if (!r.rows.length) return res.status(404).json({ error: 'No encontrado.' });
+        const { antes, despues, auditado } = separar(r.rows[0]);
+        const cambios = [];
+        if (antes.nombre_completo !== despues.nombre_completo) cambios.push(`Nombre: ${antes.nombre_completo} → ${despues.nombre_completo}`);
+        if (antes.placa_vehiculo !== despues.placa_vehiculo) cambios.push(`Placa: ${antes.placa_vehiculo} → ${despues.placa_vehiculo}`);
+        if (!cambios.length) return res.json({ mensaje: 'No había cambios que guardar.', chofer: despues });
+        await auditar(req, {
+            accion: 'chofer.editar', entidad: 'choferes', entidad_id: despues.id,
+            datos_antes: antes, datos_despues: auditado, detalle: cambios.join(' · '),
+        });
+        res.json({ mensaje: `✅ Datos de ${despues.nombre_completo} actualizados.`, chofer: despues });
+    } catch (e) {
+        if (e.code === '23505') return res.status(400).json({ error: '❌ Placa ya registrada.' });
+        throw e;
+    }
+});
+
 router.patch('/api/admin/choferes/:id/password', verificarToken, soloAdmin, async (req, res) => {
     const { nueva_password } = req.body;
-    if (typeof nueva_password !== 'string' || nueva_password.length < 4)
-        return res.status(400).json({ error: '⚠️ Mínimo 4 caracteres.' });
+    const error = errorPassword(nueva_password, 4);
+    if (error) return res.status(400).json({ error });
     if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'No encontrado.' });
     const hash = await bcrypt.hash(nueva_password, 10);
     const r = await pool.query(

@@ -835,7 +835,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
         ],
       ),
       body: SafeArea(
-        child: Column(
+        child: AnchoLegible(child: Column(
           children: [
             Expanded(
               child: ListView(
@@ -1013,7 +1013,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
               ),
             ),
           ],
-        ),
+        )),
       ),
     );
   }

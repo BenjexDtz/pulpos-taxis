@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const limiteLogin = require('../middlewares/limiteLogin');
 const { firmar, actorDe, auditar } = require('../utilidades');
+const { normalizarPlaca } = require('../validacion');
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ router.post('/api/login', limiteLogin, async (req, res) => {
         return res.status(400).json({ error: '⚠️ Empresa, placa y contraseña son obligatorias.' });
 
     const codigo = empresa.trim().toLowerCase();
-    const placa = placa_vehiculo.trim().toUpperCase();
+    const placa = normalizarPlaca(placa_vehiculo);
     const r = await pool.query(
         `SELECT c.*, e.activo AS empresa_activa, e.codigo AS empresa_codigo, e.nombre AS empresa_nombre,
                 e.moneda_simbolo, e.color_primario

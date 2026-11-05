@@ -149,7 +149,7 @@ const EJECUTORES = {
                     coalesce(round(sum(v.distancia_km), 1), 0)::float AS km_periodo
              FROM choferes c
              LEFT JOIN viajes_historial v ON v.chofer_id = c.id AND ${EN_RANGO}
-             WHERE c.empresa_id = $1 AND (c.nombre_completo ILIKE $4 OR c.placa_vehiculo ILIKE $4)
+             WHERE c.empresa_id = $1 AND (c.nombre_completo ILIKE $4 OR c.placa_vehiculo ILIKE replace($4, '-', ''))
              GROUP BY c.id ORDER BY c.nombre_completo LIMIT 5`,
             [empresaId, p.desde, p.hasta, patron]);
         return { desde: p.desde, hasta: p.hasta, choferes: r.rows };

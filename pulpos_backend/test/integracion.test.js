@@ -76,17 +76,17 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const [pulpos, illimani] = await Promise.all([loginAdmin('admin@pulpos.bo'), loginAdmin('admin@illimani.bo')]);
         const choferesP = (await pedir('GET', '/api/admin/choferes', { token: pulpos })).json;
         const choferesI = (await pedir('GET', '/api/admin/choferes', { token: illimani })).json;
-        assert.deepEqual(choferesP.map(c => c.placa_vehiculo), ['1234-KKK']);
-        assert.deepEqual(choferesI.map(c => c.placa_vehiculo), ['5678-ILL']);
+        assert.deepEqual(choferesP.map(c => c.placa_vehiculo), ['1234KKK']);
+        assert.deepEqual(choferesI.map(c => c.placa_vehiculo), ['5678ILL']);
 
         const viajesP = (await pedir('GET', '/api/admin/viajes', { token: pulpos })).json;
         assert.equal(viajesP.length, 6);
-        assert.ok(viajesP.every(v => v.placa_vehiculo === '1234-KKK'));
+        assert.ok(viajesP.every(v => v.placa_vehiculo === '1234KKK'));
     });
 
     test('un gerente no puede modificar choferes de otra empresa', async () => {
         const pulpos = await loginAdmin('admin@pulpos.bo');
-        const idAjeno = (await pool.query(`SELECT id FROM choferes WHERE placa_vehiculo = '5678-ILL'`)).rows[0].id;
+        const idAjeno = (await pool.query(`SELECT id FROM choferes WHERE placa_vehiculo = '5678ILL'`)).rows[0].id;
         for (const [ruta, body] of [
             [`/api/admin/choferes/${idAjeno}/estado`, { estado_activo: false }],
             [`/api/admin/choferes/${idAjeno}/password`, { nueva_password: 'hackeado' }],
@@ -94,7 +94,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
             assert.equal((await pedir('PATCH', ruta, { token: pulpos, body })).status, 404);
         const fila = (await pool.query('SELECT estado_activo FROM choferes WHERE id = $1', [idAjeno])).rows[0];
         assert.equal(fila.estado_activo, true);
-        assert.ok((await loginChofer('illimani', '5678-ILL')).token, 'la contraseña no debe haber cambiado');
+        assert.ok((await loginChofer('illimani', '5678ILL')).token, 'la contraseña no debe haber cambiado');
     });
 
     test('la misma placa puede existir en dos empresas y cada código de empresa entra a la suya', async () => {
@@ -102,15 +102,56 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const alta = await pedir('POST', '/api/admin/choferes', { token: illimani,
             body: { nombre_completo: 'Homónimo', placa_vehiculo: '1234-kkk', password: 'clave123' } });
         assert.equal(alta.status, 201);
-        const a = await loginChofer('pulpos', '1234-KKK');
-        const b = await loginChofer('illimani', '1234-KKK', 'clave123');
+        const a = await loginChofer('pulpos', '1234KKK');
+        const b = await loginChofer('illimani', '1234KKK', 'clave123');
         assert.notEqual(a.chofer.id, b.chofer.id);
         assert.equal(a.empresa.codigo, 'pulpos');
         assert.equal(b.empresa.codigo, 'illimani');
     });
 
+    test('corregir nombre y placa: entra con la nueva, conserva sus viajes y la bitácora guarda cómo era', async () => {
+        const g = await loginAdmin('admin@illimani.bo');
+        const alta = await pedir('POST', '/api/admin/choferes', { token: g,
+            body: { nombre_completo: 'Pedro Erróneo', placa_vehiculo: '7000-AAA', password: 'clave123' } });
+        assert.equal(alta.json.chofer.placa_vehiculo, '7000AAA');
+        const id = alta.json.chofer.id;
+
+        const r = await pedir('PUT', `/api/admin/choferes/${id}`, { token: g,
+            body: { nombre_completo: 'Pedro Correcto', placa_vehiculo: '7000-BBB' } });
+        assert.equal(r.status, 200, r.texto);
+        assert.equal((await pedir('POST', '/api/login', { body: { empresa: 'illimani', placa_vehiculo: '7000AAA', password: 'clave123' } })).status, 401);
+        assert.equal((await loginChofer('illimani', '7000-bbb', 'clave123')).chofer.nombre_completo, 'Pedro Correcto');
+
+        const e = (await auditoria.pool.query(`SELECT * FROM eventos WHERE accion = 'chofer.editar' AND entidad_id = $1`, [String(id)])).rows[0];
+        assert.deepEqual(e.datos_antes, { id, nombre_completo: 'Pedro Erróneo', placa_vehiculo: '7000AAA' });
+        assert.deepEqual(e.datos_despues, { id, nombre_completo: 'Pedro Correcto', placa_vehiculo: '7000BBB' });
+
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        assert.equal((await pedir('PUT', `/api/admin/choferes/${id}`, { token: pulpos,
+            body: { nombre_completo: 'Intruso Ajeno', placa_vehiculo: '7000CCC' } })).status, 404);
+        const repetida = await pedir('PUT', `/api/admin/choferes/${id}`, { token: g,
+            body: { nombre_completo: 'Pedro Correcto', placa_vehiculo: '5678-ILL' } });
+        assert.equal(repetida.status, 400);
+    });
+
+    test('la migración 014 junta las placas sin tocar las que ya están bien', async () => {
+        const fs = require('node:fs');
+        const sql = fs.readFileSync(require('node:path').join(__dirname, '../../database/migraciones/014_placas_sin_guion.sql'), 'utf8');
+        const c = await pool.connect();
+        try {
+            await c.query('BEGIN');
+            await c.query(`UPDATE choferes SET placa_vehiculo = '5678-ill' WHERE placa_vehiculo = '5678ILL'`);
+            await c.query(sql);
+            assert.equal((await c.query(`SELECT count(*)::int n FROM choferes WHERE placa_vehiculo = '5678ILL'`)).rows[0].n, 1);
+            assert.equal((await c.query(`SELECT count(*)::int n FROM choferes WHERE placa_vehiculo ~ '[-a-z ]'`)).rows[0].n, 0);
+        } finally {
+            await c.query('ROLLBACK');
+            c.release();
+        }
+    });
+
     test('un viaje sincronizado queda en la empresa del chofer con los parámetros de esa empresa', async () => {
-        const { token } = await loginChofer('illimani', '5678-ILL');
+        const { token } = await loginChofer('illimani', '5678ILL');
         const r = await pedir('POST', '/api/viajes/sincronizar', { token, body: {
             distancia_km: 2, tiempo_detencion_min: 1, tarifa_cobrada: 9.9, fecha_hora_viaje: '2026-10-07T09:00:00',
         } });
@@ -127,7 +168,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     });
 
     test('viaje mixto: guarda los km por superficie y la base rechaza km que no suman la distancia', async () => {
-        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const { token } = await loginChofer('pulpos', '1234KKK');
         const r = await pedir('POST', '/api/viajes/sincronizar', { token, body: {
             distancia_km: 5, km_asfalto: 3, km_tierra: 2, tiempo_detencion_min: 10, tarifa_cobrada: 35.20,
             factor_superficie_aplicado: 2.5, fecha_hora_viaje: '2026-10-09T09:00:00',
@@ -148,7 +189,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     });
 
     test('viaje con ruta: el servidor la mide, verifica la tarifa y solo la empresa del viaje la ve', async () => {
-        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const { token } = await loginChofer('pulpos', '1234KKK');
         // 2 km hacia el este: 30 tramos en asfalto y 10 en tierra, de 50 m cada uno; la tierra vibra el triple
         const paso = 0.05 / distanciaKm(-16.5, -68.19, -16.5, -68.18) * 0.01;
         const ruta = Array.from({ length: 41 }, (_, i) =>
@@ -183,7 +224,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     });
 
     test('viaje del taxímetro v5: guarda modo, bajada y salto y lo recalcula con la ruta', async () => {
-        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const { token } = await loginChofer('pulpos', '1234KKK');
         const cfg = (await pedir('GET', '/api/config', { token })).json.parametros;
         assert.deepEqual([cfg.modo_tarifa, cfg.bajada_bandera_bs, cfg.valor_salto_bs, cfg.velocidad_cruce_kmh], ['S', '2.00', '0.50', 11.1]);
         // Mismo caso compartido que verificacion.test.js y taximetro_test.dart
@@ -208,7 +249,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     });
 
     test('reenviar el mismo viaje (también en paralelo) no lo duplica', async () => {
-        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const { token } = await loginChofer('pulpos', '1234KKK');
         const body = { distancia_km: 1, tiempo_detencion_min: 0, tarifa_cobrada: 5, fecha_hora_viaje: '2026-10-08T08:00:00',
             uuid: '9b2e4c1a-7d3f-4e8b-a6c5-1f0d2e3b4a59' };
         const primero = await pedir('POST', '/api/viajes/sincronizar', { token, body });
@@ -252,7 +293,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         } });
         assert.equal((await versiones('pulpos')).length, 2);
 
-        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const { token } = await loginChofer('pulpos', '1234KKK');
         // Un viaje hecho sin red con la tarifa anterior sigue siendo válido
         const anterior = { distancia_km: 1, km_asfalto: 1, tiempo_detencion_min: 0, tarifa_cobrada: 2.7,
             costo_base_aplicado: 2, consumo_litros_aplicado: 0.1, precio_combustible_aplicado: 6.96,
@@ -266,7 +307,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     });
 
     test('viaje de demostración: se ve en el panel pero no cuenta en estadísticas, CSV ni asistente', async () => {
-        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const { token } = await loginChofer('pulpos', '1234KKK');
         const dia = '2026-10-12';
         const r = await pedir('POST', '/api/viajes/sincronizar', { token, body: {
             distancia_km: 1, km_asfalto: 1, tiempo_detencion_min: 0, tarifa_cobrada: 5,
@@ -302,7 +343,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
 
         const repetida = await pedir('POST', '/api/plataforma/empresas', { token: sa, body: {
             codigo: 'taxis-sur', nombre: 'Otra', ciudad: 'Oruro', centro_lat: -17.97, centro_lng: -67.11,
-            gerente: { nombre: 'X', email: 'otro@x.bo', password: 'segura123' } } });
+            gerente: { nombre: 'Otro Gerente', email: 'otro@x.bo', password: 'segura123' } } });
         assert.equal(repetida.status, 400);
         assert.equal((await pool.query(`SELECT count(*)::int n FROM empresas WHERE nombre = 'Otra'`)).rows[0].n, 0);
 
@@ -313,13 +354,13 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     test('desactivar una empresa corta el acceso de su gerente y sus choferes al instante', async () => {
         const sa = await loginAdmin('superadmin@plataforma.bo');
         const gerente = await loginAdmin('admin@illimani.bo');
-        const { token: chofer } = await loginChofer('illimani', '5678-ILL');
+        const { token: chofer } = await loginChofer('illimani', '5678ILL');
         const id = (await pool.query(`SELECT id FROM empresas WHERE codigo = 'illimani'`)).rows[0].id;
 
         assert.equal((await pedir('PATCH', `/api/plataforma/empresas/${id}/estado`, { token: sa, body: { activo: false } })).status, 200);
         assert.equal((await pedir('GET', '/api/admin/choferes', { token: gerente })).status, 403);
         assert.equal((await pedir('POST', '/api/posicion', { token: chofer, body: { lat: -16.49, lng: -68.13 } })).status, 403);
-        assert.equal((await pedir('POST', '/api/login', { body: { empresa: 'illimani', placa_vehiculo: '5678-ILL', password: '123' } })).status, 403);
+        assert.equal((await pedir('POST', '/api/login', { body: { empresa: 'illimani', placa_vehiculo: '5678ILL', password: '123' } })).status, 403);
         assert.equal((await pedir('GET', '/api/empresas/illimani')).status, 404);
 
         await pedir('PATCH', `/api/plataforma/empresas/${id}/estado`, { token: sa, body: { activo: true } });
@@ -327,7 +368,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     });
 
     test('estadísticas: comparan la tarifa del sistema con la que se habría cobrado sin taxímetro', async () => {
-        const { token } = await loginChofer('illimani', '5678-ILL');
+        const { token } = await loginChofer('illimani', '5678ILL');
         const base = { tiempo_detencion_min: 0, fecha_hora_viaje: new Date().toISOString().slice(0, 19) };
         for (const [km, cobrada, tradicional, tipo] of [[2, 10, 15, 'asfalto'], [3, 30, 20, 'tierra'], [1, 5, undefined, 'asfalto']])
             assert.equal((await pedir('POST', '/api/viajes/sincronizar', { token, body: {
@@ -367,10 +408,10 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.ok(Math.abs(e.superficie.reduce((s, x) => s + x.km, 0) - real.km) < 1e-6);
         assert.ok(e.superficie.every(x => ['asfalto', 'tierra', 'empedrado'].includes(x.tipo) && x.recorrido > 0));
         assert.ok(e.superficie.some(x => x.tipo === 'empedrado'));
-        assert.ok(e.choferes.every(c => c.placa !== '5678-ILL'));
+        assert.ok(e.choferes.every(c => c.placa !== '5678ILL'));
 
         const i = (await pedir('GET', '/api/admin/estadisticas', { token: illimani })).json;
-        assert.deepEqual(i.choferes.map(c => c.placa), ['5678-ILL']);
+        assert.deepEqual(i.choferes.map(c => c.placa), ['5678ILL']);
 
         const vacio = (await pedir('GET', '/api/admin/estadisticas?desde=2020-01-01&hasta=2020-01-01', { token: pulpos })).json;
         assert.deepEqual([vacio.desde, vacio.hasta, vacio.resumen.viajes, vacio.por_dia.length, vacio.choferes.length], ['2020-01-01', '2020-01-01', 0, 1, 0]);
@@ -393,11 +434,11 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
 
         for (const criterio of ['recaudado', 'viajes', 'km']) {
             const r = await ejecutar('ranking_choferes', { criterio });
-            assert.deepEqual(r.choferes.map(c => c.placa), ['1234-KKK']);
+            assert.deepEqual(r.choferes.map(c => c.placa), ['1234KKK']);
         }
-        assert.deepEqual((await ejecutar('detalle_chofer', { busqueda: '1234' })).choferes.map(c => c.placa), ['1234-KKK']);
+        assert.deepEqual((await ejecutar('detalle_chofer', { busqueda: '1234' })).choferes.map(c => c.placa), ['1234KKK']);
         assert.deepEqual((await ejecutar('detalle_chofer', { busqueda: '5678' })).choferes, []);
-        assert.ok((await ejecutar('choferes_inactivos', { dias: 365 })).choferes.every(c => c.placa !== '5678-ILL'));
+        assert.ok((await ejecutar('choferes_inactivos', { dias: 365 })).choferes.every(c => c.placa !== '5678ILL'));
         const flota = await ejecutar('estado_flota');
         assert.ok(flota.registrados >= 1 && flota.habilitados <= flota.registrados);
         const tarifa = await ejecutar('calcular_tarifa', { distancia_km: 5, espera_min: 10 });
@@ -408,7 +449,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         process.env.LLM_API_KEY = 'prueba';
         const guion = [
             { tool_calls: [{ id: 'a', function: { name: 'ranking_choferes', arguments: '{}' } }] },
-            { content: 'El primero es 1234-KKK.' },
+            { content: 'El primero es 1234KKK.' },
         ];
         asistente.llamarModelo = async () => guion.shift();
         try {
@@ -423,7 +464,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
     });
 
     test('la posición se valida contra el radio de operación de cada empresa', async () => {
-        const { token } = await loginChofer('pulpos', '1234-KKK');
+        const { token } = await loginChofer('pulpos', '1234KKK');
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -16.52, lng: -68.20 } })).status, 200);
         assert.equal((await pedir('POST', '/api/posicion', { token, body: { lat: -17.39, lng: -66.16 } })).status, 400);
     });
@@ -495,7 +536,7 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         const idIllimani = (await pool.query(`SELECT id FROM empresas WHERE codigo = 'illimani'`)).rows[0].id;
         assert.ok(eventos.length > 0);
         assert.ok(eventos.every(e => e.empresa_id === idIllimani), 'solo eventos de su empresa');
-        const alta = eventos.find(e => e.accion === 'chofer.crear' && e.datos_despues?.placa_vehiculo === '9090-AUD');
+        const alta = eventos.find(e => e.accion === 'chofer.crear' && e.datos_despues?.placa_vehiculo === '9090AUD');
         assert.equal(alta.actor_nombre, 'Gerencia Illimani');
         assert.ok(eventos.some(e => e.accion === 'sesion.login_admin' && e.resultado === 'rechazado'));
 

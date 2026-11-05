@@ -46,12 +46,13 @@ asistente.llamarModelo = async (mensajes, herramientas) => {
 };
 
 const { app, filtroFechas, validarEmpresa, distanciaKm } = require('../index');
+const { errorNombrePersona, errorPlaca, errorPassword, normalizarPlaca } = require('../validacion');
 
 const firmar = (payload) => jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
 const TOKEN_ADMIN       = firmar({ id: 1, rol: 'gerente', nombre: 'Gerencia', tipo: 'admin', empresa_id: 2 });
 const TOKEN_SUPERADMIN  = firmar({ id: 9, rol: 'superadmin', nombre: 'Plataforma', tipo: 'admin', empresa_id: null });
-const TOKEN_CHOFER      = firmar({ id: 7, placa: '1234-KKK', tipo: 'chofer', empresa_id: 2 });
-const TOKEN_VIEJO       = firmar({ id: 7, placa: '1234-KKK', tipo: 'chofer' });
+const TOKEN_CHOFER      = firmar({ id: 7, placa: '1234KKK', tipo: 'chofer', empresa_id: 2 });
+const TOKEN_VIEJO       = firmar({ id: 7, placa: '1234KKK', tipo: 'chofer' });
 const TOKEN_ADMIN_VIEJO = firmar({ id: 1, rol: 'gerente', tipo: 'admin' });
 
 const consultasDeDatos = () => consultas.filter(c =>
@@ -72,7 +73,7 @@ beforeEach(() => {
     guionModelo = [];
     pedidosModelo = [];
     estadoAdmin = { activo: true, mfa_activo: true, empresa_activa: true, codigo: 'pulpos', moneda_simbolo: 'Bs' };
-    estadoChofer = { estado_activo: true, empresa_activa: true, centro_lat: '-16.5', centro_lng: '-68.19', radio_operacion_km: '40' };
+    estadoChofer = { estado_activo: true, placa_vehiculo: '1234KKK', empresa_activa: true, centro_lat: '-16.5', centro_lng: '-68.19', radio_operacion_km: '40' };
 });
 
 async function pedir(metodo, ruta, { token, body, headers = {}, crudo } = {}) {
@@ -95,10 +96,10 @@ const RUTAS_EMPRESA = [
     ['GET', '/api/admin/estadisticas'],
     ['GET', '/api/admin/choferes'],
     ['POST', '/api/admin/choferes'],
+    ['PUT', '/api/admin/choferes/2'],
     ['PATCH', '/api/admin/choferes/2/password'],
     ['PATCH', '/api/admin/choferes/2/estado'],
     ['PUT', '/api/admin/parametros'],
-    ['PUT', '/api/admin/empresa'],
     ['POST', '/api/admin/asistente'],
 ];
 
@@ -161,7 +162,8 @@ describe('Aislamiento: toda consulta usa la empresa del token', () => {
         ['GET', '/api/admin/viajes?desde=2026-01-01&hasta=2026-01-31', undefined],
         ['PATCH', '/api/admin/choferes/5/password', { nueva_password: 'nueva123' }],
         ['PATCH', '/api/admin/choferes/5/estado', { estado_activo: false }],
-        ['POST', '/api/admin/choferes', { nombre_completo: 'Ana', placa_vehiculo: '1111-AAA', password: 'clave1', empresa_id: 99 }],
+        ['POST', '/api/admin/choferes', { nombre_completo: 'Ana María', placa_vehiculo: '1111-AAA', password: 'clave1', empresa_id: 99 }],
+        ['PUT', '/api/admin/choferes/5', { nombre_completo: 'Ana María', placa_vehiculo: '1111AAA', empresa_id: 99 }],
     ];
     for (const [metodo, ruta, body] of casos) {
         test(`${metodo} ${ruta}`, async () => {
@@ -536,15 +538,21 @@ describe('Parámetros y datos de la empresa', () => {
         assert.equal((await pedir('GET', '/api/config', { token: TOKEN_SUPERADMIN })).status, 403);
     });
 
-    test('PUT /api/admin/empresa no permite cambiar código ni estado', async () => {
+    test('la empresa ya no se edita desde su propio panel', async () => {
+        const r = await pedir('PUT', '/api/admin/empresa', { token: TOKEN_ADMIN, body: { nombre: 'Otra', ciudad: 'Oruro', centro_lat: -17, centro_lng: -67 } });
+        assert.equal(r.status, 404);
+        assert.equal(consultasDeDatos().filter(c => /UPDATE empresas/.test(c.sql)).length, 0);
+    });
+
+    test('PUT /api/plataforma/empresas/:id no permite cambiar código ni estado', async () => {
         responder = () => ({ rows: [{ id: 2 }] });
-        await pedir('PUT', '/api/admin/empresa', { token: TOKEN_ADMIN, body: {
+        await pedir('PUT', '/api/plataforma/empresas/2', { token: TOKEN_SUPERADMIN, body: {
             nombre: 'Radio Taxis Pulpos', ciudad: 'El Alto', centro_lat: -16.5, centro_lng: -68.19,
             codigo: 'otro', activo: false, id: 99,
         } });
-        const q = consultasDeDatos()[0];
+        const q = consultasDeDatos().find(c => /UPDATE empresas/.test(c.sql));
         assert.doesNotMatch(q.sql, /[ ,]codigo=|[ ,]activo=/);
-        assert.equal(q.params.at(-1), 2);
+        assert.equal(q.params.at(-1), '2');
     });
 });
 
@@ -570,11 +578,112 @@ describe('validarEmpresa', () => {
         ['email inválido', { email: 'no-es-email' }],
         ['altitud con decimales', { altitud_msnm: 3640.5 }],
         ['radio fuera de rango', { radio_operacion_km: 0 }],
+        ['ciudad con números', { ciudad: 'El Alto 2' }],
+        ['país con números', { pais: 'B0livia' }],
+        ['NIT con letras', { nit: '12345A' }],
+        ['teléfono con letras', { telefono: '22800ABC' }],
+        ['teléfono muy corto', { telefono: '123' }],
+        ['símbolo de moneda con números', { moneda_simbolo: 'B1' }],
+        ['nombre comercial solo con números', { nombre: '12345' }],
     ]) {
         test(`rechaza ${caso}`, () => {
             assert.ok(validarEmpresa({ ...minima, ...cambio }).error);
         });
     }
+});
+
+describe('Validación de los campos', () => {
+    test('el nombre solo admite letras y conserva tildes, eñes y apellidos compuestos', () => {
+        for (const bien of ['Juan Pérez Mamani', 'Ñusta Choque', "María D'Angelo", 'Ana-María Q.'])
+            assert.equal(errorNombrePersona(bien), null, bien);
+        for (const mal of ['Juan123', '12345', 'Juan_Pérez', '<b>Ana</b>', 'Jo', '', undefined, 7, 'x'.repeat(101)])
+            assert.ok(errorNombrePersona(mal), String(mal));
+    });
+
+    test('la placa son 4 números y 3 letras, con o sin guion', () => {
+        for (const bien of ['2456ZBK', '2456-ZBK', '2456-zbk', ' 2456 zbk '])
+            assert.equal(errorPlaca(bien), null, bien);
+        assert.equal(normalizarPlaca(' 2456-zbk '), '2456ZBK');
+        for (const mal of ['245ZBK', '24567ZBK', '2456ZB', '2456ZBKA', 'ZBK2456', '2456Z1K', '2456-ÑBK', '', null])
+            assert.ok(errorPlaca(mal), String(mal));
+    });
+
+    test('la contraseña tiene mínimo, máximo y no lleva espacios', () => {
+        assert.equal(errorPassword('clave1', 4), null);
+        assert.ok(errorPassword('abc', 4));
+        assert.ok(errorPassword('corta12', 8));
+        assert.ok(errorPassword('con espacio', 4));
+        assert.ok(errorPassword('x'.repeat(73), 4));
+        assert.ok(errorPassword('ñ'.repeat(40), 4), '72 bytes, no caracteres');
+        assert.ok(errorPassword(1234, 4));
+    });
+});
+
+describe('Registrar y editar choferes', () => {
+    const fila = { id: 5, nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', estado_activo: true };
+
+    for (const [caso, cambio] of [
+        ['números en el nombre', { nombre_completo: 'Ana 123' }],
+        ['placa sin formato', { placa_vehiculo: 'ABC-123' }],
+    ]) {
+        test(`alta y edición rechazan ${caso} sin tocar la BD`, async () => {
+            const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', password: 'clave1', ...cambio };
+            for (const [metodo, ruta] of [['POST', '/api/admin/choferes'], ['PUT', '/api/admin/choferes/5']])
+                assert.equal((await pedir(metodo, ruta, { token: TOKEN_ADMIN, body })).status, 400);
+            assert.equal(consultasDeDatos().length, 0);
+        });
+    }
+
+    test('el alta guarda la placa junta y en mayúsculas', async () => {
+        responder = () => ({ rows: [fila] });
+        const r = await pedir('POST', '/api/admin/choferes', { token: TOKEN_ADMIN, body: { nombre_completo: '  Ana   María ', placa_vehiculo: '2456-zbk', password: 'clave1' } });
+        assert.equal(r.status, 201);
+        assert.deepEqual(consultasDeDatos()[0].params.slice(1, 3), ['Ana María', '2456ZBK']);
+    });
+
+    test('editar deja en la auditoría cómo era y cómo quedó', async () => {
+        const antes = { id: 5, nombre_completo: 'Ana Maria', placa_vehiculo: '2456ZBX' };
+        responder = () => ({ rows: [{ ...fila, _antes: antes, _despues: { id: 5, nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK' } }] });
+        const r = await pedir('PUT', '/api/admin/choferes/5', { token: TOKEN_ADMIN, body: { nombre_completo: 'Ana María', placa_vehiculo: '2456-zbk' } });
+        assert.equal(r.status, 200);
+        assert.equal(r.json.chofer._antes, undefined);
+        const e = eventos.at(-1);
+        assert.equal(e.accion, 'chofer.editar');
+        assert.equal(e.entidad_id, 5);
+        assert.deepEqual(e.datos_antes, antes);
+        assert.equal(e.datos_despues.placa_vehiculo, '2456ZBK');
+        assert.match(e.detalle, /Placa: 2456ZBX → 2456ZBK/);
+        assert.match(e.detalle, /Nombre: Ana Maria → Ana María/);
+    });
+
+    test('editar sin cambios no llena la bitácora', async () => {
+        responder = () => ({ rows: [{ ...fila, _antes: { id: 5, nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK' }, _despues: {} }] });
+        const r = await pedir('PUT', '/api/admin/choferes/5', { token: TOKEN_ADMIN, body: { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK' } });
+        assert.equal(r.status, 200);
+        assert.ok(!eventos.some(e => e.accion === 'chofer.editar'));
+    });
+
+    test('editar: placa repetida responde 400 y un chofer ajeno 404', async () => {
+        const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK' };
+        responder = () => { throw Object.assign(new Error('dup'), { code: '23505' }); };
+        assert.equal((await pedir('PUT', '/api/admin/choferes/5', { token: TOKEN_ADMIN, body })).status, 400);
+        responder = () => ({ rows: [] });
+        assert.equal((await pedir('PUT', '/api/admin/choferes/5', { token: TOKEN_ADMIN, body })).status, 404);
+        assert.equal((await pedir('PUT', '/api/admin/choferes/abc', { token: TOKEN_ADMIN, body })).status, 404);
+    });
+
+    test('el login acepta la placa con guion y la busca sin él', async () => {
+        responder = () => ({ rows: [] });
+        await pedir('POST', '/api/login', { headers: { 'X-Forwarded-For': '200.9.9.77' }, body: { empresa: 'pulpos', placa_vehiculo: '2456-zbk', password: 'x' } });
+        assert.ok(consultas.some(c => c.params?.includes('2456ZBK')));
+    });
+
+    test('la bitácora del chofer usa la placa vigente, no la del token', async () => {
+        responder = (sql) => sql.includes('INSERT') ? { rows: [{ id_servidor: 45, tarifa_cobrada: '9.90' }] } : { rows: [{ a: 1 }] };
+        estadoChofer = { ...estadoChofer, placa_vehiculo: '9999ZZZ' };
+        await pedir('POST', '/api/viajes/sincronizar', { token: TOKEN_CHOFER, body: { distancia_km: 1, tiempo_detencion_min: 0, tarifa_cobrada: 9.9, fecha_hora_viaje: '2026-10-07' } });
+        assert.equal(eventos.find(e => e.accion === 'viaje.sincronizar').actor_nombre, '9999ZZZ');
+    });
 });
 
 describe('Plataforma: alta de empresas', () => {
@@ -612,6 +721,7 @@ describe('Plataforma: alta de empresas', () => {
         ['código inválido', { codigo: 'a b' }],
         ['sin gerente', { gerente: undefined }],
         ['contraseña corta del gerente', { gerente: { ...nueva.gerente, password: '123' } }],
+        ['números en el nombre del gerente', { gerente: { ...nueva.gerente, nombre: 'Lucía 2' } }],
     ]) {
         test(`rechaza ${caso}`, async () => {
             const r = await pedir('POST', '/api/plataforma/empresas', { token: TOKEN_SUPERADMIN, body: { ...nueva, ...cambio } });
@@ -698,16 +808,16 @@ describe('Errores y cabeceras', () => {
 describe('Login', () => {
     const hash = bcrypt.hashSync('password', 4);
     const IP = (n) => ({ 'X-Forwarded-For': `200.0.0.${n}` });
-    const chofer = { id: 7, empresa_id: 2, placa_vehiculo: '1234-KKK', nombre_completo: 'J', estado_activo: true,
+    const chofer = { id: 7, empresa_id: 2, placa_vehiculo: '1234KKK', nombre_completo: 'J', estado_activo: true,
         empresa_activa: true, password_hash: hash, empresa_codigo: 'pulpos', empresa_nombre: 'Radio Taxis Pulpos',
         moneda_simbolo: 'Bs', color_primario: '#10b981' };
 
     test('chofer: exige empresa y normaliza código y placa', async () => {
-        assert.equal((await pedir('POST', '/api/login', { headers: IP(1), body: { placa_vehiculo: '1234-KKK', password: 'x' } })).status, 400);
+        assert.equal((await pedir('POST', '/api/login', { headers: IP(1), body: { placa_vehiculo: '1234KKK', password: 'x' } })).status, 400);
         responder = () => ({ rows: [chofer] });
         const r = await pedir('POST', '/api/login', { headers: IP(1), body: { empresa: ' Pulpos ', placa_vehiculo: '1234-kkk', password: 'password' } });
         assert.equal(r.status, 200);
-        assert.deepEqual(consultas.at(-1).params, ['pulpos', '1234-KKK']);
+        assert.deepEqual(consultas.at(-1).params, ['pulpos', '1234KKK']);
         const t = jwt.decode(r.json.token);
         assert.equal(t.tipo, 'chofer');
         assert.equal(t.empresa_id, 2);
@@ -716,7 +826,7 @@ describe('Login', () => {
 
     test('chofer desactivado solo se informa con la contraseña correcta', async () => {
         responder = () => ({ rows: [{ ...chofer, estado_activo: false }] });
-        const datos = { empresa: 'pulpos', placa_vehiculo: '1234-KKK' };
+        const datos = { empresa: 'pulpos', placa_vehiculo: '1234KKK' };
         assert.equal((await pedir('POST', '/api/login', { headers: IP(2), body: { ...datos, password: 'mal' } })).status, 401);
         assert.equal((await pedir('POST', '/api/login', { headers: IP(2), body: { ...datos, password: 'password' } })).status, 403);
     });
@@ -781,10 +891,10 @@ describe('Auditoría', () => {
     });
 
     test('login exitoso de chofer registra actor, empresa y placa', async () => {
-        responder = () => ({ rows: [{ id: 7, empresa_id: 2, placa_vehiculo: '1234-KKK', estado_activo: true, empresa_activa: true, password_hash: hash }] });
-        await pedir('POST', '/api/login', { headers: { 'X-Forwarded-For': '200.9.9.2' }, body: { empresa: 'pulpos', placa_vehiculo: '1234-KKK', password: 'password' } });
+        responder = () => ({ rows: [{ id: 7, empresa_id: 2, placa_vehiculo: '1234KKK', estado_activo: true, empresa_activa: true, password_hash: hash }] });
+        await pedir('POST', '/api/login', { headers: { 'X-Forwarded-For': '200.9.9.2' }, body: { empresa: 'pulpos', placa_vehiculo: '1234KKK', password: 'password' } });
         const e = ultimo('sesion.login_chofer');
-        assert.deepEqual([e.actor_tipo, e.actor_id, e.actor_nombre, e.empresa_id, e.resultado], ['chofer', 7, '1234-KKK', 2, 'exito']);
+        assert.deepEqual([e.actor_tipo, e.actor_id, e.actor_nombre, e.empresa_id, e.resultado], ['chofer', 7, '1234KKK', 2, 'exito']);
     });
 
     test('los accesos denegados y tokens inválidos se registran', async () => {

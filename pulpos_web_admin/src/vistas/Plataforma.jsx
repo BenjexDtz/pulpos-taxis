@@ -123,7 +123,7 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
           </>
         }>
         <div className="custom-scrollbar overflow-x-auto">
-          <table className="w-full">
+          <table className="tabla-apilada w-full">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 {['Empresa', 'Ciudad', 'Moneda', 'Choferes', 'Viajes', 'Estado', 'Acciones'].map(h => <th key={h} className={th}>{h}</th>)}
@@ -135,7 +135,7 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
               )}
               {empresas.map(e => (
                 <tr key={e.id} className={`${filaTabla} ${!e.activo ? 'opacity-50' : ''}`}>
-                  <td className={td}>
+                  <td data-titulo="Empresa" className={td}>
                     <div className="flex items-center gap-3">
                       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: e.color_primario }} />
                       <div>
@@ -144,12 +144,12 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
                       </div>
                     </div>
                   </td>
-                  <td className={td}>{e.ciudad}, {e.pais}</td>
-                  <td className={td}>{e.moneda_codigo} ({e.moneda_simbolo})</td>
-                  <td className={td}>{e.total_choferes}</td>
-                  <td className={td}>{e.total_viajes}</td>
-                  <td className={td}>{e.activo ? <Insignia color="exito">Activa</Insignia> : <Insignia>Inactiva</Insignia>}</td>
-                  <td className={td}>
+                  <td data-titulo="Ciudad" className={td}>{e.ciudad}, {e.pais}</td>
+                  <td data-titulo="Moneda" className={td}>{e.moneda_codigo} ({e.moneda_simbolo})</td>
+                  <td data-titulo="Choferes" className={td}>{e.total_choferes}</td>
+                  <td data-titulo="Viajes" className={td}>{e.total_viajes}</td>
+                  <td data-titulo="Estado" className={td}>{e.activo ? <Insignia color="exito">Activa</Insignia> : <Insignia>Inactiva</Insignia>}</td>
+                  <td data-titulo="Acciones" className={td}>
                     <div className="flex items-center gap-2">
                       <button title="Editar" aria-label={`Editar ${e.nombre}`} onClick={() => abrir(e)} className={botonIcono}>
                         <Pencil className="h-4 w-4" />
@@ -176,7 +176,7 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
           </div>
         )}
         <div className="custom-scrollbar overflow-x-auto">
-          <table className="w-full">
+          <table className="tabla-apilada w-full">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
                 {['Nombre', 'Empresa', 'Rol', 'Segundo factor', 'Acciones'].map(h => <th key={h} className={th}>{h}</th>)}
@@ -185,18 +185,18 @@ export default function Plataforma({ urlServidor, headers, manejarErrorApi, usua
             <tbody>
               {admins.map(a => (
                 <tr key={a.id} className={`${filaTabla} ${!a.activo ? 'opacity-50' : ''}`}>
-                  <td className={td}>
+                  <td data-titulo="Nombre" className={td}>
                     <p className="font-medium text-gray-800 dark:text-white/90">{a.nombre}</p>
                     <p className="text-theme-xs text-gray-500 dark:text-gray-400">{a.email}</p>
                   </td>
-                  <td className={td}>{a.empresa_nombre ?? 'Plataforma'}</td>
-                  <td className={`${td} capitalize`}>{a.rol}</td>
-                  <td className={td}>
+                  <td data-titulo="Empresa" className={td}>{a.empresa_nombre ?? 'Plataforma'}</td>
+                  <td data-titulo="Rol" className={`${td} capitalize`}>{a.rol}</td>
+                  <td data-titulo="Segundo factor" className={td}>
                     {a.mfa_activo
                       ? <Insignia color="exito"><ShieldCheck className="h-3 w-3" />Activo</Insignia>
                       : <Insignia color="aviso">Pendiente de configurar</Insignia>}
                   </td>
-                  <td className={td}>
+                  <td data-titulo="Acciones" className={td}>
                     {a.mfa_activo && a.id !== usuarioId && (
                       <button onClick={() => restablecerMfa(a)} onBlur={() => setConfirmarReset(null)}
                         className={confirmarReset === a.id ? `${botonPeligro} px-3 py-2` : `${botonSecundario} px-3 py-2`}>

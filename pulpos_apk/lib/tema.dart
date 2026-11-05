@@ -395,3 +395,15 @@ class MarcaEmpresa extends StatelessWidget {
     child: Icon(Icons.local_taxi, color: Colors.white, size: tamano * 0.58),
   );
 }
+
+// En tablet u horizontal el contenido no se estira: un taxímetro de lado a lado se lee peor
+class AnchoLegible extends StatelessWidget {
+  const AnchoLegible({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: child),
+      );
+}
