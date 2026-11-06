@@ -3,6 +3,26 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [1.6.1] - 2026-11-06
+
+### Corregido
+- **Panel:** se puede guardar la tarifa con el salto por defecto de 0,50, que el formulario bloqueaba.
+- **Asistente:** ya no falla cuando el modelo envía parámetros opcionales nulos; una llamada mal formada se reintenta una vez.
+- **App:** una posición inicial antigua ya no hace descartar las siguientes, y la última posición conocida solo se usa si tiene menos de 2 minutos.
+- **App:** la distancia mostrada se reinicia al volver a Libre.
+
+### Cambiado
+- **Contraseñas de choferes:** las nuevas y las restablecidas desde Flota deben tener al menos 8 caracteres (antes 4). Las que ya existen siguen funcionando.
+- **README** actualizado a la v5 del taxímetro y con extensión Markdown.
+
+### Documentación
+- Resultados de las pruebas, verificación de seguridad, métricas y borradores de los manuales en `docs/fase5/`.
+- Diagramas `comp02_componentes`, `desp02_despliegue` y `act02_proceso_sistema`; `cu02_panel_web` actualizado por el cambio de CU-14.
+
+### Limitaciones conocidas
+- Preguntas seguidas al asistente pueden agotar el límite gratuito de Groq.
+- Las correcciones de la posición inicial y de la distancia mostrada se comprobaron con pruebas automáticas; falta confirmarlas en un teléfono.
+
 ## [1.6.0] - 2026-11-05
 
 ### Añadido
