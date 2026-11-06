@@ -790,7 +790,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     final params = _params ?? ParametrosTopograficos.porDefecto;
 
     final taximetro = _taximetro;
-    final recorrido = taximetro?.recorrido ?? RecorridoPorSuperficie();
+    final recorrido = taximetro?.recorridoEnPantalla ?? RecorridoPorSuperficie();
     final tarifaEnVivo = (taximetro?.centavosEn(_segundosViaje) ?? 0) / 100;
     // Sin posiciones nuevas el auto está detenido o muy lento: corre el tiempo
     final porTiempo = taximetro != null &&

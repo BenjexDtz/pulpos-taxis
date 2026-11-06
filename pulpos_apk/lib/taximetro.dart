@@ -102,6 +102,8 @@ class Taximetro {
 
   EstadoTaximetro get estado => _estado;
   RecorridoPorSuperficie get recorrido => _recorrido;
+  RecorridoPorSuperficie get recorridoEnPantalla =>
+      _estado == EstadoTaximetro.libre ? RecorridoPorSuperficie() : _recorrido;
   List<PuntoRuta> get ruta => List.unmodifiable(_ruta);
   PuntoRuta? get ultimoPunto => _ruta.isEmpty ? null : _ruta.last;
   int get centavos => tarifa.bajada + _saltos * tarifa.salto;

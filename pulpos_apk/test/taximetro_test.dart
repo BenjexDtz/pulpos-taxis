@@ -116,6 +116,15 @@ void main() {
       expect([t.centavos, t.ruta.length, t.minutosPorTiempo], [500, 1, 0]);
     });
 
+    test('la distancia en pantalla se mantiene al cobrar y se reinicia en LIBRE', () {
+      final t = ocupado()
+        ..registrar(const PuntoRuta(-16.5, -68.18, 120, Superficie.asfalto))
+        ..cobrar(120, Superficie.asfalto);
+      expect(t.recorridoEnPantalla.kmTotal, greaterThan(1));
+      t.liberar();
+      expect(t.recorridoEnPantalla.kmTotal, 0);
+    });
+
     test('el inicio se puede corregir solo antes del primer tramo', () {
       const corregido = PuntoRuta(-16.51, -68.2, 0, Superficie.tierra);
       final t = ocupado();
