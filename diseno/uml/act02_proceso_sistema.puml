@@ -1,0 +1,55 @@
+@startuml act02_proceso_sistema
+!include estilo.iuml
+title Diagrama de actividades – Cobro del viaje con el sistema
+
+|Pasajero|
+start
+:Llamar a la central\npidiendo un taxi;
+|Central|
+:Recibir la llamada;
+:Asignar una unidad por radio;
+|Chofer|
+:Recibir la asignación por radio;
+:Recoger al pasajero;
+:Pulsar iniciar viaje;
+|App móvil|
+:Obtener la posición inicial;
+:Guardar el viaje en curso\ncon los parámetros vigentes;
+:Aplicar la bajada de bandera;
+repeat
+  :Recibir posición GPS y vibración;
+  if (¿Precisión ≤ 20 m y velocidad ≤ 120 km/h?) then (sí)
+    :Guardar el punto con la superficie marcada;
+    :Calcular el tramo:\nmodo S max(d × F × Tkm, t × Th)\nmodo D la suma;
+    :Actualizar el importe por saltos;
+    if (¿La vibración no cuadra con lo marcado?) then (sí)
+      :Sugerir cambiar la superficie;
+      |Chofer|
+      :Aceptar o ignorar la sugerencia;
+      |App móvil|
+    endif
+  else (no)
+    :Descartar la posición;
+  endif
+repeat while (¿El chofer pulsó cobrar?) is (no) not (sí)
+:Cerrar el último tramo y congelar el importe;
+:Guardar el viaje y su ruta en SQLite
+(queda registro del viaje y del monto);
+|Pasajero|
+:Ver el importe y pagar en efectivo;
+|Chofer|
+:Recibir el pago;
+|App móvil|
+if (¿Hay conexión?) then (sí)
+  :Enviar el viaje y su ruta;
+  |Servidor|
+  :Validar y recalcular distancia y tarifa;
+  :Guardar el viaje con su verificación\n(sin rechazarlo si no cuadra);
+  :Registrar el evento en la bitácora;
+  |App móvil|
+  :Marcar sincronizado y borrar la ruta local;
+else (no)
+  :Dejar el viaje pendiente\ny reintentar cada 2 min;
+endif
+stop
+@enduml

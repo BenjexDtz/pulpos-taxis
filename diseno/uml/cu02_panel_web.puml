@@ -21,6 +21,7 @@ rectangle "Panel web Pulpos" {
   usecase "Exportar viajes" as UC11b
   usecase "CU-12 Gestionar choferes" as UC12
   usecase "CU-13 Configurar parámetros\nde tarifa" as UC13
+  usecase "Consultar datos\nde la empresa" as UC14a
   usecase "CU-14 Editar datos\nde la empresa" as UC14
   usecase "CU-15 Consultar informes\ny estadísticas" as UC15
   usecase "CU-16 Consultar al\nasistente de IA" as UC16
@@ -36,7 +37,7 @@ Admin --> UC10
 Admin --> UC11
 Admin --> UC12
 Admin --> UC13
-Admin --> UC14
+Admin --> UC14a
 Admin --> UC15
 Admin --> UC16
 Admin --> UC17
@@ -44,6 +45,7 @@ Admin --> UC21
 
 Super --> UC9
 Super --> UC17
+Super --> UC14
 Super --> UC18
 Super --> UC19
 Super --> UC17a

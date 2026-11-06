@@ -1,0 +1,78 @@
+@startuml comp02_componentes
+!include estilo.iuml
+title Diagrama de componentes – Sistema de tarificación (v1.6.1)
+
+package "Teléfono Android" {
+  package "App móvil (Flutter)" {
+    component "Pantallas\n(taxímetro, login,\nhistorial)" as PANT
+    component "Taximetro\n(modo S/D, enteros)" as TAX
+    component "MotorGPS" as GPS
+    component "Rugosidad\n(vibración y sugerencia)" as RUG
+    component "ViajeEnCurso\n(recuperación)" as CURSO
+    component "RecorridoDemostracion" as DEMO
+    component "Sincronizador" as SINC
+    component "ParametrosService\ny Sesion" as CONF
+  }
+  database "SQLite\n(viajes y puntos)" as SQLITE
+  component "Receptor GPS\ny acelerómetro" as SENSORES
+}
+
+package "Navegador" {
+  package "Panel web (React)" {
+    component "Vistas\n(Central, Informes, Flota,\nParámetros, Empresa, Auditoría,\nSeguridad, Plataforma)" as VISTAS
+    component "Asistente" as CASIS
+    component "MapaFlota y RutaViaje" as MAPA
+  }
+}
+
+package "Servidor" {
+  package "API REST (Node.js / Express 5)" {
+    interface "API móvil" as IMOVIL
+    interface "API del panel" as IPANEL
+    component "Middlewares\n(JWT, roles, MFA,\nlímite de intentos)" as MID
+    component "Rutas por área" as RUTAS
+    component "verificacion.js\n(recalcula cada viaje)" as VERIF
+    component "mfa.js\n(TOTP, AES-256-GCM)" as MFA
+    component "asistente.js\n(herramientas fijas)" as ASIS
+    component "auditoria.js\n(eventos, anclas, cola)" as AUDIT
+  }
+  database "Base principal\n(PostgreSQL)" as BD
+  database "Base de auditoría\n(PostgreSQL)" as AUD
+}
+
+cloud "Servicio LLM\n(Groq u Ollama)" as LLM
+cloud "OpenStreetMap\n(teselas)" as OSM
+cloud "unpkg\n(Leaflet)" as UNPKG
+
+PANT --> TAX
+PANT --> RUG
+PANT --> CURSO
+PANT --> DEMO
+PANT --> SINC
+PANT --> CONF
+SENSORES --> GPS
+SENSORES --> RUG
+GPS --> PANT : posiciones
+CURSO --> SQLITE
+SINC --> SQLITE
+
+SINC ..> IMOVIL : HTTPS + JWT chofer\n/api/viajes/sincronizar
+GPS ..> IMOVIL : /api/posicion
+CONF ..> IMOVIL : /api/login, /api/config
+VISTAS ..> IPANEL : HTTPS + JWT admin (MFA)\n/api/admin/*, /api/plataforma/*
+CASIS ..> IPANEL : /api/admin/asistente
+MAPA ..> OSM : teselas
+MAPA ..> UNPKG : biblioteca
+
+IMOVIL -- MID
+IPANEL -- MID
+MID --> RUTAS
+RUTAS --> VERIF
+RUTAS --> MFA
+RUTAS --> ASIS
+RUTAS --> AUDIT
+RUTAS --> BD : SQL (pg)
+AUDIT --> AUD : INSERT/SELECT\n(auditor_app)
+AUDIT --> BD : anclas y cola
+ASIS ..> LLM : /chat/completions
+@enduml
