@@ -52,7 +52,9 @@ class MotorGPS {
       );
     } on TimeoutException {
       final ultima = await Geolocator.getLastKnownPosition();
-      return ultima == null ? (null, FallaGPS.sinSenal) : (ultima, null);
+      final reciente = ultima != null &&
+          DateTime.now().difference(ultima.timestamp) <= const Duration(minutes: 2);
+      return reciente ? (ultima, null) : (null, FallaGPS.sinSenal);
     }
   }
 

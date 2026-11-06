@@ -365,7 +365,19 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     final segundos = transcurrido - anterior.segundos;
     final metros =
         distanciaKm(anterior.lat, anterior.lng, posicion.latitude, posicion.longitude) * 1000;
-    if (segundos > 0 && metros / segundos > _velocidadMaxima) return;
+    if (segundos > 0 && metros / segundos > _velocidadMaxima) {
+      // Sin este ajuste, un inicio lejano haría descartar las posiciones siguientes
+      final inicio = PuntoRuta(
+        coordenada(posicion.latitude),
+        coordenada(posicion.longitude),
+        0,
+        superficie,
+      );
+      if (taximetro.reubicarInicio(inicio)) {
+        BaseDatosLocal.instancia.insertarPunto(_viaje!.uuid, 0, inicio);
+      }
+      return;
+    }
 
     final velocidad = max(posicion.speed, segundos > 0 ? metros / segundos : 0.0);
     final rms = _medidor.tomar();

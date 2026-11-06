@@ -127,6 +127,14 @@ class Taximetro {
     _estado = EstadoTaximetro.ocupado;
   }
 
+  // Corrige una posición inicial antigua o errónea; solo antes de recorrer el primer tramo
+  bool reubicarInicio(PuntoRuta inicio) {
+    _exigir(EstadoTaximetro.ocupado, 'reubicar el inicio');
+    if (_ruta.length != 1) return false;
+    _ruta[0] = inicio;
+    return true;
+  }
+
   void registrar(PuntoRuta p) {
     _exigir(EstadoTaximetro.ocupado, 'registrar un punto');
     final a = _ruta.last;
