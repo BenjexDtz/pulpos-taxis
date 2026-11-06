@@ -1270,6 +1270,19 @@ describe('Asistente de IA', () => {
         assert.equal(consultas[0].params[3], '%100\\%\\_a%');
     });
 
+    test('un argumento null del modelo vale como no enviado y el esquema lo admite', async () => {
+        responder = datosBase;
+        const r = await asistente.ejecutarHerramienta('resumen_periodo', '{"desde":null,"hasta":null}', { empresaId: 2, hoy: '2026-03-01' });
+        assert.deepEqual([r.desde, r.hasta], ['2026-01-31', '2026-03-01']);
+        const mixto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"km_tierra":null,"km_empedrado":null,"superficie":"tierra"}', { empresaId: 2, hoy: '2026-03-01' });
+        assert.equal(mixto.km_tierra, 5);
+        const { parameters } = asistente.HERRAMIENTAS.find(h => h.function.name === 'detalle_chofer').function;
+        assert.equal(parameters.properties.busqueda.type, 'string');
+        assert.deepEqual(parameters.properties.desde.type, ['string', 'null']);
+        const criterio = asistente.HERRAMIENTAS.find(h => h.function.name === 'ranking_choferes').function.parameters.properties.criterio;
+        assert.ok(criterio.enum.includes(null));
+    });
+
     test('fechas por defecto: últimos 30 días hasta hoy en la zona de la empresa', async () => {
         responder = datosBase;
         const r = await asistente.ejecutarHerramienta('resumen_periodo', '{}', { empresaId: 2, hoy: '2026-03-01' });
@@ -1336,6 +1349,27 @@ describe('Asistente de IA', () => {
             assert.equal(pedidos[0].opciones.headers.Authorization, 'Bearer clave_de_prueba');
             const cuerpo = JSON.parse(pedidos[0].opciones.body);
             assert.deepEqual([cuerpo.model, cuerpo.tools.length], ['openai/gpt-oss-120b', 7]);
+
+            const fallaUnaVez = (status, cuerpo, headers = {}) => {
+                let llamadas = 0;
+                globalThis.fetch = async () => ++llamadas === 1
+                    ? new Response(cuerpo, { status, headers })
+                    : new Response(JSON.stringify({ choices: [{ message: { content: 'reintento' } }] }));
+                return () => llamadas;
+            };
+            let llamadas = fallaUnaVez(400, '{"error":{"code":"tool_use_failed"}}');
+            assert.equal((await llamarModeloReal([], [])).content, 'reintento');
+            assert.equal(llamadas(), 2);
+            llamadas = fallaUnaVez(429, 'cuota', { 'retry-after': '0' });
+            await assert.rejects(llamarModeloReal([], []), (e) => e.estadoModelo === 429);
+            assert.equal(llamadas(), 1, 'la cuota no se reintenta');
+            llamadas = fallaUnaVez(400, 'otro error');
+            await assert.rejects(llamarModeloReal([], []), (e) => e.estadoModelo === 400);
+            assert.equal(llamadas(), 1);
+            globalThis.fetch = async (url, opciones) => {
+                pedidos.push({ url, opciones });
+                return new Response(JSON.stringify({ choices: [{ message: { content: 'hola' } }] }), { status: estado });
+            };
 
             estado = 429;
             await assert.rejects(llamarModeloReal([], []), (e) => e.estadoModelo === 429);
