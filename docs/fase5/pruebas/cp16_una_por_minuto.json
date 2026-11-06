@@ -1,0 +1,52 @@
+[
+ {
+  "pregunta": "¿Cuántos choferes activos tiene la empresa?",
+  "status": 200,
+  "respuesta": "La empresa tiene 2 choferes activos."
+ },
+ {
+  "pregunta": "¿Cuánto se recaudó este mes?",
+  "status": 200,
+  "respuesta": "Se recaudó Bs 117.00 este mes."
+ },
+ {
+  "pregunta": "¿Cuánto se recaudó en total los últimos 30 días?",
+  "status": 200,
+  "respuesta": "Se recaudó un total de Bs 147.00 en los últimos 30 días."
+ },
+ {
+  "pregunta": "¿Qué chofer hizo más viajes este mes?",
+  "status": 200,
+  "respuesta": "El chofer con más viajes este mes es Carla Mamani Quispe, con 5 viajes."
+ },
+ {
+  "pregunta": "¿Cuántos viajes hubo hoy?",
+  "status": 200,
+  "respuesta": "Hoy no se registraron viajes."
+ },
+ {
+  "pregunta": "¿Cuál es la tarifa de un viaje de 5 km en asfalto?",
+  "status": 200,
+  "respuesta": "La tarifa para un viaje de 5 km en asfalto es Bs 18.50."
+ },
+ {
+  "pregunta": "¿Cuáles son los parámetros de la tarifa?",
+  "status": 200,
+  "respuesta": "Lo siento, no dispongo de información sobre los parámetros de la tarifa. Puedo estimar el costo de un viaje si me indicas distancia, tiempo de espera, tipo de superficie, etc."
+ },
+ {
+  "pregunta": "¿Qué viajes tienen diferencia en la verificación?",
+  "status": 200,
+  "respuesta": "En el período del 2026‑10‑08 al 2026‑11‑06 hay 6 viajes que aparecen con el estado **sin_verificar**, es decir, cuya verificación no coincidió. No se dispone de información adicional sobre cada viaje."
+ },
+ {
+  "pregunta": "Dame un resumen del último mes",
+  "status": 200,
+  "respuesta": "Resumen del período 2026-11-01 a 2026-11-06:\n- Viajes realizados: 5\n- Recaudado total: Bs117.00\n- Kilómetros recorridos: 16.80 km\n- Minutos de espera: 40.50 min\n- Tarifa promedio por viaje: Bs23.40\n- "
+ },
+ {
+  "pregunta": "¿Qué superficie tuvo más kilómetros?",
+  "status": 200,
+  "respuesta": "Lo siento, pero no dispongo de datos sobre la cantidad de kilómetros recorridos por superficie. Si necesita información de otro tipo sobre viajes, recaudación, choferes o flota, estaré encantado de ay"
+ }
+]
