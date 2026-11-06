@@ -1,0 +1,860 @@
+{
+  "fecha": "2026-11-06T21:25:11.512Z",
+  "casos": [
+    {
+      "id": "CU-01",
+      "nombre": "Iniciar sesión (chofer)",
+      "accion": "Enviar empresa, placa y contraseña correctas",
+      "esperado": "200 y token de chofer de 30 días",
+      "obtenido": "200, tipo chofer, 30 días",
+      "ok": true
+    },
+    {
+      "id": "CU-01",
+      "nombre": "Iniciar sesión (chofer)",
+      "accion": "Enviar una contraseña incorrecta",
+      "esperado": "401 sin token",
+      "obtenido": "401, sin token",
+      "ok": true
+    },
+    {
+      "id": "CU-03",
+      "nombre": "Calcular tarifa en tiempo real",
+      "accion": "Enviar una ruta de 2 km con importe correcto",
+      "esperado": "El servidor recalcula el mismo importe: ok",
+      "obtenido": "201, verificación ok",
+      "ok": true
+    },
+    {
+      "id": "CU-03",
+      "nombre": "Calcular tarifa en tiempo real",
+      "accion": "Enviar la misma ruta con un importe alterado",
+      "esperado": "Se guarda marcado como diferencia",
+      "obtenido": "201, verificación diferencia",
+      "ok": true
+    },
+    {
+      "id": "CU-04",
+      "nombre": "Marcar superficie",
+      "accion": "Sincronizar un viaje con km en asfalto y tierra",
+      "esperado": "Se guarda como mixto y la vibración respalda la tierra",
+      "obtenido": "mixto, respaldada, 10 puntos en tierra",
+      "ok": true
+    },
+    {
+      "id": "CU-07",
+      "nombre": "Sincronizar viajes",
+      "accion": "Enviar un viaje nuevo con ruta",
+      "esperado": "201 con id_servidor y auditado",
+      "obtenido": "201, id 16, 1 evento de auditoría",
+      "ok": true
+    },
+    {
+      "id": "CU-07",
+      "nombre": "Sincronizar viajes",
+      "accion": "Reenviar el mismo viaje (mismo uuid)",
+      "esperado": "200 duplicado, mismo id y una sola fila",
+      "obtenido": "200, duplicado true, 1 fila, 41 puntos",
+      "ok": true
+    },
+    {
+      "id": "CU-07",
+      "nombre": "Sincronizar viajes",
+      "accion": "Enviar un viaje sin tarifa",
+      "esperado": "400 sin guardar",
+      "obtenido": "400",
+      "ok": true
+    },
+    {
+      "id": "CU-09",
+      "nombre": "Iniciar sesión con doble factor",
+      "accion": "Ingresar correo y contraseña correctos",
+      "esperado": "No abre sesión: entrega un token temporal de 5 minutos",
+      "obtenido": "mfa=verificar, 5 min, como sesión da 403",
+      "ok": true
+    },
+    {
+      "id": "CU-09",
+      "nombre": "Iniciar sesión con doble factor",
+      "accion": "Ingresar el código TOTP correcto",
+      "esperado": "Sesión de 8 horas",
+      "obtenido": "8 h, rol gerente",
+      "ok": true
+    },
+    {
+      "id": "CU-09",
+      "nombre": "Iniciar sesión con doble factor",
+      "accion": "Reutilizar un código ya usado",
+      "esperado": "401",
+      "obtenido": "primer uso 200, segundo uso 401",
+      "ok": true
+    },
+    {
+      "id": "CU-09",
+      "nombre": "Iniciar sesión con doble factor",
+      "accion": "Ingresar con un código de respaldo",
+      "esperado": "Sesión abierta; el código no sirve otra vez",
+      "obtenido": "primer uso 200, segundo uso 401",
+      "ok": true
+    },
+    {
+      "id": "CU-10",
+      "nombre": "Monitorear la flota",
+      "accion": "Enviar una posición dentro de la zona y consultar la flota",
+      "esperado": "La central ve la posición del chofer",
+      "obtenido": "200, lat -16.5100000, lng -68.1700000",
+      "ok": true
+    },
+    {
+      "id": "CU-10",
+      "nombre": "Monitorear la flota",
+      "accion": "Enviar una posición fuera de la zona",
+      "esperado": "400 y evento rechazado en la bitácora",
+      "obtenido": "400, 1 evento rechazado",
+      "ok": true
+    },
+    {
+      "id": "CU-11",
+      "nombre": "Consultar viajes",
+      "accion": "Listar viajes y filtrar por fecha",
+      "esperado": "Lista completa; un rango futuro la deja vacía",
+      "obtenido": "10 viajes; rango futuro 0",
+      "ok": true
+    },
+    {
+      "id": "CU-11",
+      "nombre": "Consultar viajes",
+      "accion": "Abrir la ruta y verificación de un viaje",
+      "esperado": "Devuelve 41 puntos y su verificación",
+      "obtenido": "41 puntos, ok",
+      "ok": true
+    },
+    {
+      "id": "CU-11",
+      "nombre": "Consultar viajes",
+      "accion": "Exportar los viajes a CSV",
+      "esperado": "Archivo CSV sin viajes de demostración y exportación auditada",
+      "obtenido": "200, 10 filas, demo incluida: false, auditado: true",
+      "ok": true
+    },
+    {
+      "id": "CU-12",
+      "nombre": "Gestionar choferes",
+      "accion": "Registrar un chofer con una contraseña de 7 caracteres",
+      "esperado": "400",
+      "obtenido": "400: ⚠️ La contraseña debe tener al menos 8 caracteres.",
+      "ok": true
+    },
+    {
+      "id": "CU-12",
+      "nombre": "Gestionar choferes",
+      "accion": "Registrar un chofer válido",
+      "esperado": "201 y placa normalizada",
+      "obtenido": "201, placa 2456ZBK",
+      "ok": true
+    },
+    {
+      "id": "CU-12",
+      "nombre": "Gestionar choferes",
+      "accion": "Corregir nombre y placa",
+      "esperado": "200 con antes y después en la bitácora",
+      "obtenido": "200, antes y después auditados: true",
+      "ok": true
+    },
+    {
+      "id": "CU-12",
+      "nombre": "Gestionar choferes",
+      "accion": "Restablecer la contraseña",
+      "esperado": "Entra con la nueva y no con la anterior",
+      "obtenido": "cambio 200, nueva 200, anterior 401",
+      "ok": true
+    },
+    {
+      "id": "CU-12",
+      "nombre": "Gestionar choferes",
+      "accion": "Desactivar al chofer con sesión abierta",
+      "esperado": "Su token vigente deja de servir al instante",
+      "obtenido": "antes 200, después 403",
+      "ok": true
+    },
+    {
+      "id": "CU-13",
+      "nombre": "Configurar parámetros de tarifa",
+      "accion": "Guardar valores válidos",
+      "esperado": "200, /api/config los refleja y se crea una versión",
+      "obtenido": "200, B=3.00, versiones 2 → 3",
+      "ok": true
+    },
+    {
+      "id": "CU-13",
+      "nombre": "Configurar parámetros de tarifa",
+      "accion": "Guardar un valor fuera de rango",
+      "esperado": "400",
+      "obtenido": "400: ⚠️ costo_base_km debe ser un número entre 0.5 y 10.",
+      "ok": true
+    },
+    {
+      "id": "CU-13",
+      "nombre": "Configurar parámetros de tarifa",
+      "accion": "Guardar un modo distinto de S o D",
+      "esperado": "400",
+      "obtenido": "400: ⚠️ modo_tarifa debe ser S (tiempo o distancia) o D (ambos).",
+      "ok": true
+    },
+    {
+      "id": "CU-14",
+      "nombre": "Editar datos de la empresa",
+      "accion": "Superadmin edita los datos de una empresa",
+      "esperado": "200 y evento empresa.actualizar",
+      "obtenido": "200, teléfono visible para la empresa: 22334455",
+      "ok": true
+    },
+    {
+      "id": "CU-14",
+      "nombre": "Editar datos de la empresa",
+      "accion": "Gerente intenta editar su empresa",
+      "esperado": "No puede: la ruta ya no existe (v1.6.0)",
+      "obtenido": "404",
+      "ok": true
+    },
+    {
+      "id": "CU-15",
+      "nombre": "Consultar informes y estadísticas",
+      "accion": "Pedir estadísticas de los últimos 30 días",
+      "esperado": "Resumen, ranking y comparación, sin contar demostraciones",
+      "obtenido": "200, API 10 viajes, SQL 10, claves: desde, hasta, resumen, anterior, por_dia, choferes, horas, superficie, comparacion",
+      "ok": true
+    },
+    {
+      "id": "CU-15",
+      "nombre": "Consultar informes y estadísticas",
+      "accion": "Pedir un rango mayor a 366 días",
+      "esperado": "400",
+      "obtenido": "400",
+      "ok": true
+    },
+    {
+      "id": "CU-16",
+      "nombre": "Consultar al asistente de IA",
+      "accion": "Hacer 10 preguntas al modelo real",
+      "esperado": "Las 10 se responden y se auditan",
+      "obtenido": "7 de 10 respondidas; códigos: 200, 200, 200, 200, 200, 200, 200, 503, 503, 503",
+      "ok": false
+    },
+    {
+      "id": "CU-16",
+      "nombre": "Consultar al asistente de IA",
+      "accion": "Superadmin intenta usar el asistente",
+      "esperado": "403",
+      "obtenido": "403",
+      "ok": true
+    },
+    {
+      "id": "CU-16",
+      "nombre": "Consultar al asistente de IA",
+      "accion": "Enviar un mensaje con formato inválido",
+      "esperado": "400",
+      "obtenido": "400",
+      "ok": true
+    },
+    {
+      "id": "CU-17",
+      "nombre": "Consultar bitácora de auditoría",
+      "accion": "Gerente consulta la bitácora filtrada por acción",
+      "esperado": "Solo eventos de su empresa y de esa acción",
+      "obtenido": "200, 1 evento(s)",
+      "ok": true
+    },
+    {
+      "id": "CU-17",
+      "nombre": "Consultar bitácora de auditoría",
+      "accion": "Superadmin consulta la bitácora de todas las empresas",
+      "esperado": "Incluye eventos de más de una empresa",
+      "obtenido": "200, 59 eventos de 2 empresas",
+      "ok": true
+    },
+    {
+      "id": "CU-18",
+      "nombre": "Gestionar empresas",
+      "accion": "Crear una empresa con su gerente",
+      "esperado": "201 y la empresa empieza vacía",
+      "obtenido": "201, 0 viajes",
+      "ok": true
+    },
+    {
+      "id": "CU-18",
+      "nombre": "Gestionar empresas",
+      "accion": "Repetir el código de empresa",
+      "esperado": "400",
+      "obtenido": "400",
+      "ok": true
+    },
+    {
+      "id": "CU-18",
+      "nombre": "Gestionar empresas",
+      "accion": "Desactivar una empresa con sesión abierta",
+      "esperado": "Su gerente pierde el acceso al instante",
+      "obtenido": "antes 200, después 403",
+      "ok": true
+    },
+    {
+      "id": "CU-19",
+      "nombre": "Gestionar administradores",
+      "accion": "Listar administradores",
+      "esperado": "Muestra rol y estado del segundo factor",
+      "obtenido": "200, 4 administradores",
+      "ok": true
+    },
+    {
+      "id": "CU-19",
+      "nombre": "Gestionar administradores",
+      "accion": "Restablecer el segundo factor de otro administrador",
+      "esperado": "Su sesión deja de servir y el próximo ingreso pide configurar",
+      "obtenido": "200, sesión 403, próximo ingreso configurar",
+      "ok": true
+    },
+    {
+      "id": "CU-19",
+      "nombre": "Gestionar administradores",
+      "accion": "Restablecer el propio segundo factor",
+      "esperado": "400",
+      "obtenido": "400",
+      "ok": true
+    },
+    {
+      "id": "CU-21",
+      "nombre": "Regenerar códigos de respaldo",
+      "accion": "Regenerar con un código correcto",
+      "esperado": "10 códigos nuevos; los anteriores quedan anulados",
+      "obtenido": "200, 10 códigos, anterior 401, estado {\"mfa_activo\":true,\"mfa_activado_en\":\"2026-11-06T21:25:15.434Z\",\"respaldo_restan",
+      "ok": true
+    },
+    {
+      "id": "CU-21",
+      "nombre": "Regenerar códigos de respaldo",
+      "accion": "Regenerar con un código incorrecto",
+      "esperado": "400",
+      "obtenido": "400",
+      "ok": true
+    }
+  ],
+  "seguridad": [
+    {
+      "id": "S-1",
+      "nombre": "Bloqueo tras 10 intentos fallidos",
+      "accion": "10 logins con contraseña incorrecta desde una IP",
+      "esperado": "Los 10 responden 401",
+      "obtenido": "401, 401, 401, 401, 401, 401, 401, 401, 401, 401",
+      "ok": true
+    },
+    {
+      "id": "S-1",
+      "nombre": "Bloqueo tras 10 intentos fallidos",
+      "accion": "Intento 11 con la contraseña CORRECTA desde esa IP",
+      "esperado": "429, aunque la contraseña sea correcta",
+      "obtenido": "429: ⏳ Demasiados intentos fallidos. Espera 15 minutos.",
+      "ok": true
+    },
+    {
+      "id": "S-1",
+      "nombre": "Bloqueo tras 10 intentos fallidos",
+      "accion": "Login del chofer desde la IP bloqueada",
+      "esperado": "429: el límite es por IP y cubre las dos entradas",
+      "obtenido": "429",
+      "ok": true
+    },
+    {
+      "id": "S-1",
+      "nombre": "Bloqueo tras 10 intentos fallidos",
+      "accion": "Login correcto desde otra IP",
+      "esperado": "Funciona: solo se bloquea la IP atacante",
+      "obtenido": "200",
+      "ok": true
+    },
+    {
+      "id": "S-1",
+      "nombre": "Bloqueo tras 10 intentos fallidos",
+      "accion": "Revisar la bitácora",
+      "esperado": "Evento sesion.bloqueo_intentos registrado",
+      "obtenido": "2 evento(s)",
+      "ok": true
+    },
+    {
+      "id": "S-2",
+      "nombre": "Bloqueo tras 5 códigos MFA incorrectos",
+      "accion": "5 códigos incorrectos seguidos",
+      "esperado": "Los 4 primeros 401; el quinto bloquea (429)",
+      "obtenido": "401, 401, 401, 401, 429",
+      "ok": true
+    },
+    {
+      "id": "S-2",
+      "nombre": "Bloqueo tras 5 códigos MFA incorrectos",
+      "accion": "Código CORRECTO con la cuenta bloqueada",
+      "esperado": "429",
+      "obtenido": "429: ⏳ Demasiados códigos incorrectos. Espera 15 minutos.",
+      "ok": true
+    },
+    {
+      "id": "S-2",
+      "nombre": "Bloqueo tras 5 códigos MFA incorrectos",
+      "accion": "Consultar el bloqueo en la base",
+      "esperado": "Bloqueo de unos 15 minutos",
+      "obtenido": "15 minutos restantes",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Token válido (control)",
+      "esperado": "Responde 200",
+      "obtenido": "200",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Token vencido, bien firmado",
+      "esperado": "Responde 401 y no entrega datos",
+      "obtenido": "401",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Contenido alterado (otra empresa) con la firma original",
+      "esperado": "Responde 401 y no entrega datos",
+      "obtenido": "401",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Firma alterada",
+      "esperado": "Responde 401 y no entrega datos",
+      "obtenido": "401",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Firmado con otra clave",
+      "esperado": "Responde 401 y no entrega datos",
+      "obtenido": "401",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Sin firma (alg: none)",
+      "esperado": "Responde 401 y no entrega datos",
+      "obtenido": "401",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Sin token",
+      "esperado": "Responde 403 y no entrega datos",
+      "obtenido": "403",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Token de chofer en ruta de administrador",
+      "esperado": "Responde 403 y no entrega datos",
+      "obtenido": "403",
+      "ok": true
+    },
+    {
+      "id": "S-3",
+      "nombre": "Rechazo de token vencido o alterado",
+      "accion": "Token vencido del chofer al sincronizar",
+      "esperado": "Rechazado",
+      "obtenido": "401",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani lista viajes",
+      "esperado": "Ningún viaje de Pulpos",
+      "obtenido": "6 viajes propios, 0 ajenos (Pulpos tiene 140)",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani pide la ruta de un viaje de Pulpos",
+      "esperado": "404",
+      "obtenido": "404",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani exporta el CSV",
+      "esperado": "No aparecen placas de Pulpos",
+      "obtenido": "200, contiene 1234KKK: false",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani lista choferes",
+      "esperado": "Solo los suyos",
+      "obtenido": "5678ILL",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani modifica a un chofer de Pulpos (estado, contraseña, datos)",
+      "esperado": "404 en las tres y la fila no cambia",
+      "obtenido": "404, 404, 404; fila sin cambios: true",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani fuerza empresa_id de Pulpos en la URL",
+      "esperado": "Se ignora: sigue viendo solo lo suyo",
+      "obtenido": "6 viajes, ajenos 0",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani fuerza empresa_id de Pulpos en el cuerpo al crear un chofer",
+      "esperado": "El chofer queda en Illimani",
+      "obtenido": "empresa 2 (Illimani 2, Pulpos 1)",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Illimani consulta su bitácora",
+      "esperado": "Ningún evento de Pulpos",
+      "obtenido": "18 eventos, 0 ajenos",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "Gerente entra a rutas de plataforma",
+      "esperado": "403",
+      "obtenido": "403",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "SQL directo: viaje de Illimani con chofer de Pulpos",
+      "esperado": "La base lo impide por la clave foránea compuesta",
+      "obtenido": "23503: viajes_chofer_misma_empresa_fk",
+      "ok": true
+    },
+    {
+      "id": "S-4",
+      "nombre": "Aislamiento entre empresas",
+      "accion": "El asistente de Illimani pregunta por datos de Pulpos con el modelo real",
+      "esperado": "Las herramientas solo devuelven Illimani",
+      "obtenido": "200, menciona al chofer de Pulpos (Boris Benjamín Barboza): false; respuesta: Lo siento, solo puedo ayudar con información de Radio Taxis Illimani. Si necesita datos de nuestra empresa, estaré encan",
+      "ok": true
+    },
+    {
+      "id": "S-5",
+      "nombre": "La bitácora no permite UPDATE ni DELETE",
+      "accion": "UPDATE como usuario de la aplicación (mismos permisos que auditor_app)",
+      "esperado": "Rechazado",
+      "obtenido": "42501: permiso denegado a la tabla eventos",
+      "ok": true
+    },
+    {
+      "id": "S-5",
+      "nombre": "La bitácora no permite UPDATE ni DELETE",
+      "accion": "DELETE como usuario de la aplicación (mismos permisos que auditor_app)",
+      "esperado": "Rechazado",
+      "obtenido": "42501: permiso denegado a la tabla eventos",
+      "ok": true
+    },
+    {
+      "id": "S-5",
+      "nombre": "La bitácora no permite UPDATE ni DELETE",
+      "accion": "TRUNCATE como usuario de la aplicación (mismos permisos que auditor_app)",
+      "esperado": "Rechazado",
+      "obtenido": "42501: permiso denegado a la tabla eventos",
+      "ok": true
+    },
+    {
+      "id": "S-5",
+      "nombre": "La bitácora no permite UPDATE ni DELETE",
+      "accion": "UPDATE como superusuario postgres",
+      "esperado": "Rechazado",
+      "obtenido": "P0001: La bitácora de auditoría es de solo inserción (UPDATE no permitido)",
+      "ok": true
+    },
+    {
+      "id": "S-5",
+      "nombre": "La bitácora no permite UPDATE ni DELETE",
+      "accion": "DELETE como superusuario postgres",
+      "esperado": "Rechazado",
+      "obtenido": "P0001: La bitácora de auditoría es de solo inserción (DELETE no permitido)",
+      "ok": true
+    },
+    {
+      "id": "S-5",
+      "nombre": "La bitácora no permite UPDATE ni DELETE",
+      "accion": "TRUNCATE como superusuario postgres",
+      "esperado": "Rechazado",
+      "obtenido": "P0001: La bitácora de auditoría es de solo inserción (TRUNCATE no permitido)",
+      "ok": true
+    },
+    {
+      "id": "S-5",
+      "nombre": "La bitácora no permite UPDATE ni DELETE",
+      "accion": "Comparar la tabla antes y después de los intentos",
+      "esperado": "Mismo total y mismo último hash",
+      "obtenido": "498 → 498 eventos; hash 728f9f8b08d2…",
+      "ok": true
+    },
+    {
+      "id": "S-6",
+      "nombre": "Verificación de la cadena SHA-256",
+      "accion": "Verificar la cadena sin alteraciones",
+      "esperado": "integra = true",
+      "obtenido": "integra true, 498 eventos, 49 anclas",
+      "ok": true
+    },
+    {
+      "id": "S-6",
+      "nombre": "Verificación de la cadena SHA-256",
+      "accion": "Atacante desactiva triggers y cambia el detalle del evento 25",
+      "esperado": "integra = false e indica el evento 25",
+      "obtenido": "integra false, primer evento inválido 25",
+      "ok": true
+    },
+    {
+      "id": "S-6",
+      "nombre": "Verificación de la cadena SHA-256",
+      "accion": "Restaurar el valor original",
+      "esperado": "integra = true",
+      "obtenido": "integra true",
+      "ok": true
+    },
+    {
+      "id": "S-6",
+      "nombre": "Verificación de la cadena SHA-256",
+      "accion": "Atacante borra un evento intermedio",
+      "esperado": "integra = false",
+      "obtenido": "integra false, primer evento inválido 31",
+      "ok": true
+    },
+    {
+      "id": "S-6",
+      "nombre": "Verificación de la cadena SHA-256",
+      "accion": "Restaurar el evento borrado",
+      "esperado": "integra = true",
+      "obtenido": "integra true",
+      "ok": true
+    },
+    {
+      "id": "S-6",
+      "nombre": "Verificación de la cadena SHA-256",
+      "accion": "Atacante borra los últimos eventos, incluida una ancla",
+      "esperado": "integra = false por las anclas de la base principal",
+      "obtenido": "integra false, anclas faltantes 500; la cadena por sí sola da primer inválido: null",
+      "ok": true
+    }
+  ],
+  "rendimiento": {
+    "contexto": {
+      "viajes_en_base": 17
+    },
+    "api": {
+      "GET /": {
+        "n": 200,
+        "promedio_ms": 1.87,
+        "p50_ms": 1.84,
+        "p95_ms": 2.29,
+        "max_ms": 3.17,
+        "errores": 0
+      },
+      "GET /api/config": {
+        "n": 200,
+        "promedio_ms": 4.42,
+        "p50_ms": 4.37,
+        "p95_ms": 5.3,
+        "max_ms": 7.7,
+        "errores": 0
+      },
+      "GET /api/admin/choferes": {
+        "n": 200,
+        "promedio_ms": 4.27,
+        "p50_ms": 4.12,
+        "p95_ms": 5.33,
+        "max_ms": 7.46,
+        "errores": 0
+      },
+      "GET /api/admin/viajes": {
+        "n": 200,
+        "promedio_ms": 6.25,
+        "p50_ms": 6.23,
+        "p95_ms": 7.22,
+        "max_ms": 8.99,
+        "errores": 0
+      },
+      "GET /api/admin/estadisticas": {
+        "n": 200,
+        "promedio_ms": 7.27,
+        "p50_ms": 7.21,
+        "p95_ms": 8.61,
+        "max_ms": 12.82,
+        "errores": 0
+      },
+      "POST /api/posicion": {
+        "n": 200,
+        "promedio_ms": 6.48,
+        "p50_ms": 6.23,
+        "p95_ms": 8.1,
+        "max_ms": 11.18,
+        "errores": 0
+      },
+      "POST /api/login (bcrypt)": {
+        "n": 50,
+        "promedio_ms": 105.97,
+        "p50_ms": 105.73,
+        "p95_ms": 120.98,
+        "max_ms": 121.63,
+        "errores": 0
+      }
+    },
+    "sincronizacion": {
+      "50 puntos": {
+        "bytes": 2172,
+        "n": 30,
+        "promedio_ms": 11.6,
+        "p50_ms": 11.06,
+        "p95_ms": 13.86,
+        "max_ms": 19.61,
+        "errores": 0
+      },
+      "200 puntos": {
+        "bytes": 7699,
+        "n": 30,
+        "promedio_ms": 14.62,
+        "p50_ms": 13.85,
+        "p95_ms": 19.81,
+        "max_ms": 19.91,
+        "errores": 0
+      },
+      "1000 puntos": {
+        "bytes": 37984,
+        "n": 30,
+        "promedio_ms": 31.53,
+        "p50_ms": 29.85,
+        "p95_ms": 37.84,
+        "max_ms": 76.84,
+        "errores": 0
+      },
+      "5000 puntos": {
+        "bytes": 192336,
+        "n": 30,
+        "promedio_ms": 130.31,
+        "p50_ms": 121.62,
+        "p95_ms": 173.76,
+        "max_ms": 266.75,
+        "errores": 0
+      },
+      "duplicado (200 puntos)": {
+        "n": 30,
+        "promedio_ms": 10.42,
+        "p50_ms": 10.31,
+        "p95_ms": 11.56,
+        "max_ms": 12.34,
+        "errores": 0
+      }
+    }
+  },
+  "real": {
+    "total_eventos": 261,
+    "primer_id_invalido": null,
+    "triggers": [
+      "eventos_encadenar_trg",
+      "eventos_inmutables_trg",
+      "eventos_sin_truncate_trg"
+    ],
+    "privilegios_auditor_app": {
+      "u": false,
+      "d": false,
+      "t": false,
+      "i": true
+    },
+    "anclas": 5,
+    "anclas_no_coinciden": 0,
+    "pendientes": 0
+  },
+  "asistente": [
+    {
+      "pregunta": "¿Cuántos choferes activos tiene la empresa?",
+      "status": 200,
+      "respuesta": "La empresa tiene 1 chofer activo (habilitado).",
+      "auditado": "¿Cuántos choferes activos tiene la empresa? [estado_flota]"
+    },
+    {
+      "pregunta": "¿Cuánto se recaudó este mes?",
+      "status": 200,
+      "respuesta": "Se recaudó Bs 166.23 este mes.",
+      "auditado": "¿Cuánto se recaudó este mes? [resumen_periodo]"
+    },
+    {
+      "pregunta": "¿Cuánto se recaudó en total los últimos 30 días?",
+      "status": 200,
+      "respuesta": "Se recaudó un total de Bs 207.23 en los últimos 30 días.",
+      "auditado": "¿Cuánto se recaudó en total los últimos 30 días? [resumen_periodo]"
+    },
+    {
+      "pregunta": "¿Qué chofer hizo más viajes este mes?",
+      "status": 200,
+      "respuesta": "El chofer que realizó más viajes este mes es Boris Benjamín Barboza, con 8 viajes.",
+      "auditado": "¿Qué chofer hizo más viajes este mes? [ranking_choferes]"
+    },
+    {
+      "pregunta": "¿Cuántos viajes hubo hoy?",
+      "status": 200,
+      "respuesta": "Hoy hubo 6 viajes.",
+      "auditado": "¿Cuántos viajes hubo hoy? [resumen_periodo]"
+    },
+    {
+      "pregunta": "¿Cuál es la tarifa de un viaje de 5 km en asfalto?",
+      "status": 200,
+      "respuesta": "La tarifa para un viaje de 5 km en asfalto es Bs 15.00.",
+      "auditado": "¿Cuál es la tarifa de un viaje de 5 km en asfalto? [calcular_tarifa]"
+    },
+    {
+      "pregunta": "¿Cuáles son los parámetros de la tarifa?",
+      "status": 200,
+      "respuesta": "Los parámetros de la tarifa son los siguientes:\n\n- Cb: 2.00  \n- Cl: 0.10  \n- Pc: 6.96  \n- FR: 2.50  \n- FE: 2.00  \n- Ct: 0.50  \n- bajada: 2.00  \n- salto: 0.50  \n- modo: S (modo por distancia)",
+      "auditado": "¿Cuáles son los parámetros de la tarifa? [calcular_tarifa]"
+    },
+    {
+      "pregunta": "¿Qué viajes tienen diferencia en la verificación?",
+      "status": 503,
+      "respuesta": "⏳ Se alcanzó el límite gratuito del modelo. Intenta en un minuto.",
+      "auditado": "¿Qué viajes tienen diferencia en la verificación? [sin datos] (modelo: 429)"
+    },
+    {
+      "pregunta": "Dame un resumen del último mes",
+      "status": 503,
+      "respuesta": "⏳ Se alcanzó el límite gratuito del modelo. Intenta en un minuto.",
+      "auditado": "Dame un resumen del último mes [sin datos] (modelo: 429)"
+    },
+    {
+      "pregunta": "¿Qué superficie tuvo más kilómetros?",
+      "status": 503,
+      "respuesta": "⏳ Se alcanzó el límite gratuito del modelo. Intenta en un minuto.",
+      "auditado": "¿Qué superficie tuvo más kilómetros? [sin datos] (modelo: 429)"
+    }
+  ]
+}

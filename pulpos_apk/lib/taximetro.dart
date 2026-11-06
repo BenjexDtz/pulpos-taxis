@@ -102,6 +102,8 @@ class Taximetro {
 
   EstadoTaximetro get estado => _estado;
   RecorridoPorSuperficie get recorrido => _recorrido;
+  RecorridoPorSuperficie get recorridoEnPantalla =>
+      _estado == EstadoTaximetro.libre ? RecorridoPorSuperficie() : _recorrido;
   List<PuntoRuta> get ruta => List.unmodifiable(_ruta);
   PuntoRuta? get ultimoPunto => _ruta.isEmpty ? null : _ruta.last;
   int get centavos => tarifa.bajada + _saltos * tarifa.salto;
@@ -125,6 +127,14 @@ class Taximetro {
     _segundosPorTiempo = 0;
     _ultimoPorTiempo = true;
     _estado = EstadoTaximetro.ocupado;
+  }
+
+  // Corrige una posición inicial antigua o errónea; solo antes de recorrer el primer tramo
+  bool reubicarInicio(PuntoRuta inicio) {
+    _exigir(EstadoTaximetro.ocupado, 'reubicar el inicio');
+    if (_ruta.length != 1) return false;
+    _ruta[0] = inicio;
+    return true;
   }
 
   void registrar(PuntoRuta p) {

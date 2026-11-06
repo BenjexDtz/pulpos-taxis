@@ -111,8 +111,8 @@ export default function Parametros({ setParams, formParams, setFormParams, empre
 
         <Tarjeta icono={Gauge} titulo="Taxímetro" subtitulo="Modo de cálculo de la Directiva 2014/32/UE (Anexo IX, taxímetros)">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            {campoParam('bajada_bandera_bs', { etiqueta: `B · bajada de bandera (${m})`, ayuda: 'Importe con el que empieza todo viaje.', step: '0.10', min: 0, max: 50 })}
-            {campoParam('valor_salto_bs', { etiqueta: `S · valor del salto (${m})`, ayuda: 'El importe avanza de S en S; conviene la moneda más chica de uso común.', step: '0.10', min: 0.01, max: 5 })}
+            {campoParam('bajada_bandera_bs', { etiqueta: `B · bajada de bandera (${m})`, ayuda: 'Importe con el que empieza todo viaje.', step: '0.01', min: 0, max: 50 })}
+            {campoParam('valor_salto_bs', { etiqueta: `S · valor del salto (${m})`, ayuda: 'El importe avanza de S en S; conviene la moneda más chica de uso común.', step: '0.01', min: 0.01, max: 5 })}
             <div className="sm:col-span-2">
               <label htmlFor="param-modo_tarifa" className={etiqueta}>Modo de cálculo</label>
               <select id="param-modo_tarifa" className={campo} value={formParams.modo_tarifa ?? 'S'}

@@ -134,6 +134,6 @@ Las reglas están en `validacion.js` (el servidor decide), `src/validaciones.js`
 ## Gotchas
 
 - La URL del backend en la app vive solo en `lib/config.dart` (`urlServidor`) y se sobrescribe con `--dart-define=API_URL=...`. Android 9+ bloquea `http://` sin cifrar: usar https (ngrok).
-- Credenciales de demo (semillas de `init.sql`): superadmin `superadmin@plataforma.bo`, gerentes `admin@pulpos.bo` y `admin@illimani.bo` (todos `password`; el primer ingreso pide escanear el QR del segundo factor); choferes `pulpos`/`1234KKK` e `illimani`/`5678ILL` (contraseña `123`, menor que el mínimo de 4 que exige la API para choferes nuevos).
+- Credenciales de demo (semillas de `init.sql`): superadmin `superadmin@plataforma.bo`, gerentes `admin@pulpos.bo` y `admin@illimani.bo` (todos `password`; el primer ingreso pide escanear el QR del segundo factor); choferes `pulpos`/`1234KKK` e `illimani`/`5678ILL` (contraseña `123`, menor que el mínimo de 8 que exige la API para contraseñas nuevas de choferes).
 - `ADMIN_USER` / `ADMIN_PASSWORD` del `.env` no los usa el backend.
 - Express 5: hay un middleware que fuerza `req.body ??= {}`; las rutas async propagan errores solas al manejador global.

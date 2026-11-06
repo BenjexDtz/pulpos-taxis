@@ -162,7 +162,7 @@ describe('Aislamiento: toda consulta usa la empresa del token', () => {
         ['GET', '/api/admin/viajes?desde=2026-01-01&hasta=2026-01-31', undefined],
         ['PATCH', '/api/admin/choferes/5/password', { nueva_password: 'nueva123' }],
         ['PATCH', '/api/admin/choferes/5/estado', { estado_activo: false }],
-        ['POST', '/api/admin/choferes', { nombre_completo: 'Ana María', placa_vehiculo: '1111-AAA', password: 'clave1', empresa_id: 99 }],
+        ['POST', '/api/admin/choferes', { nombre_completo: 'Ana María', placa_vehiculo: '1111-AAA', password: 'clave123', empresa_id: 99 }],
         ['PUT', '/api/admin/choferes/5', { nombre_completo: 'Ana María', placa_vehiculo: '1111AAA', empresa_id: 99 }],
     ];
     for (const [metodo, ruta, body] of casos) {
@@ -609,13 +609,13 @@ describe('Validación de los campos', () => {
     });
 
     test('la contraseña tiene mínimo, máximo y no lleva espacios', () => {
-        assert.equal(errorPassword('clave1', 4), null);
-        assert.ok(errorPassword('abc', 4));
+        assert.equal(errorPassword('clave123', 8), null);
+        assert.ok(errorPassword('abc', 8));
         assert.ok(errorPassword('corta12', 8));
-        assert.ok(errorPassword('con espacio', 4));
-        assert.ok(errorPassword('x'.repeat(73), 4));
-        assert.ok(errorPassword('ñ'.repeat(40), 4), '72 bytes, no caracteres');
-        assert.ok(errorPassword(1234, 4));
+        assert.ok(errorPassword('con espacio', 8));
+        assert.ok(errorPassword('x'.repeat(73), 8));
+        assert.ok(errorPassword('ñ'.repeat(40), 8), '72 bytes, no caracteres');
+        assert.ok(errorPassword(1234, 8));
     });
 });
 
@@ -627,16 +627,23 @@ describe('Registrar y editar choferes', () => {
         ['placa sin formato', { placa_vehiculo: 'ABC-123' }],
     ]) {
         test(`alta y edición rechazan ${caso} sin tocar la BD`, async () => {
-            const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', password: 'clave1', ...cambio };
+            const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', password: 'clave123', ...cambio };
             for (const [metodo, ruta] of [['POST', '/api/admin/choferes'], ['PUT', '/api/admin/choferes/5']])
                 assert.equal((await pedir(metodo, ruta, { token: TOKEN_ADMIN, body })).status, 400);
             assert.equal(consultasDeDatos().length, 0);
         });
     }
 
+    test('alta y cambio de contraseña del chofer exigen 8 caracteres sin tocar la BD', async () => {
+        const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', password: 'corta12' };
+        assert.equal((await pedir('POST', '/api/admin/choferes', { token: TOKEN_ADMIN, body })).status, 400);
+        assert.equal((await pedir('PATCH', '/api/admin/choferes/5/password', { token: TOKEN_ADMIN, body: { nueva_password: 'corta12' } })).status, 400);
+        assert.equal(consultasDeDatos().length, 0);
+    });
+
     test('el alta guarda la placa junta y en mayúsculas', async () => {
         responder = () => ({ rows: [fila] });
-        const r = await pedir('POST', '/api/admin/choferes', { token: TOKEN_ADMIN, body: { nombre_completo: '  Ana   María ', placa_vehiculo: '2456-zbk', password: 'clave1' } });
+        const r = await pedir('POST', '/api/admin/choferes', { token: TOKEN_ADMIN, body: { nombre_completo: '  Ana   María ', placa_vehiculo: '2456-zbk', password: 'clave123' } });
         assert.equal(r.status, 201);
         assert.deepEqual(consultasDeDatos()[0].params.slice(1, 3), ['Ana María', '2456ZBK']);
     });
@@ -1263,6 +1270,19 @@ describe('Asistente de IA', () => {
         assert.equal(consultas[0].params[3], '%100\\%\\_a%');
     });
 
+    test('un argumento null del modelo vale como no enviado y el esquema lo admite', async () => {
+        responder = datosBase;
+        const r = await asistente.ejecutarHerramienta('resumen_periodo', '{"desde":null,"hasta":null}', { empresaId: 2, hoy: '2026-03-01' });
+        assert.deepEqual([r.desde, r.hasta], ['2026-01-31', '2026-03-01']);
+        const mixto = await asistente.ejecutarHerramienta('calcular_tarifa', '{"distancia_km":5,"km_tierra":null,"km_empedrado":null,"superficie":"tierra"}', { empresaId: 2, hoy: '2026-03-01' });
+        assert.equal(mixto.km_tierra, 5);
+        const { parameters } = asistente.HERRAMIENTAS.find(h => h.function.name === 'detalle_chofer').function;
+        assert.equal(parameters.properties.busqueda.type, 'string');
+        assert.deepEqual(parameters.properties.desde.type, ['string', 'null']);
+        const criterio = asistente.HERRAMIENTAS.find(h => h.function.name === 'ranking_choferes').function.parameters.properties.criterio;
+        assert.ok(criterio.enum.includes(null));
+    });
+
     test('fechas por defecto: últimos 30 días hasta hoy en la zona de la empresa', async () => {
         responder = datosBase;
         const r = await asistente.ejecutarHerramienta('resumen_periodo', '{}', { empresaId: 2, hoy: '2026-03-01' });
@@ -1329,6 +1349,27 @@ describe('Asistente de IA', () => {
             assert.equal(pedidos[0].opciones.headers.Authorization, 'Bearer clave_de_prueba');
             const cuerpo = JSON.parse(pedidos[0].opciones.body);
             assert.deepEqual([cuerpo.model, cuerpo.tools.length], ['openai/gpt-oss-120b', 7]);
+
+            const fallaUnaVez = (status, cuerpo, headers = {}) => {
+                let llamadas = 0;
+                globalThis.fetch = async () => ++llamadas === 1
+                    ? new Response(cuerpo, { status, headers })
+                    : new Response(JSON.stringify({ choices: [{ message: { content: 'reintento' } }] }));
+                return () => llamadas;
+            };
+            let llamadas = fallaUnaVez(400, '{"error":{"code":"tool_use_failed"}}');
+            assert.equal((await llamarModeloReal([], [])).content, 'reintento');
+            assert.equal(llamadas(), 2);
+            llamadas = fallaUnaVez(429, 'cuota', { 'retry-after': '0' });
+            await assert.rejects(llamarModeloReal([], []), (e) => e.estadoModelo === 429);
+            assert.equal(llamadas(), 1, 'la cuota no se reintenta');
+            llamadas = fallaUnaVez(400, 'otro error');
+            await assert.rejects(llamarModeloReal([], []), (e) => e.estadoModelo === 400);
+            assert.equal(llamadas(), 1);
+            globalThis.fetch = async (url, opciones) => {
+                pedidos.push({ url, opciones });
+                return new Response(JSON.stringify({ choices: [{ message: { content: 'hola' } }] }), { status: estado });
+            };
 
             estado = 429;
             await assert.rejects(llamarModeloReal([], []), (e) => e.estadoModelo === 429);

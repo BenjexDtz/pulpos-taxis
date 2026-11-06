@@ -10,7 +10,7 @@ const configurado = () => Boolean(process.env.LLM_API_KEY);
 // API compatible con OpenAI: Groq por defecto; Ollama u otro proveedor cambiando LLM_URL y LLM_MODELO.
 const llamarModelo = async (mensajes, herramientas) => {
     const url = (process.env.LLM_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, '');
-    const r = await fetch(`${url}/chat/completions`, {
+    const pedir = () => fetch(`${url}/chat/completions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.LLM_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -27,10 +27,17 @@ const llamarModelo = async (mensajes, herramientas) => {
         e.estadoModelo = err.name === 'TimeoutError' ? 'tiempo agotado' : 'sin conexión';
         throw e;
     });
+    let r = await pedir();
+    let detalle = r.ok ? '' : await r.text().catch(() => '');
+    // Un solo reintento si el modelo armó mal la llamada a una herramienta
+    if (r.status === 400 && detalle.includes('tool_use_failed')) {
+        r = await pedir();
+        detalle = r.ok ? '' : await r.text().catch(() => '');
+    }
     if (!r.ok) {
         const e = new Error(`El modelo respondió ${r.status}`);
         e.estadoModelo = r.status;
-        e.detalle = (await r.text().catch(() => '')).slice(0, 300);
+        e.detalle = detalle.slice(0, 300);
         throw e;
     }
     const datos = await r.json();
@@ -62,8 +69,26 @@ const fechas = {
     hasta: { type: 'string', description: 'Fecha final YYYY-MM-DD (incluida). Por defecto, hoy.' },
 };
 
-const herramienta = (name, description, properties = {}, required = []) =>
-    ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
+// Algunos modelos envían null en lo opcional; el proveedor rechaza la llamada si el esquema no lo admite.
+const admiteNulo = (campo) => ({
+    ...campo,
+    type: [campo.type, 'null'],
+    ...(campo.enum && { enum: [...campo.enum, null] }),
+});
+
+const herramienta = (name, description, properties = {}, required = []) => ({
+    type: 'function',
+    function: {
+        name,
+        description,
+        parameters: {
+            type: 'object',
+            properties: Object.fromEntries(Object.entries(properties).map(([clave, campo]) =>
+                [clave, required.includes(clave) ? campo : admiteNulo(campo)])),
+            required,
+        },
+    },
+});
 
 const HERRAMIENTAS = [
     herramienta('resumen_periodo',
@@ -249,7 +274,8 @@ const ejecutarHerramienta = async (nombre, argsCrudos, contexto) => {
     let args;
     try { args = JSON.parse(argsCrudos || '{}'); } catch { return { error: 'Argumentos con JSON inválido.' }; }
     if (!args || typeof args !== 'object' || Array.isArray(args)) args = {};
-    return EJECUTORES[nombre](args, contexto);
+    const sinNulos = Object.fromEntries(Object.entries(args).filter(([, valor]) => valor !== null));
+    return EJECUTORES[nombre](sinNulos, contexto);
 };
 
 const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
