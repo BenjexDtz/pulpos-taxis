@@ -19,7 +19,7 @@ router.get('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) =>
 
 router.post('/api/admin/choferes', verificarToken, soloAdmin, async (req, res) => {
     const { nombre_completo, placa_vehiculo, password } = req.body;
-    const error = errorNombrePersona(nombre_completo) ?? errorPlaca(placa_vehiculo) ?? errorPassword(password, 4);
+    const error = errorNombrePersona(nombre_completo) ?? errorPlaca(placa_vehiculo) ?? errorPassword(password, 8);
     if (error) return res.status(400).json({ error });
     try {
         const hash = await bcrypt.hash(password, 10);
@@ -69,7 +69,7 @@ router.put('/api/admin/choferes/:id', verificarToken, soloAdmin, async (req, res
 
 router.patch('/api/admin/choferes/:id/password', verificarToken, soloAdmin, async (req, res) => {
     const { nueva_password } = req.body;
-    const error = errorPassword(nueva_password, 4);
+    const error = errorPassword(nueva_password, 8);
     if (error) return res.status(400).json({ error });
     if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'No encontrado.' });
     const hash = await bcrypt.hash(nueva_password, 10);

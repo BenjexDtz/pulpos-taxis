@@ -162,7 +162,7 @@ describe('Aislamiento: toda consulta usa la empresa del token', () => {
         ['GET', '/api/admin/viajes?desde=2026-01-01&hasta=2026-01-31', undefined],
         ['PATCH', '/api/admin/choferes/5/password', { nueva_password: 'nueva123' }],
         ['PATCH', '/api/admin/choferes/5/estado', { estado_activo: false }],
-        ['POST', '/api/admin/choferes', { nombre_completo: 'Ana María', placa_vehiculo: '1111-AAA', password: 'clave1', empresa_id: 99 }],
+        ['POST', '/api/admin/choferes', { nombre_completo: 'Ana María', placa_vehiculo: '1111-AAA', password: 'clave123', empresa_id: 99 }],
         ['PUT', '/api/admin/choferes/5', { nombre_completo: 'Ana María', placa_vehiculo: '1111AAA', empresa_id: 99 }],
     ];
     for (const [metodo, ruta, body] of casos) {
@@ -609,13 +609,13 @@ describe('Validación de los campos', () => {
     });
 
     test('la contraseña tiene mínimo, máximo y no lleva espacios', () => {
-        assert.equal(errorPassword('clave1', 4), null);
-        assert.ok(errorPassword('abc', 4));
+        assert.equal(errorPassword('clave123', 8), null);
+        assert.ok(errorPassword('abc', 8));
         assert.ok(errorPassword('corta12', 8));
-        assert.ok(errorPassword('con espacio', 4));
-        assert.ok(errorPassword('x'.repeat(73), 4));
-        assert.ok(errorPassword('ñ'.repeat(40), 4), '72 bytes, no caracteres');
-        assert.ok(errorPassword(1234, 4));
+        assert.ok(errorPassword('con espacio', 8));
+        assert.ok(errorPassword('x'.repeat(73), 8));
+        assert.ok(errorPassword('ñ'.repeat(40), 8), '72 bytes, no caracteres');
+        assert.ok(errorPassword(1234, 8));
     });
 });
 
@@ -627,16 +627,23 @@ describe('Registrar y editar choferes', () => {
         ['placa sin formato', { placa_vehiculo: 'ABC-123' }],
     ]) {
         test(`alta y edición rechazan ${caso} sin tocar la BD`, async () => {
-            const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', password: 'clave1', ...cambio };
+            const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', password: 'clave123', ...cambio };
             for (const [metodo, ruta] of [['POST', '/api/admin/choferes'], ['PUT', '/api/admin/choferes/5']])
                 assert.equal((await pedir(metodo, ruta, { token: TOKEN_ADMIN, body })).status, 400);
             assert.equal(consultasDeDatos().length, 0);
         });
     }
 
+    test('alta y cambio de contraseña del chofer exigen 8 caracteres sin tocar la BD', async () => {
+        const body = { nombre_completo: 'Ana María', placa_vehiculo: '2456ZBK', password: 'corta12' };
+        assert.equal((await pedir('POST', '/api/admin/choferes', { token: TOKEN_ADMIN, body })).status, 400);
+        assert.equal((await pedir('PATCH', '/api/admin/choferes/5/password', { token: TOKEN_ADMIN, body: { nueva_password: 'corta12' } })).status, 400);
+        assert.equal(consultasDeDatos().length, 0);
+    });
+
     test('el alta guarda la placa junta y en mayúsculas', async () => {
         responder = () => ({ rows: [fila] });
-        const r = await pedir('POST', '/api/admin/choferes', { token: TOKEN_ADMIN, body: { nombre_completo: '  Ana   María ', placa_vehiculo: '2456-zbk', password: 'clave1' } });
+        const r = await pedir('POST', '/api/admin/choferes', { token: TOKEN_ADMIN, body: { nombre_completo: '  Ana   María ', placa_vehiculo: '2456-zbk', password: 'clave123' } });
         assert.equal(r.status, 201);
         assert.deepEqual(consultasDeDatos()[0].params.slice(1, 3), ['Ana María', '2456ZBK']);
     });

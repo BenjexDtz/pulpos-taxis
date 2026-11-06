@@ -141,8 +141,8 @@ export default function Flota({ choferes, cargandoChoferes, cargarChoferes, urlS
             <form onSubmit={resetearPassword} className="space-y-5">
               <div>
                 <label htmlFor="nueva-password" className={etiqueta}>Nueva contraseña</label>
-                <Entrada id="nueva-password" type="password" required minLength={4} autoFocus error={errorPassword(nuevaPassword)}
-                  placeholder="Mínimo 4 caracteres, sin espacios" value={nuevaPassword} onChange={e => setNuevaPassword(e.target.value)} />
+                <Entrada id="nueva-password" type="password" required minLength={8} autoFocus error={errorPassword(nuevaPassword)}
+                  placeholder="Mínimo 8 caracteres, sin espacios" value={nuevaPassword} onChange={e => setNuevaPassword(e.target.value)} />
                 <p className={ayuda}>El chofer la usará en la app junto con el código de la empresa y su placa.</p>
               </div>
               <div className="flex justify-end gap-3">
@@ -176,7 +176,7 @@ export default function Flota({ choferes, cargandoChoferes, cargarChoferes, urlS
             </div>
             <div>
               <label htmlFor="chofer-password" className={etiqueta}>Contraseña</label>
-              <Entrada id="chofer-password" type="password" required minLength={4} placeholder="Mínimo 4 caracteres, sin espacios"
+              <Entrada id="chofer-password" type="password" required minLength={8} placeholder="Mínimo 8 caracteres, sin espacios"
                 error={errorPassword(formChofer.password)}
                 value={formChofer.password} onChange={e => setFormChofer({ ...formChofer, password: e.target.value })} />
             </div>
