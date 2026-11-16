@@ -8,6 +8,7 @@ import 'api_sync.dart';
 import 'motor_gps.dart';
 import 'calculadora.dart';
 import 'base_datos.dart';
+import 'bateria.dart';
 import 'demostracion.dart';
 import 'pantalla_historial.dart';
 import 'pantalla_login.dart';
@@ -120,6 +121,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
   Superficie superficie = Superficie.asfalto;
 
   final _sincronizador = Sincronizador.local();
+  final _bateria = OptimizacionBateria();
   Timer? _relojSincronizacion;
   int _pendientes = 0;
 
@@ -128,7 +130,7 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _cargarParametros();
-    _recuperarViaje();
+    _recuperarViaje().then((_) => _avisarBateria());
     _sincronizarEnSegundoPlano();
     _relojSincronizacion = Timer.periodic(
       const Duration(minutes: 2),
@@ -555,6 +557,35 @@ class _PantallaPruebaState extends State<PantallaPrueba>
     });
     await ViajeEnCurso.borrar();
     return id;
+  }
+
+  // Con el ahorro de batería activo, Tecno, Xiaomi o Huawei pueden cortar el GPS con la pantalla apagada
+  Future<void> _avisarBateria() async {
+    if (enViaje || !await _bateria.debeAvisar() || !mounted) return;
+    final permitir = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ahorro de batería'),
+        content: const Text(
+          'Para que el taxímetro siga midiendo con la pantalla apagada, '
+          'permite que la app funcione sin restricciones de batería. '
+          'Si no, el teléfono puede detener el GPS a mitad del viaje.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('AHORA NO'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('PERMITIR'),
+          ),
+        ],
+      ),
+    );
+    // Si niega también el diálogo de Android, no se le vuelve a preguntar en 3 días
+    await _bateria.posponer();
+    if (permitir == true) await _bateria.solicitarExclusion();
   }
 
   // La app se cerró con un viaje abierto: se recalcula con sus puntos y el chofer decide

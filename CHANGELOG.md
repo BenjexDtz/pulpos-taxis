@@ -3,6 +3,11 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [1.6.2] - 2026-11-16
+
+### Añadido
+- **App:** aviso de ahorro de batería. Al abrir el taxímetro, si Android sigue optimizando la batería de la app, se pide permiso para que funcione sin restricciones (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`); así Tecno/HiOS, Xiaomi o Huawei no cortan el GPS con la pantalla apagada. Si el chofer responde "Ahora no" o lo niega, no se vuelve a preguntar en 3 días; nunca aparece durante un viaje.
+
 ## [1.6.1] - 2026-11-06
 
 ### Corregido
@@ -154,6 +159,8 @@ Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro off
 ### Migraciones
 Para una base existente, aplicar en orden `database/migraciones/001` a `004`.
 
+[1.6.2]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.1...v1.6.2
+[1.6.1]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.3.0...v1.4.0
