@@ -3,6 +3,11 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [1.6.3] - 2026-11-17
+
+### Corregido
+- **Exportación CSV:** las filas traían 23 valores para 30 encabezados, así que los datos quedaban en columnas equivocadas (por ejemplo, la tarifa bajo "Km"). Las columnas calculadas de la consulta no tenían nombre propio y se pisaban entre sí; ahora cada una tiene su alias. Hay pruebas que comparan los valores de cada fila con los encabezados.
+
 ## [1.6.2] - 2026-11-16
 
 ### Añadido
@@ -159,6 +164,7 @@ Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro off
 ### Migraciones
 Para una base existente, aplicar en orden `database/migraciones/001` a `004`.
 
+[1.6.3]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.5.0...v1.6.0
