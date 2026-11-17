@@ -8,25 +8,32 @@ class BaseDatosLocal {
   static final BaseDatosLocal instancia = BaseDatosLocal._init();
   static Database? _database;
 
+  // Las pruebas usan inMemoryDatabasePath
+  static String archivo = 'pulpos_offline.db';
+
   BaseDatosLocal._init();
+
+  static Future<void> cerrar() async {
+    await _database?.close();
+    _database = null;
+  }
 
   // Getter para obtener la base de datos, si no existe, la crea
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _iniciarDB('pulpos_offline.db');
+    _database = await _iniciarDB(archivo);
     return _database!;
   }
 
   // Busca la ruta segura en Android/iOS y abre el archivo .db
   Future<Database> _iniciarDB(String filePath) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+    final path = filePath == inMemoryDatabasePath ? filePath : join(await getDatabasesPath(), filePath);
 
     return await openDatabase(
       path,
       version: 11,
       onCreate: _crearDB,
-      onUpgrade: _actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
+      onUpgrade: actualizarDB, // 🔥 MANEJA TELEFONOS CON LA DB VIEJA
     );
   }
 
@@ -80,7 +87,7 @@ class BaseDatosLocal {
         consumo_litros_km REAL,
         precio_combustible_bs REAL''';
 
-  Future _actualizarDB(Database db, int oldVersion, int newVersion) async {
+  Future actualizarDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('DROP TABLE IF EXISTS viajes_offline');
       await db.execute('DROP TABLE IF EXISTS viajes');

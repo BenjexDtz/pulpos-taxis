@@ -54,6 +54,7 @@ jobs:
           cache-dependency-path: pulpos_web_admin/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run test:cobertura
       - run: npm run build
 
   app:
@@ -68,6 +69,8 @@ jobs:
           flutter-version: 3.41.6
           channel: stable
           cache: true
+      # sqflite_common_ffi abre la base de las pruebas con la libsqlite3 del sistema
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test

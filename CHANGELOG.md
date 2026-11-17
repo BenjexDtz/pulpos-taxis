@@ -3,6 +3,16 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [1.6.4] - 2026-11-17
+
+### Añadido
+- **Pruebas del panel:** Vitest con React Testing Library y cobertura (`npm test`, `npm run test:cobertura`). 114 pruebas montan las vistas y componentes con la API simulada: que los formularios rechacen datos inválidos, que cada vista muestre lo que devuelve la API y envíe lo correcto, los errores del servidor, la sesión y los mapas. Cubren los 35 módulos, con 94,4 % de las líneas.
+- **Pruebas de la app:** widgets del login, el historial y el tema; el viaje en curso; la base local y sus migraciones con SQLite en memoria (`sqflite_common_ffi`). Pasan de 95 a 130 pruebas y de 26,9 % a 69,3 % de las líneas.
+- **CI:** el panel ejecuta sus pruebas con cobertura; la app instala `libsqlite3-dev` para las pruebas de la base local.
+
+### Cambiado
+- **App:** `BaseDatosLocal` puede abrirse en memoria y cerrarse, y la migración del esquema (`actualizarDB`) queda accesible a las pruebas. No cambia el comportamiento en el teléfono.
+
 ## [1.6.3] - 2026-11-17
 
 ### Corregido
@@ -164,6 +174,7 @@ Primera versión etiquetada. Parte del prototipo de mayo de 2026 (taxímetro off
 ### Migraciones
 Para una base existente, aplicar en orden `database/migraciones/001` a `004`.
 
+[1.6.4]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/BenjexDtz/pulpos-taxis/compare/v1.6.0...v1.6.1
