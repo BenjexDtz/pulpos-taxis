@@ -326,6 +326,19 @@ describe('Integración con PostgreSQL (aislamiento entre empresas)', { skip: !ac
         assert.equal(rows[0].n, 1);
     });
 
+    test('el CSV exportado tiene en cada fila tantos valores como encabezados', async () => {
+        const pulpos = await loginAdmin('admin@pulpos.bo');
+        const r = await pedir('GET', '/api/admin/viajes/exportar', { token: pulpos });
+        assert.equal(r.status, 200);
+        const [encabezado, ...filas] = r.texto.replace(/^﻿/, '').split('\n').map(l => l.slice(1, -1).split('","'));
+        assert.ok(filas.length > 0);
+        for (const f of filas) {
+            assert.equal(f.length, encabezado.length);
+            assert.match(f[encabezado.indexOf('Fecha')], /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+            assert.match(f[encabezado.indexOf('Placa')], /^[0-9A-Z]+$/);
+        }
+    });
+
     test('superadmin da de alta una empresa con su gerente, que empieza vacía', async () => {
         const sa = await loginAdmin('superadmin@plataforma.bo');
         const r = await pedir('POST', '/api/plataforma/empresas', { token: sa, body: {

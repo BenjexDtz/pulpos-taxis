@@ -782,6 +782,27 @@ describe('Filtro de fechas', () => {
         assert.match(r.texto, /Tarifa Total \(S\/\)/);
         assert.match(r.headers.get('content-disposition'), /taxis-sur_viajes_/);
     });
+
+    test('cada columna del CSV tiene un nombre propio en la consulta', async () => {
+        responder = () => ({ rows: [{ a: 1 }] });
+        const r = await pedir('GET', '/api/admin/viajes/exportar', { token: TOKEN_ADMIN });
+        const sql = consultasDeDatos().find(c => /FROM viajes_historial v/.test(c.sql) && /SELECT/.test(c.sql)).sql;
+        const lista = sql.slice(sql.indexOf('SELECT') + 6, sql.indexOf('FROM viajes_historial'));
+        const columnas = [];
+        let nivel = 0, actual = '';
+        for (const ch of lista) {
+            if (ch === '(') nivel++;
+            if (ch === ')') nivel--;
+            if (ch === ',' && nivel === 0) { columnas.push(actual.trim()); actual = ''; } else actual += ch;
+        }
+        columnas.push(actual.trim());
+        // pg arma cada fila como objeto: dos columnas con el mismo nombre se pisan y desalinean el CSV
+        const nombres = columnas.map(c => (c.match(/\bAS\s+(\w+)$/i) ?? c.match(/^\w+\.(\w+)$/) ?? [])[1]);
+        assert.ok(nombres.every(Boolean), `columna sin nombre: ${columnas[nombres.findIndex(n => !n)]}`);
+        assert.equal(new Set(nombres).size, nombres.length);
+        const encabezados = r.texto.replace(/^﻿/, '').split('\n')[0].split('","').length;
+        assert.equal(nombres.length, encabezados);
+    });
 });
 
 describe('Errores y cabeceras', () => {
