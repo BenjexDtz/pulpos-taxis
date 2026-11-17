@@ -1,12 +1,14 @@
 {
   "name": "pulpos_web_admin",
   "private": true,
-  "version": "1.6.3",
+  "version": "1.6.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:cobertura": "vitest run --coverage",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,16 +24,23 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.12",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "5.1.0",
     "autoprefixer": "^10.5.0",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "jsdom": "31.0.1",
     "postcss": "^8.5.10",
     "tailwindcss": "^4.2.2",
-    "vite": "^8.0.4"
+    "vite": "^8.0.4",
+    "vitest": "5.1.0"
   }
 }

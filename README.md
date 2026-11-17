@@ -211,6 +211,8 @@ PG_INTEGRACION=1 npm test    # además, integración en bases temporales
 # Panel
 cd pulpos_web_admin
 npm run lint
+npm test                     # Vitest y Testing Library, con la API simulada
+npm run test:cobertura       # además, cobertura por archivo en coverage/
 npm run build
 
 # App
@@ -219,7 +221,7 @@ flutter analyze
 flutter test
 ```
 
-El panel no tiene pruebas automatizadas de interfaz; se valida con lint y build. En la app, las pruebas cubren sobre todo la lógica de cálculo y sincronización. Las pantallas, el GPS y el almacenamiento local requieren pruebas en un dispositivo real.
+Las pruebas del panel montan cada vista con la API simulada y comprueban lo que se muestra y lo que se envía. En la app, además de la lógica de cálculo y sincronización, hay pruebas de widgets del login, el historial y el tema, y la base local se prueba con SQLite en memoria. La pantalla del taxímetro y el GPS requieren pruebas en un dispositivo real.
 
 GitHub Actions ejecuta todo esto en cada push, junto con `npm audit` del backend.
 
@@ -306,6 +308,7 @@ pulpos-taxis/
 │       ├── vistas/            Central, Informes, Flota, Parámetros y otras
 │       ├── componentes/       Login, mapa, asistente y otros
 │       └── contexto/          Tema claro y oscuro
+│   └── test/                  Pruebas del panel (Vitest)
 ├── pulpos_apk/                App del chofer (Flutter)
 │   ├── lib/
 │   │   ├── main.dart          Pantalla principal del taxímetro
