@@ -1,6 +1,5 @@
 @startuml clases01_dominio
 !include estilo.iuml
-title Diagrama de clases – Modelo del dominio (servidor y base de datos)
 
 enum Rol {
   superadmin
@@ -39,6 +38,11 @@ class Empresa {
   - altitudMsnm : int
   - colorPrimario : String
   - activo : boolean
+  --
+  + registrar()
+  + actualizar(datos)
+  + cambiarEstado(activo : boolean)
+  - validar(datos) : String
 }
 
 class Administrador {
@@ -52,11 +56,23 @@ class Administrador {
   - mfaSecreto : String <<cifrado>>
   - mfaUltimoPaso : long
   - mfaBloqueadoHasta : Timestamp
+  --
+  + iniciarSesion(email, password) : Token
+  + configurarTOTP() : QR
+  + activarTOTP(codigo) : CodigoRespaldo[10]
+  + verificarTOTP(codigo) : boolean
+  + regenerarCodigos() : CodigoRespaldo[10]
+  + restablecerMFA()
+  - registrarFallo()
 }
 
 class CodigoRespaldo {
   - codigoHash : String <<SHA-256>>
   - usadoEn : Timestamp
+  --
+  + {static} generar() : String[10]
+  + canjear(codigo) : boolean
+  - {static} hash(codigo) : String
 }
 
 class Chofer {
@@ -68,6 +84,14 @@ class Chofer {
   - ultimaLat : decimal
   - ultimaLng : decimal
   - ultimaActualizacion : Timestamp
+  --
+  + iniciarSesion(empresa, placa, password) : Token
+  + registrar()
+  + actualizar(datos)
+  + cambiarPassword(password)
+  + activar()
+  + desactivar()
+  + actualizarPosicion(lat, lng)
 }
 
 class ParametrosTarifa {
@@ -80,6 +104,11 @@ class ParametrosTarifa {
   - bajadaBandera : decimal <<B>>
   - valorSalto : decimal <<S>>
   - modoTarifa : ModoTarifa
+  --
+  + guardar(valores)
+  + versionar() <<trigger>>
+  + costoVariableKm() : decimal
+  - validar(valores) : String
 }
 
 class ParametrosHistorial {
@@ -93,6 +122,8 @@ class ParametrosHistorial {
   - valorSalto : decimal
   - modoTarifa : ModoTarifa
   - vigenteDesde : Timestamp
+  --
+  + {static} versionesDe(empresa) : ParametrosHistorial[*]
 }
 
 class Viaje {
@@ -116,6 +147,14 @@ class Viaje {
   - superficieRespaldo : String
   - tarifaTradicional : decimal
   - demostracion : boolean
+  --
+  + sincronizar(viaje, ruta) : EstadoVerificacion
+  + verificar(versiones) : EstadoVerificacion
+  + calcularTarifa() : decimal
+  - parametrosFueraDeVersion(versiones) : String
+  - evaluarSuperficie() : String
+  + {static} consultar(filtro) : Viaje[*]
+  + {static} exportarCSV(filtro) : String
 }
 
 class PuntoRuta {
@@ -125,6 +164,9 @@ class PuntoRuta {
   - segundos : int
   - superficie : Superficie
   - vibracion : real
+  --
+  + {static} leerRuta(json) : PuntoRuta[*]
+  + {static} distanciaKm(a, b) : decimal
 }
 
 class EventoAuditoria <<base de auditoría>> {
@@ -139,6 +181,11 @@ class EventoAuditoria <<base de auditoría>> {
   - datosDespues : JSON
   - hashAnterior : String
   - hash : String <<SHA-256>>
+  --
+  + {static} registrar(evento)
+  + {static} consultar(filtro) : EventoAuditoria[*]
+  + {static} verificarCadena() : boolean
+  - {static} reenviarPendientes()
 }
 
 class AnclaAuditoria {

@@ -1,0 +1,44 @@
+@startuml er01b_base_auditoria
+!include estilo.iuml
+hide circle
+set separator none
+hide empty methods
+skinparam wrapWidth 600
+
+package "Base de auditoría (database/auditoria/esquema.sql)" {
+  entity eventos {
+    * id : BIGINT <<PK>>
+    --
+    * ocurrido_en : TIMESTAMPTZ
+    * registrado_en : TIMESTAMPTZ
+    empresa_id : INTEGER
+    * actor_tipo : VARCHAR(20)
+    actor_id : INTEGER
+    actor_rol : VARCHAR(30)
+    actor_nombre : VARCHAR(120)
+    * accion : VARCHAR(60)
+    entidad : VARCHAR(40)
+    entidad_id : VARCHAR(40)
+    * resultado : VARCHAR(12)
+    detalle : VARCHAR(300)
+    datos_antes : JSONB
+    datos_despues : JSONB
+    ip : VARCHAR(64)
+    user_agent : VARCHAR(300)
+    * hash_anterior : CHAR(64)
+    * hash : CHAR(64) <<UNIQUE, SHA-256>>
+  }
+}
+
+note right of eventos
+  Sin claves foráneas hacia la base principal.
+  Triggers:
+  • eventos_encadenar: asigna id y calcula el hash
+    a partir del hash del evento anterior.
+  • eventos_inmutables: impide UPDATE y DELETE.
+  • eventos_sin_truncate: impide TRUNCATE.
+  La función auditoria_verificar() recorre la cadena.
+  La base principal guarda copias del hash
+  en auditoria_anclas.
+end note
+@enduml

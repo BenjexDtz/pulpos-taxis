@@ -1,6 +1,5 @@
 @startuml act01_proceso_actual
 !include estilo.iuml
-title Diagrama de actividades – Cobro del viaje sin el sistema
 
 |Pasajero|
 start

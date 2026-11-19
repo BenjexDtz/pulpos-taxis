@@ -1,9 +1,9 @@
 @startuml comp02_componentes
 !include estilo.iuml
-title Diagrama de componentes – Sistema de tarificación (v1.6.1)
+left to right direction
 
 package "Teléfono Android" {
-  package "App móvil (Flutter)" {
+  package "App móvil (Flutter) v1.6.4" {
     component "Pantallas\n(taxímetro, login,\nhistorial)" as PANT
     component "Taximetro\n(modo S/D, enteros)" as TAX
     component "MotorGPS" as GPS
@@ -12,13 +12,14 @@ package "Teléfono Android" {
     component "RecorridoDemostracion" as DEMO
     component "Sincronizador" as SINC
     component "ParametrosService\ny Sesion" as CONF
+    component "OptimizacionBateria\n(GPS con pantalla apagada)" as BAT
   }
   database "SQLite\n(viajes y puntos)" as SQLITE
   component "Receptor GPS\ny acelerómetro" as SENSORES
 }
 
 package "Navegador" {
-  package "Panel web (React)" {
+  package "Panel web (React) v1.6.4" {
     component "Vistas\n(Central, Informes, Flota,\nParámetros, Empresa, Auditoría,\nSeguridad, Plataforma)" as VISTAS
     component "Asistente" as CASIS
     component "MapaFlota y RutaViaje" as MAPA
@@ -26,7 +27,7 @@ package "Navegador" {
 }
 
 package "Servidor" {
-  package "API REST (Node.js / Express 5)" {
+  package "API REST (Node.js / Express 5) v1.6.4" {
     interface "API móvil" as IMOVIL
     interface "API del panel" as IPANEL
     component "Middlewares\n(JWT, roles, MFA,\nlímite de intentos)" as MID
@@ -50,6 +51,7 @@ PANT --> CURSO
 PANT --> DEMO
 PANT --> SINC
 PANT --> CONF
+PANT --> BAT
 SENSORES --> GPS
 SENSORES --> RUG
 GPS --> PANT : posiciones

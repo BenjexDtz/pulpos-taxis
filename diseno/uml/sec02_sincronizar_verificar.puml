@@ -1,6 +1,5 @@
 @startuml sec02_sincronizar_verificar
 !include estilo.iuml
-title Diagrama de secuencia – Sincronizar y verificar un viaje
 autonumber
 
 participant ":Sincronizador" as SY

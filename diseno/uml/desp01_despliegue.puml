@@ -1,6 +1,5 @@
 @startuml desp01_despliegue
 !include estilo.iuml
-title Diagrama de despliegue
 
 node "Teléfono Android" as TEL {
   artifact "PulposTaxis.apk\n(Flutter)" as APK

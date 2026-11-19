@@ -56,7 +56,7 @@ class PantallaInicio extends StatelessWidget {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         return snapshot.data != null
-            ? const PantallaPrueba()
+            ? const PantallaTaximetro()
             : const PantallaLogin();
       },
     );
@@ -72,14 +72,14 @@ Future<void> irAlLogin(BuildContext context) async {
   );
 }
 
-class PantallaPrueba extends StatefulWidget {
-  const PantallaPrueba({super.key});
+class PantallaTaximetro extends StatefulWidget {
+  const PantallaTaximetro({super.key});
 
   @override
-  State<PantallaPrueba> createState() => _PantallaPruebaState();
+  State<PantallaTaximetro> createState() => _PantallaTaximetroState();
 }
 
-class _PantallaPruebaState extends State<PantallaPrueba>
+class _PantallaTaximetroState extends State<PantallaTaximetro>
     with WidgetsBindingObserver {
   // ── Taxímetro y ruta del viaje ─────────────────────────────────────────────
   Taximetro? _taximetro;

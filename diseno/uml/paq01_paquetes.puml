@@ -1,6 +1,5 @@
 @startuml paq01_paquetes
 !include estilo.iuml
-title Diagrama de paquetes – Estructura de los módulos
 skinparam packageStyle folder
 
 package pulpos_apk {
@@ -64,7 +63,7 @@ apk_ui ..> apk_srv
 apk_ui ..> apk_per
 apk_srv ..> apk_per
 apk_srv ..> apk_dom
-apk_test ..> apk_dom
+apk_dom <.up. apk_test
 
 be_app ..> rutas
 be_app ..> middlewares
@@ -77,8 +76,8 @@ web_app ..> componentes
 web_app ..> contexto
 vistas ..> componentes
 
-apk_srv ..> rutas : HTTP
-web_app ..> rutas : HTTP
+rutas <.. apk_srv : "  HTTP  "
+rutas <.. web_app : "  HTTP  "
 be_mod ..> db_init : SQL
 be_mod ..> auditoria : SQL
 @enduml

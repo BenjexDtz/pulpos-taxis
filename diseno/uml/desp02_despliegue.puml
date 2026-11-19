@@ -1,9 +1,8 @@
 @startuml desp02_despliegue
 !include estilo.iuml
-title Diagrama de despliegue definitivo – Entorno actual (sin Docker)
 
 node "Teléfono del chofer\n<<dispositivo>> Android" as TEL {
-  artifact "PulposTaxis-v1.6.1.apk\n(Flutter)" as APK
+  artifact "PulposTaxis-v1.6.4.apk\n(Flutter)" as APK
   database "SQLite" as SQLITE
 }
 
@@ -14,16 +13,12 @@ node "PC de la central\n<<dispositivo>> Windows 11 Pro" as PC {
     artifact "Panel React" as PNAV
   }
   node "ngrok agent\n<<proceso>>" as AGENTE
-  node "Node.js 22.20\n<<proceso>> :3000" as NODE {
-    artifact "API Express\n(pulpos_backend)" as API
+  node "Node.js 22.20 <<proceso>> :3000\n----\nAPI Express\n(pulpos_backend 1.6.4, npm start)" as API
+  node "Vite dev server (npm run dev)\n<<proceso>> :5173" as VITE {
+    artifact "pulpos_web_admin 1.6.4\n(sin compilar)"
   }
-  node "Vite dev server\n<<proceso>> :5173" as VITE {
-    artifact "pulpos_web_admin"
-  }
-  node "PostgreSQL 18.3\n<<servicio>> postgresql-x64-18 :5432" as PG {
-    database "pulpos_db" as DB
-    database "pulpos_auditoria\n(usuario auditor_app)" as AUD
-  }
+  database "pulpos_db\nPostgreSQL 18.3 :5432" as DB
+  database "pulpos_auditoria\n(usuario auditor_app)\nPostgreSQL 18.3 :5432" as AUD
 }
 
 cloud "Groq\n(LLM)" as LLM
@@ -40,8 +35,9 @@ API --> DB : TCP :5432
 API --> AUD : TCP :5432
 API --> LLM : HTTPS
 
-note bottom of PG
-  Las dos bases comparten el mismo servidor PostgreSQL.
+note bottom of DB
+  Las dos bases están en el mismo servicio
+  PostgreSQL 18.3 (postgresql-x64-18, puerto 5432).
   La separación en dos servidores solo existe con Docker Compose.
 end note
 @enduml

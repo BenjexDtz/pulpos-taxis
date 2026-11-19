@@ -1,6 +1,5 @@
 @startuml act02_proceso_sistema
 !include estilo.iuml
-title Diagrama de actividades – Cobro del viaje con el sistema
 
 |Pasajero|
 start
