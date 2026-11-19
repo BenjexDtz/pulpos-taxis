@@ -1,0 +1,91 @@
+@startuml clases02a_taximetro
+!include estilo.iuml
+hide empty members
+
+class PantallaTaximetro <<interfaz>> {
+  + iniciarRastreo()
+  + detenerRastreo()
+  + sincronizarViajesPendientes()
+  + iniciarDemostracion()
+}
+
+class Taximetro {
+  + estado : EstadoTaximetro
+  + centavos : int
+  + ocupar(inicio : PuntoRuta)
+  + registrar(p : PuntoRuta)
+  + tramo(mm : int, segundos : int, s : Superficie)
+  + centavosEn(segundosAhora : int) : int
+  + cobrar(segundosFinal : int, s : Superficie)
+  + liberar()
+  + {static} desdeRuta(t : TarifaTaximetro, ruta) : Taximetro
+}
+
+class TarifaTaximetro {
+  + modo : ModoTarifa
+  + bajada : int
+  + salto : int
+  + porKm : Map<Superficie, int>
+  + porHora : int
+  + {static} desde(p : ParametrosTopograficos) : TarifaTaximetro
+  + velocidadCruceKmh(s : Superficie) : double
+}
+
+class RecorridoPorSuperficie {
+  + kmAsfalto : double
+  + kmTierra : double
+  + kmEmpedrado : double
+  + kmTotal : double
+  + tipo : String
+  + sumar(km : double, s : Superficie)
+}
+
+class PuntoRuta {
+  + lat : double
+  + lng : double
+  + segundos : int
+  + superficie : Superficie
+  + vibracion : double
+}
+
+class MedidorVibracion {
+  + registrar(x : double, y : double, z : double)
+  + tomar() : double
+}
+
+class SugerenciaSuperficie {
+  + registrar(vibracion : double, marcada : Superficie) : Sugerencia
+  + descartar()
+}
+
+class MotorGPS {
+  + {static} obtenerUbicacionActual() : (Position, FallaGPS)
+  + {static} obtenerFlujoUbicacion() : Stream<Position>
+  + {static} enviarUltimaPosicion(lat : double, lng : double)
+}
+
+enum EstadoTaximetro {
+  libre
+  ocupado
+  aPagar
+}
+
+enum Superficie {
+  asfalto
+  tierra
+  empedrado
+}
+
+PantallaTaximetro --> Taximetro
+PantallaTaximetro --> MedidorVibracion
+PantallaTaximetro --> SugerenciaSuperficie
+PantallaTaximetro ..> MotorGPS : posiciones
+
+Taximetro "1" o-- "1" TarifaTaximetro
+Taximetro "1" *-- "1" RecorridoPorSuperficie
+Taximetro "1" *-- "1..*" PuntoRuta : ruta
+Taximetro ..> EstadoTaximetro
+
+PuntoRuta ..> Superficie
+RecorridoPorSuperficie ..> Superficie
+@enduml

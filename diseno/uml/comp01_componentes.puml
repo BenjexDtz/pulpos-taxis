@@ -1,6 +1,5 @@
 @startuml comp01_componentes
 !include estilo.iuml
-title Diagrama de componentes – Sistema de tarificación
 
 package "Teléfono Android" {
   component "App móvil\n(Flutter)" as APP
@@ -24,8 +23,8 @@ cloud "Servicio LLM\n(API compatible con OpenAI:\nGroq u Ollama)" as LLM
 cloud "OpenStreetMap\n(teselas del mapa)" as OSM
 cloud "unpkg\n(Leaflet)" as UNPKG
 
-IMOVIL -- API
-IPANEL -- API
+IMOVIL - API
+API - IPANEL
 APP --> SENSORES : posiciones y vibración
 APP --> SQLITE : viajes y puntos pendientes
 APP ..> IMOVIL : HTTPS + JWT chofer\n/api/login, /api/config,\n/api/posicion, /api/viajes/sincronizar

@@ -3,6 +3,17 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/); el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 Backend, panel web y app comparten un único número de versión: se entregan juntos y la API evoluciona a la par con la app.
 
+## [1.6.5] - 2026-11-19
+
+### Cambiado
+- **App:** la pantalla principal `PantallaPrueba` se llama ahora `PantallaTaximetro`. Solo cambia el nombre; la lógica es la misma.
+- **Diagramas UML:** todos se exportan en PNG a 200 dpi, con fuente Arial 12 en todos los elementos, sin título (el título va en el documento) y sin etiquetas superpuestas.
+  - `clases01_dominio`: cada clase muestra sus métodos principales con su visibilidad, tomados de las rutas y módulos del servidor.
+  - `clases02_app` se divide en `clases02a_taximetro` (taxímetro y cálculo) y `clases02b_persistencia` (persistencia y sincronización), solo con los métodos públicos principales.
+  - `er01_base_datos` se divide en `er01a_base_principal` y `er01b_base_auditoria`; las columnas `factor_altitud` se marcan como de uso exclusivo de las apps v4.
+  - `est01` y `est02`: "tarifa de palabra" pasa a "tarifa sin taxímetro"; `est02` describe los resultados en lugar de mostrar códigos HTTP y nombres de columnas.
+  - `comp02` y `desp02` se actualizan a la versión 1.6.4 (con la optimización de batería). `desp02` muestra el panel servido por el servidor de desarrollo de Vite (`npm run dev`), que es como se ejecutó.
+
 ## [1.6.4] - 2026-11-17
 
 ### Añadido

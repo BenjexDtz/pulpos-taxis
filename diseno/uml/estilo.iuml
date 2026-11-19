@@ -1,10 +1,44 @@
+skinparam dpi 200
 skinparam monochrome true
 skinparam shadowing false
-skinparam defaultFontName Arial
-skinparam defaultFontSize 12
 skinparam backgroundColor white
 skinparam roundCorner 4
 skinparam packageStyle rectangle
 skinparam classAttributeIconSize 0
 skinparam sequenceMessageAlign center
 skinparam responseMessageBelowArrow true
+
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam ArrowFontName Arial
+skinparam ArrowFontSize 12
+skinparam NoteFontName Arial
+skinparam NoteFontSize 12
+skinparam StereotypeFontName Arial
+skinparam StereotypeFontSize 12
+skinparam StereotypeFontStyle italic
+skinparam PackageFontName Arial
+skinparam PackageFontSize 12
+skinparam PackageFontStyle bold
+
+skinparam nodesep 60
+skinparam ranksep 60
+skinparam wrapWidth 260
+
+skinparam ActivityFontName Arial
+skinparam ActivityFontSize 12
+skinparam SwimlaneTitleFontName Arial
+skinparam SwimlaneTitleFontSize 12
+skinparam ParticipantFontName Arial
+skinparam ParticipantFontSize 12
+skinparam SequenceGroupFontSize 12
+skinparam SequenceGroupHeaderFontSize 12
+skinparam SequenceDividerFontSize 12
+skinparam UsecaseFontSize 12
+skinparam ActorFontSize 12
+skinparam ClassFontSize 12
+skinparam ClassAttributeFontSize 12
+skinparam StateFontSize 12
+skinparam StateAttributeFontSize 12
+skinparam ComponentFontSize 12
+skinparam LegendFontSize 12

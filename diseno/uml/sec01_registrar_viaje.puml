@@ -1,10 +1,9 @@
 @startuml sec01_registrar_viaje
 !include estilo.iuml
-title Diagrama de secuencia – Registrar un viaje con el taxímetro (sin conexión)
 autonumber
 
 actor Chofer
-participant ":PantallaPrueba" as UI
+participant ":PantallaTaximetro" as UI
 participant ":ParametrosService" as PS
 participant ":MotorGPS" as GPS
 participant ":ViajeEnCurso" as VC

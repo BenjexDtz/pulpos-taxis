@@ -1,9 +1,8 @@
 @startuml arq01_capas
 !include estilo.iuml
-title Arquitectura en capas
 
 package "Capa de presentación" as PRES {
-  rectangle "App móvil (Flutter)\nPantallaPrueba, PantallaLogin,\nPantallaHistorial" as P1
+  rectangle "App móvil (Flutter)\nPantallaTaximetro, PantallaLogin,\nPantallaHistorial" as P1
   rectangle "Panel web (React)\nCentral, Informes, Flota, Parámetros,\nEmpresa, Auditoría, Seguridad, Plataforma" as P2
 }
 

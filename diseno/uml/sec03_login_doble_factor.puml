@@ -1,6 +1,5 @@
 @startuml sec03_login_doble_factor
 !include estilo.iuml
-title Diagrama de secuencia – Inicio de sesión en el panel con doble factor
 autonumber
 
 actor Administrador

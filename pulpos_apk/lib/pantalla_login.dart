@@ -79,7 +79,7 @@ class _PantallaLoginState extends State<PantallaLogin> {
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const PantallaPrueba()),
+            MaterialPageRoute(builder: (context) => const PantallaTaximetro()),
           );
         }
       } else {

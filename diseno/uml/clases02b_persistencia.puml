@@ -1,0 +1,68 @@
+@startuml clases02b_persistencia
+!include estilo.iuml
+hide empty members
+
+class PantallaTaximetro <<interfaz>>
+
+class ParametrosService {
+  + {static} obtener() : ParametrosTopograficos
+}
+
+class ParametrosTopograficos {
+  + costoBaseKm : double
+  + consumoLitrosKm : double
+  + precioCombustibleBs : double
+  + factorSuperficie : double
+  + factorEmpedrado : double
+  + costoMinutoDetencion : double
+  + bajadaBandera : double
+  + valorSalto : double
+  + modoTarifa : ModoTarifa
+}
+
+class ViajeEnCurso {
+  + uuid : String
+  + choferId : int
+  + inicio : DateTime
+  + guardar()
+  + {static} leer() : ViajeEnCurso
+  + {static} borrar()
+}
+
+class BaseDatosLocal <<SQLite>> {
+  + insertarPunto(uuid, orden : int, p : PuntoRuta)
+  + insertarViaje(viaje, ruta) : int
+  + guardarTarifaTradicional(id : int, monto : double)
+  + viajesPendientes(choferId : int) : List
+  + puntosDeViaje(uuid) : List<PuntoRuta>
+  + marcarSincronizado(viaje)
+}
+
+class Sincronizador {
+  + ejecutar(token, choferId : int) : ResultadoSincronizacion
+}
+
+class ResultadoSincronizacion {
+  + enviados : int
+  + pendientes : int
+  + sesionRechazada : boolean
+}
+
+class Sesion {
+  + {static} guardar(token, chofer, empresa)
+  + {static} tokenValido() : String
+  + {static} choferId() : int
+  + {static} cerrar()
+}
+
+PantallaTaximetro ..> ParametrosService
+PantallaTaximetro --> ViajeEnCurso
+PantallaTaximetro --> BaseDatosLocal
+PantallaTaximetro --> Sincronizador
+PantallaTaximetro ..> Sesion
+
+ParametrosService ..> ParametrosTopograficos : crea
+ViajeEnCurso "1" o-- "1" ParametrosTopograficos
+Sincronizador ..> BaseDatosLocal
+Sincronizador ..> ResultadoSincronizacion : devuelve
+@enduml
